@@ -1,14 +1,15 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`.
+`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 63 passed |
-| Line coverage | **98.48%** |
-| Statement coverage | 98.48% |
+| Tests | 90 passed |
+| Line coverage | **98.47%** |
+| Statement coverage | 98.47% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
+| `kuaishou-video` lib lines | **98.46%** |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -115,4 +116,17 @@ Login-check only in unit tests. Logged out or missing `ego-browser` exits 2 with
 
 ```bash
 node skills/wechat-channels-video/scripts/check-login.mjs
+```
+
+## kuaishou-video
+
+Publish a caller-supplied local video to https://cp.kuaishou.com . No download step. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip`. The task space closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+Publish success is `{ "ok": true, "status": "审核中" }`. Flow errors exit 1. A login wall inside `publish.js` / `comment.js` exits 2 after `handOff()`. No logged-in Kuaishou smoke was run here.
+
+Included lib line coverage: `pure.mjs` 100%, `run-check.mjs` 100%, `config-file.mjs` 100%, `launch-check.mjs` 94.87%, `run-ego.mjs` 92.98%.
+
+```bash
+node skills/kuaishou-video/scripts/check-login.mjs
+bash skills/kuaishou-video/scripts/publish.sh /absolute/path/to/video.mp4 "描述 #话题"
 ```
