@@ -1,7 +1,7 @@
 # Demo GIFs
 
-Not recorded yet. `pinterest-download` is usable without a GIF.
+Not recorded yet. The only skill is `pinterest-download`, and it runs without a GIF.
 
-- `pinterest-download.gif` — after a logged-in run
-- `web-screenshot.gif` — when that stub ships
-- `logged-in-scrape.gif` — when that stub ships
+- `pinterest-download.gif` — after a logged-in Ego Lite run
+
+Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`.

@@ -1,6 +1,6 @@
 # Contributing
 
-`pinterest-download` is the reference layout. Other skills are still stubs.
+The only skill today is `pinterest-download`. It requires ego lite and `ego-browser` on `PATH`.
 
 - One skill per PR under `skills/<id>/`.
 - Match ego layout: `SKILL.md` frontmatter, optional `agents/openai.yaml`, `scripts/*.mjs`, `references/`.

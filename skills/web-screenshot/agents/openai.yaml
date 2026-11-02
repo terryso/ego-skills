@@ -1,5 +1,0 @@
-interface:
-  display_name: "web-screenshot"
-  short_description: "Full-page or element screenshots via ego-browser"
-  brand_color: "#1E90FF"
-  default_prompt: "Use $web-screenshot to capture a page or element with ego-browser."

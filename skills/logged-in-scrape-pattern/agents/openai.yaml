@@ -1,5 +1,0 @@
-interface:
-  display_name: "logged-in-scrape-pattern"
-  short_description: "Template for session-reuse scrapes with ego-browser"
-  brand_color: "#0F766E"
-  default_prompt: "Follow $logged-in-scrape-pattern to extract data from a site I am already logged into."
