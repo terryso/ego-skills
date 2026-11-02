@@ -1,0 +1,5 @@
+interface:
+  display_name: "pinterest-download"
+  short_description: "Search + download Pinterest pins via ego-browser"
+  brand_color: "#E60023"
+  default_prompt: "Use $pinterest-download with ego-browser: set CONFIG.query/limit/outDir, prefer originals, save files + JSON manifest."

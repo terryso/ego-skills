@@ -1,0 +1,174 @@
+# Ego Browser Skills — Open-Source Plan
+
+> Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
+> Status: plan + skeleton; **#1 `pinterest-download` in progress toward `@sunkimkk/pinterest-mcp` search+download parity** (box path). Later: personal CascadeProjects → public GitHub.
+> License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
+
+---
+
+## 1. Positioning
+
+**One-liner:** Drop-in Agent Skills that teach Codex / Claude / Cursor agents to drive *real* Chromium via `ego-browser nodejs` — with the user's cookies and login sessions intact.
+
+**Why this wins vs Puppeteer/Playwright MCP clouds:**
+- Same browser profile the human already uses → no fresh-login dance for Pinterest, GitHub, Notion, etc.
+- Agents inject scripts through the official CLI (`ego-browser nodejs`), not a second headless stack.
+- Skills are markdown + small `.mjs` stubs: copy into `~/.agents/skills/` and go.
+- Compatible with the shipping ego skill shape (`SKILL.md` frontmatter, `agents/openai.yaml`, `scripts/`, `references/`).
+
+**Tagline candidates:**
+- "Logged-in browser skills for AI agents"
+- "ego-browser recipes that reuse your cookies"
+- "Agent Skills that click like you already signed in"
+
+---
+
+## 2. Audience
+
+| Who | Why they star / clone |
+|-----|------------------------|
+| **Codex / Claude Code / Cursor agents** (primary) | Need durable browser playbooks, not one-off chat scripts |
+| Agent authors packaging skills | Want a MIT template that matches ego's layout |
+| Indie hackers dogfooding ego lite | Need copy-paste patterns for scrape / screenshot / form fill |
+| OSS maintainers | Want demo GIFs + one-liner install they can point issues at |
+
+Non-audience (explicit): SaaS buyers, enterprise procurement, "managed browser cloud" users.
+
+---
+
+## 3. Why stars (not revenue)
+
+- **Zero product surface** → low friction to try; stars = distribution for ego lite itself.
+- Skills are the missing middle layer between "ego-browser skill guide" and "I need Pinterest download today."
+- Viral loop: agent fails → finds this repo → GIF shows logged-in scrape in 20s → star + clone → more agents succeed → more issues/PRs → more stars.
+- MIT + no telemetry + no signup = trust for agent authors who refuse SaaS wrappers.
+- Showcase ego's differentiator (cookie/login reuse) better than marketing copy can.
+
+Success metric v0: stars, clones, skill installs, demo GIF views, "works with ego-browser" mentions in other agent repos — **not** ARR.
+
+---
+
+## 4. Non-goals
+
+- No SaaS, no hosted runners, no paid tiers, no API keys for *this* repo.
+- No reimplementation of ego lite / Chromium.
+- No Playwright/Puppeteer polyfill; stay on documented ego APIs (`taskSpace`, `page.*`, `page.evaluate`, `page.cdp`).
+- No credential harvesting helpers; skills assume the user already logged in via ego GUI / `ego-browser import`.
+- No ToS-breaking "bypass paywall / captcha farm" skills.
+- No commercialization roadmap in this repo (sponsorships optional later; not the point).
+- No GitHub org / company packaging yet — personal CascadeProjects first when ready.
+
+---
+
+## 5. First skill ideas (5–8)
+
+| # | Skill id | Hook | Why it stars |
+|---|----------|------|--------------|
+| 1 | `pinterest-download` | Batch-save pin images while logged in (**in progress: sunkim search+download parity**) | Pain everyone hits; cookies matter |
+| 2 | `web-screenshot` | Full-page / element screenshots to disk | Universal demo; GIF-friendly |
+| 3 | `logged-in-scrape-pattern` | Canonical pattern: reuse session → snapshot → extract | Meta-skill others fork |
+| 4 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Teaching skill for agents |
+| 5 | `github-starred-export` | Scrape own starred repos (auth cookie) | Dogfood for agent authors |
+| 6 | `notion-page-dump` | Export a logged-in Notion page to md/json | Session reuse showcase |
+| 7 | `cookie-healthcheck` | Detect "am I logged in?" for a domain before scrape | Reliability primitive |
+| 8 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Aligns with ego's QA pitch |
+
+**Starter trio:** `#1 pinterest-download` in progress (ego-browser search+download → sunkim parity); 2–3 still stubs.
+
+---
+
+## 6. Packaging (ego-compatible)
+
+Layout mirrors shipping ego skill + multi-skill repo conventions:
+
+```
+ego-skills/
+  README.md                 # one-liner install + GIF gallery
+  LICENSE                   # MIT
+  PLAN.md                   # this file (may move to docs/ later)
+  package.json              # name/version only; no runtime server
+  docs/
+    INSTALL.md              # symlink / clone into ~/.agents/skills
+    CONTRIBUTING.md         # skill PR checklist
+  assets/demos/             # README GIFs (star bait)
+  skills/<skill-id>/
+    SKILL.md                # YAML frontmatter + agent instructions
+    agents/openai.yaml      # display_name / short_description / icons
+    scripts/*.mjs           # runnable via: ego-browser nodejs < file.mjs
+    references/*.md         # edge cases, selectors, ToS notes
+  scripts/
+    install-skills.sh       # one-liner: clone → link into ~/.agents/skills
+    examples/               # tiny comments / expected invocation
+```
+
+**SKILL.md frontmatter convention** (match ego-browser):
+
+```yaml
+---
+name: <skill-id>
+description: <when to load; cookie/login reuse called out>
+metadata:
+  version: "0.1.0"
+  requires:
+    bins: [ego-browser]
+  ego:
+    min_skill_guide: "2.1.0"
+---
+```
+
+**Runtime contract every skill must state:**
+1. Prefer `ego-browser` over cloud browser MCPs when the task needs the user's session.
+2. Before work: `command -v ego-browser` and (if needed) `ego-browser skill`.
+3. Inject via `ego-browser nodejs` (heredoc / `-e` / `.mjs` file per shell rules).
+4. Absolute paths for all file I/O; do not assume shell cwd or env.
+5. Never clear cookies/cache without reading ego's clearing-state guidance.
+
+Install story (star hook):
+
+```bash
+# one-liner (stub target)
+curl -fsSL https://raw.githubusercontent.com/<you>/ego-skills/main/scripts/install-skills.sh | bash
+# or: git clone … && ./scripts/install-skills.sh
+```
+
+Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cursor skill discovery paths).
+
+---
+
+## 7. License
+
+**MIT** everywhere (repo root `LICENSE` + per-skill notice optional). Dual-license or CLA: out of scope.
+
+---
+
+## 8. Star-growth hooks
+
+1. **Demo GIFs first** — `assets/demos/pinterest-download.gif`, `web-screenshot.gif`, `logged-in-scrape.gif`; README embeds above the fold.
+2. **One-liner install** — working `scripts/install-skills.sh` + README badge.
+3. **"Works with ego lite"** badge + link to https://lite.ego.app/; reciprocal mention if ego ships a community skills list.
+4. **Awesome-agents / skills directories** PRs after first 3 skills are non-stub.
+5. **Short "before/after"** in README: cloud MCP (login wall) vs ego-skills (already in).
+6. **Issue templates**: "New site skill request" with domain + logged-in? checkbox.
+7. **Keep skills tiny** — each SKILL.md ≤ ~80 lines + one example `.mjs`; agents actually load them.
+8. **Ship a `cookie-healthcheck` early** — reduces "skill broke" issues that kill stars.
+
+---
+
+## 9. Near-term roadmap (skeleton → CascadeProjects → GitHub)
+
+| Phase | Where | Deliverable |
+|-------|-------|-------------|
+| Now | `/workspace/research/ego-skills-skeleton/` | PLAN + stubs; **#1 pinterest-download implementing sunkim search+download parity** |
+| Next | `~/CascadeProjects/ego-skills` | Real scripts for starter trio; GIFs; install.sh |
+| Public | GitHub (personal) | MIT release, README polish, no SaaS language |
+| Later | Community PRs | skills 4–8, site learnings packs |
+
+**Do not** create the GitHub repo until NEE explicitly asks.
+
+---
+
+## 10. Risks / ethics
+
+- Site ToS: each skill `references/` must note "personal use / respect robots & ToS."
+- Selective scraping only of content the logged-in user can already see.
+- No captcha-solving, no credential stuffing, no sharing of exported session files in issues.

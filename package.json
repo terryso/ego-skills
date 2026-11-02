@@ -1,0 +1,19 @@
+{
+  "name": "ego-skills",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Community Agent Skills for ego-browser (logged-in Chromium automation). Skeleton only.",
+  "license": "MIT",
+  "keywords": [
+    "ego-browser",
+    "ego-lite",
+    "agent-skills",
+    "codex",
+    "claude",
+    "cursor",
+    "browser-automation"
+  ],
+  "scripts": {
+    "install-skills": "bash ./scripts/install-skills.sh"
+  }
+}
