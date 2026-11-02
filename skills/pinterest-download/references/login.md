@@ -1,41 +1,36 @@
 # Sign in to Pinterest once in Ego Lite
 
-This skill reuses the cookies already stored in Ego Lite. It never types a password, solves a captcha, or reads cookie values into the repo.
+This skill reuses cookies already stored in Ego Lite. It never types a password or prints cookie values.
+
+Every JSON result includes `login_tip` and `login_tip_zh`. The agent must show that text to the user: **signing in inside Ego Lite improves results** (real numeric pin ids, related pins, boards). Anonymous mode (`--allow-anonymous`) still returns public images, but ids are often `e1_…` and related or board calls are weaker.
 
 ## When the script soft-fails
 
-Stdout JSON includes `"login_required": true` and the process exits `2`. A `manifest.json` in `--out` repeats the same instructions. No images are saved on this path.
+`login_required: true`, exit code `2`, and `how_to_login` / `how_to_login_zh`. No images are saved. `manifest.json` repeats the same instructions.
 
-Signals used (booleans only, never cookie values):
+Signals (booleans only):
 
 - Logged out: `[data-test-id="unauth-header"]` or `[data-test-id="simple-login-button"]`, or a `/login` / `/signup` URL.
-- Logged in: a profile / avatar control in the header, or an `_auth=1` cookie visible to the page, and no logged-out header.
+- Logged in: a profile control, or `_auth=1` visible to the page, and no logged-out header.
 
 ## Do this once
 
 1. Open the **Ego Lite** app. `ego-browser` drives that profile.
 2. Visit https://www.pinterest.com/login/ yourself and sign in.
-3. Leave the profile logged in. Later runs of `download.mjs` pick up the session.
-4. Re-run, for example:
+3. Leave the profile logged in and re-run without `--allow-anonymous`.
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
   --query wallpaper --count 2 --out /tmp/ego-pinterest-wallpaper
 ```
 
-To keep the tab open so you can sign in there, add `--keep`, sign in, then run again (a new task space).
+`--keep` leaves the tab open so you can sign in there, then run again.
 
 ## Optional Chrome import
-
-If Chrome already has the Pinterest session:
 
 ```bash
 ego-browser import list
 ego-browser import --browser chrome --profile Default
 ```
 
-Confirm in the Ego window that pinterest.com shows your avatar, then re-run the skill. Do not paste cookies into issues, chats, or this repo.
-
-## Logged-out public search
-
-`--allow-anonymous` skips the login gate and uses whatever the page can see (the same public search a logged-out browser gets). The default stays login-required so the skill does not silently drop to an anonymous jar.
+Confirm in the Ego window that pinterest.com shows your avatar. Do not paste cookies into issues or this repo.

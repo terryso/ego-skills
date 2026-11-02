@@ -1,6 +1,6 @@
 {
   "name": "ego-skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Community Agent Skills for ego-browser (logged-in Chromium automation). First skill: pinterest-download. Not published to npm.",
   "license": "MIT",
@@ -14,6 +14,27 @@
     "browser-automation"
   ],
   "scripts": {
+    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs",
     "install-skills": "bash ./scripts/install-skills.sh"
+  },
+  "c8": {
+    "include": [
+      "skills/pinterest-download/scripts/lib/pure.mjs",
+      "skills/pinterest-download/scripts/lib/run.mjs",
+      "skills/pinterest-download/scripts/lib/launch.mjs"
+    ],
+    "exclude": [
+      "skills/pinterest-download/scripts/test/**"
+    ],
+    "reporter": [
+      "text",
+      "json-summary"
+    ],
+    "reports-dir": "coverage",
+    "check-coverage": true,
+    "lines": 80
+  },
+  "devDependencies": {
+    "c8": "^10.1.3"
   }
 }

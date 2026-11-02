@@ -8,3 +8,4 @@
 - Add a short demo note or GIF path under `assets/demos/`.
 - Call out ToS / personal-use limits in `references/`.
 - MIT for all contributions.
+- `npm test` must pass. Pinterest logic coverage is reported by c8 (line threshold 80%).

@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: public repo; **#1 `pinterest-download` shipping** (search + download N images via `ego-browser nodejs`, sunkim parity intent). `web-screenshot` and `logged-in-scrape-pattern` stay stubs. Star-only, no commercial features.
+> Status: public repo; **#1 `pinterest-download` shipping** with search, related pins, boards, previews, and MP4 download. Install paths match claw-skills (Claude marketplace, `npx skills`, submodule, clone). `web-screenshot` and `logged-in-scrape-pattern` stay stubs. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---

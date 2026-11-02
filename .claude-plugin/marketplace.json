@@ -1,0 +1,27 @@
+{
+  "name": "ego-skills",
+  "owner": {
+    "name": "terryso"
+  },
+  "metadata": {
+    "description": "Agent Skills for ego lite / ego-browser. Logged-in Chromium recipes. MIT, star-only."
+  },
+  "plugins": [
+    {
+      "name": "ego-skills",
+      "source": "./",
+      "description": "Pinterest download (search, related, boards, previews, video) plus screenshot and logged-in scrape stubs.",
+      "homepage": "https://github.com/terryso/ego-skills",
+      "license": "MIT",
+      "keywords": [
+        "claude-code",
+        "ego-browser",
+        "ego-lite",
+        "skills",
+        "pinterest",
+        "cursor",
+        "codex"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "ego-skills",
+  "version": "0.2.0",
+  "description": "Agent Skills for ego lite / ego-browser. First skill: pinterest-download.",
+  "skills": [
+    "./skills/"
+  ],
+  "keywords": [
+    "claude-code",
+    "ego-browser",
+    "ego-lite",
+    "skills",
+    "pinterest"
+  ]
+}

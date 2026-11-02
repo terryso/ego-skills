@@ -2,3 +2,6 @@
 artifacts/
 tmp/
 *.log
+.smoke/
+node_modules/
+coverage/
