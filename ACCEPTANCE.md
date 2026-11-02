@@ -1,13 +1,14 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs`, `launch.mjs`, and `media-fetch.mjs` under both `pinterest-download` and `instagram-saved-download`.
+`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 47 passed |
-| Line coverage | **98.55%** |
-| Statement coverage | 98.55% |
+| Tests | 63 passed |
+| Line coverage | **98.48%** |
+| Statement coverage | 98.48% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
+| `wechat-channels-video` lib lines | **98.02%** |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -107,3 +108,11 @@ node skills/instagram-saved-download/scripts/download.mjs \
 ```
 
 Expect exit 0, at least one image, `downloads[].kind` `image`, and the Ego task space closed (`finish({ keep: [] })` unless `--keep`).
+
+## wechat-channels-video
+
+Login-check only in unit tests. Logged out or missing `ego-browser` exits 2 with `how_to_login`. Logged in exits 0 and still prints `login_tip`. The task space closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`). The skill saves a draft; it does not click Publish. No logged-in Channels smoke was run here.
+
+```bash
+node skills/wechat-channels-video/scripts/check-login.mjs
+```
