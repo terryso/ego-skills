@@ -1,7 +1,7 @@
 {
   "name": "ego-skills",
-  "version": "0.2.0",
-  "description": "Agent Skills for ego lite / ego-browser. First skill: pinterest-download.",
+  "version": "0.3.0",
+  "description": "Agent Skills for ego lite / ego-browser: pinterest-download and instagram-saved-download.",
   "skills": [
     "./skills/"
   ],

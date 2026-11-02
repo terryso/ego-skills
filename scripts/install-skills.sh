@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Link skills/* into agent skill directories.
-# The repo ships one skill: pinterest-download.
+# Skills shipped: pinterest-download, instagram-saved-download.
 # Prerequisite: ego lite installed, `ego-browser` on PATH.
 #
 #   ./scripts/install-skills.sh

@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [中文文档](README_CN.md)
 
-> **Status:** one skill — [`pinterest-download`](./skills/pinterest-download/) (search, related pins, boards, previews, video). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** [`pinterest-download`](./skills/pinterest-download/) and [`instagram-saved-download`](./skills/instagram-saved-download/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -59,13 +59,19 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | Skill | What it does |
 |-------|----------------|
 | [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. |
+| [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
   --query wallpaper --count 2 --out "$HOME/Downloads/pinterest-ego"
 ```
 
-If Pinterest is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite improves results versus anonymous mode. See [skills/pinterest-download/references/login.md](./skills/pinterest-download/references/login.md).
+```bash
+node skills/instagram-saved-download/scripts/download.mjs \
+  --count 5 --out "$HOME/Downloads/instagram-saved"
+```
+
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously). See each skill's `references/login.md`.
 
 ## Why ego
 

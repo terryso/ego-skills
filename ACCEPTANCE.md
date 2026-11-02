@@ -1,12 +1,12 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `skills/pinterest-download/scripts/lib/pure.mjs`, `run.mjs`, `launch.mjs`.
+`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs`, and `launch.mjs` under both `pinterest-download` and `instagram-saved-download`.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 22 passed |
-| Line coverage | **98.91%** |
-| Statement coverage | 98.91% |
+| Tests | 34 passed |
+| Line coverage | **98.37%** |
+| Statement coverage | 98.37% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
@@ -48,3 +48,19 @@ Sign in once in Ego Lite at https://www.pinterest.com/login/ for numeric ids, re
 | Agent must tell the user login improves results | yes (`login_tip` on both runs) |
 
 Live related, board, and MP4 calls were not repeated on this Mini because the Ego profile is logged out. Those paths are covered by `scripts/test/run.test.mjs`.
+
+## instagram-saved-download (ego-browser 0.6.0.12)
+
+This Ego profile is not signed in to Instagram. Saved posts are not visible anonymously.
+
+```bash
+node skills/instagram-saved-download/scripts/download.mjs list \
+  --count 1 --out /tmp/ego-skills-smoke/ig-saved
+```
+
+- Exit **2**
+- `login_required: true`, `logged_in: false`, `how_to_login` length 5, `login_tip` present
+- Signals: no password field on `/saved/all-posts/`, no inbox link, no `ds_user_id`. A Saved link alone is not treated as logged in.
+- Only `manifest.json` in the output directory. No images or video committed.
+
+Sign in once at https://www.instagram.com/accounts/login/ in Ego Lite, then re-run. The script does not type the password. Image and MP4 save paths are covered by `skills/instagram-saved-download/scripts/test/run.test.mjs`.
