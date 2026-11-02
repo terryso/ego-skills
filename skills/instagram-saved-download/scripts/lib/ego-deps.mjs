@@ -1,5 +1,8 @@
-import fs from "node:fs/promises";
-import { BASE, WEB_APP_ID, bufferFetchResponse, sniffImage, sniffVideo } from "./pure.mjs";
+import { browserSave, fetchMediaBytes, requestBytes } from "./media-fetch.mjs";
+import { BASE, WEB_APP_ID, bufferFetchResponse } from "./pure.mjs";
+
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 export function createEgoBrowser() {
   return {
@@ -69,19 +72,19 @@ export function createEgoBrowser() {
           }, limit);
         },
         async fetchBytes(targetUrl, { maxBytes } = {}) {
-          let read = { ok: false, status: 0, type: "", buf: Buffer.alloc(0), error: "not fetched" };
-          try {
-            const response = await fetch(targetUrl, {
-              headers: { Referer: `${BASE}/`, Accept: "*/*" },
-              redirect: "follow",
-            });
-            read = await bufferFetchResponse(response, maxBytes);
-            const useful = read.ok && (sniffImage(read.buf) || sniffVideo(read.buf) || String(read.type || "").startsWith("video/"));
-            if (useful || read.error) return read;
-          } catch (error) {
-            read = { ok: false, status: 0, type: "", buf: Buffer.alloc(0), error: String(error.message || error) };
-          }
-          return read;
+          const headers = { "User-Agent": UA, Referer: `${BASE}/`, Accept: "*/*" };
+          const referer = `${BASE}/`;
+          return fetchMediaBytes({
+            url: targetUrl,
+            maxBytes,
+            headers,
+            nodeFetch: async (url, options) => {
+              const response = await fetch(url, { headers: options.headers, redirect: "follow" });
+              return bufferFetchResponse(response, options.maxBytes);
+            },
+            directFetch: (url, options) => requestBytes(url, { ...options, family: 4 }),
+            browserFetch: (url, options) => browserSave(page, url, { ...options, referer }),
+          });
         },
         async finish() {
           if (finished) return;

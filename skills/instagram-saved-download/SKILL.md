@@ -2,7 +2,7 @@
 name: instagram-saved-download
 description: Download the user's own Instagram Saved posts (images, and MP4 when asked) with Ego Lite cookies via ego-browser. Soft-fails if Instagram is logged out and tells the user that signing in is what makes Saved readable. Personal archive only. Each run checks login itself.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   requires:
     bins:
       - ego-browser
@@ -45,6 +45,12 @@ node skills/instagram-saved-download/scripts/download.mjs saved --media any --co
 | `--out` | `~/Downloads/instagram-saved` | Resolved to an absolute path first. |
 | `--media` | `image` | `image` saves pictures (including a video cover). `video` saves MP4 only. `any` saves both. |
 | `--keep` | off | Leave the Instagram tab open. |
+
+## Media bytes
+
+Node `fetch` 拉 Instagram CDN（`cdninstagram.com` / `fbcdn.net`）时，可能在任何 HTTP 状态之前就抛 `fetch failed`。脚本会再用 HTTP/1.1（IPv4，带浏览器 User-Agent）试一次，还不行就用当前已登录页面的 `page.fetch` 把图片或 MP4 存下来。
+
+Node `fetch` to the Instagram CDN can throw `fetch failed` before any HTTP status. The script retries over HTTP/1.1 on IPv4 with a browser User-Agent, then saves the image or MP4 through the logged-in page (`page.fetch`).
 
 Stdout is one JSON object. Files and `manifest.json` go to `--out`. Do not commit them.
 

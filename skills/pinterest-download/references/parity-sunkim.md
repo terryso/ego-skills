@@ -14,7 +14,8 @@ Checked against the public tool list: search, get pin, related pins, board feed,
 | One pin | `pinterest_get_pin` | `pin --pin` (`PinResource`), including `pin.it` | yes |
 | Model-facing thumbnails | `pinterest_preview_images` / `previews` | `preview --url` or `--previews N` (base64, max 8, max 120KB) | yes |
 | Save images to a directory | `pinterest_download` | `--out` + `manifest.json` | yes |
-| Video MP4 | `pinterest_download` video URLs | `download --url …mp4`, `--media video`; HLS rewritten to a 720p file when the URL matches; cmfv steps 720/540/360; cap 200MB | yes |
+| Video MP4 | `pinterest_download` video URLs | `download --url …mp4`, `--media video`. mc HLS → `mc/720p/*.mp4`. iht HLS/cmfv → `iht/expMp4/<id>_720w.mp4` (then 540/360/240), then cmfv 720/540/360. Node `fetch failed` retries HTTP/1.1 and the logged-in page. Cap 200MB | yes |
+| Min width / height | no | `--min-width` / `--min-height` before save. Both set means both sides. Direct `--url` is not filtered | extra |
 | Skip promoted pins | yes | yes | yes |
 | `e1_…` anonymous ids | cannot open | rejected with a login hint | yes |
 | Session | anonymous cookie jar | Ego Lite. Logged out → exit 2 unless `--allow-anonymous` | different on purpose |

@@ -1,13 +1,14 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs`, and `launch.mjs` under both `pinterest-download` and `instagram-saved-download`.
+`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 34 passed |
-| Line coverage | **98.37%** |
-| Statement coverage | 98.37% |
+| Tests | 63 passed |
+| Line coverage | **98.48%** |
+| Statement coverage | 98.48% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
+| `wechat-channels-video` lib lines | **98.02%** |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -43,11 +44,39 @@ Sign in once in Ego Lite at https://www.pinterest.com/login/ for numeric ids, re
 | Related pins | yes |
 | Board feed | yes |
 | Model-facing previews | yes (smoke saved one thumbnail) |
-| Video MP4 download | yes in code and unit tests; no live MP4 fetched on this run |
+| Video MP4 download | unit-tested (expMp4 first, then cmfv). Not re-smoked on a logged-in Pro Ego in this change. See below. |
+| `--min-width` / `--min-height` | unit-tested. Both flags require both sides. Direct `--url` is not filtered. |
 | Login soft-fail + how_to_login | yes |
 | Agent must tell the user login improves results | yes (`login_tip` on both runs) |
 
 Live related, board, and MP4 calls were not repeated on this Mini because the Ego profile is logged out. Those paths are covered by `scripts/test/run.test.mjs`.
+
+## Video `fetch failed` and min resolution
+
+Root cause, checked against the sample `f99117a3…` URLs:
+
+- `fetchBytes` returned immediately for `.mp4` / `.m3u8` / `.cmfv` when Node `fetch` threw `fetch failed`, so the logged-in `page.fetch` fallback never ran. Image URLs did fall through. That matches the Pro error string.
+- `v1.pinimg.com` was already allowed by `*.pinimg.com`. The host list was not the bug.
+- `/videos/iht/720p/<id>.mp4` is access-denied (403 XML). The progressive file is `/videos/iht/expMp4/<id>_720w.mp4` (`video/mp4`, `ftypisom`, video and audio). The `_720w.cmfv` sibling is the video-only CMAF track. Download now tries expMp4 at 720/540/360/240, then cmfv at 720/540/360.
+- After a transport failure the order is: Node `fetch`, HTTP/1.1 over IPv4, then `page.fetch` `saveAs`. A real HTTP 404/403 still moves on to the next URL.
+
+On this machine Node `fetch` of the sample cmfv and the expMp4 URL succeeded (about 4.8MB and 5.0MB). The Pro `fetch failed` path is covered by unit tests, not by a logged-in Ego run.
+
+`--min-width` and `--min-height` filter search, related, board, and pin saves before the file is written. Skips land in `skipped[]`. One flag checks that side. Both flags require both sides to be known and at least those sizes. `download --url` is not filtered.
+
+Manual smoke for a logged-in Ego (Pro / Echo / NEE), then confirm the task space is gone:
+
+```bash
+node skills/pinterest-download/scripts/download.mjs search \
+  --query "cat video" --media video --count 1 --min-width 480 \
+  --out /tmp/pinterest-video-smoke
+
+node skills/pinterest-download/scripts/download.mjs download \
+  --url 'https://v1.pinimg.com/videos/iht/hls/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.cmfv' \
+  --out /tmp/pinterest-video-url
+```
+
+Expect exit 0, a file under `--out`, `downloads[].kind` `video`, and `manifest.json`. The direct URL should prefer the expMp4 rendition.
 
 ## instagram-saved-download (ego-browser 0.6.0.12)
 
@@ -64,3 +93,26 @@ node skills/instagram-saved-download/scripts/download.mjs list \
 - Only `manifest.json` in the output directory. No images or video committed.
 
 Sign in once at https://www.instagram.com/accounts/login/ in Ego Lite, then re-run. The script does not type the password. Image and MP4 save paths are covered by `skills/instagram-saved-download/scripts/test/run.test.mjs`.
+
+## Instagram CDN `fetch failed`
+
+Pro acceptance (logged-in Ego) listed Saved posts and then failed every image with `error: "fetch failed"`, `downloads: []`, exit 1. `fetchBytes` used Node `fetch` only. A thrown `fetch failed` was returned as the download error, with no HTTP/1.1 retry and no `page.fetch`.
+
+The skill now uses the same order as Pinterest media: Node `fetch`, HTTP/1.1 over IPv4 with a browser User-Agent, then the logged-in page `saveAs`. This was not re-run against a logged-in Instagram session here.
+
+Manual smoke:
+
+```bash
+node skills/instagram-saved-download/scripts/download.mjs \
+  --count 1 --out /tmp/ig-saved-smoke
+```
+
+Expect exit 0, at least one image, `downloads[].kind` `image`, and the Ego task space closed (`finish({ keep: [] })` unless `--keep`).
+
+## wechat-channels-video
+
+Login-check only in unit tests. Logged out or missing `ego-browser` exits 2 with `how_to_login`. Logged in exits 0 and still prints `login_tip`. The task space closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`). The skill saves a draft; it does not click Publish. No logged-in Channels smoke was run here.
+
+```bash
+node skills/wechat-channels-video/scripts/check-login.mjs
+```

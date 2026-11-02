@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [中文文档](README_CN.md)
 
-> **Status:** [`pinterest-download`](./skills/pinterest-download/) and [`instagram-saved-download`](./skills/instagram-saved-download/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), and [`wechat-channels-video`](./skills/wechat-channels-video/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -58,8 +58,9 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 
 | Skill | What it does |
 |-------|----------------|
-| [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. |
+| [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. Optional `--min-width` / `--min-height`. |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
+| [`wechat-channels-video`](./skills/wechat-channels-video/) | Save a WeChat Channels video draft. Login-check first. Does not click Publish. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -71,7 +72,11 @@ node skills/instagram-saved-download/scripts/download.mjs \
   --count 5 --out "$HOME/Downloads/instagram-saved"
 ```
 
-If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously). See each skill's `references/login.md`.
+```bash
+node skills/wechat-channels-video/scripts/check-login.mjs
+```
+
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly). See each skill's `references/login.md`.
 
 ## Why ego
 

@@ -2,7 +2,7 @@
   "name": "ego-skills",
   "version": "0.3.0",
   "private": true,
-  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download. Not published to npm.",
+  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video. Not published to npm.",
   "license": "MIT",
   "keywords": [
     "ego-browser",
@@ -14,7 +14,7 @@
     "browser-automation"
   ],
   "scripts": {
-    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs skills/instagram-saved-download/scripts/test/*.test.mjs",
+    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs skills/instagram-saved-download/scripts/test/*.test.mjs skills/wechat-channels-video/scripts/test/*.test.mjs",
     "install-skills": "bash ./scripts/install-skills.sh"
   },
   "c8": {
@@ -22,9 +22,14 @@
       "skills/pinterest-download/scripts/lib/pure.mjs",
       "skills/pinterest-download/scripts/lib/run.mjs",
       "skills/pinterest-download/scripts/lib/launch.mjs",
+      "skills/pinterest-download/scripts/lib/media-fetch.mjs",
       "skills/instagram-saved-download/scripts/lib/pure.mjs",
       "skills/instagram-saved-download/scripts/lib/run.mjs",
-      "skills/instagram-saved-download/scripts/lib/launch.mjs"
+      "skills/instagram-saved-download/scripts/lib/launch.mjs",
+      "skills/instagram-saved-download/scripts/lib/media-fetch.mjs",
+      "skills/wechat-channels-video/scripts/lib/pure.mjs",
+      "skills/wechat-channels-video/scripts/lib/run-check.mjs",
+      "skills/wechat-channels-video/scripts/lib/launch-check.mjs"
     ],
     "exclude": [
       "skills/*/scripts/test/**"

@@ -357,6 +357,161 @@ test("a manifest write failure does not hide the result", async () => {
   assert.equal(summary.exitCode, 0);
 });
 
+test("min resolution skips small pins and iht video URLs try expMp4 first", async () => {
+  await withDir(async (dir) => {
+    const pages = [
+      {
+        items: [pin(1, { images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/1.jpg", width: 400, height: 800 } } })],
+        bookmark: "page-2",
+      },
+      {
+        items: [pin(2, { images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/2.jpg", width: 1200, height: 800 } } })],
+        bookmark: "-end-",
+      },
+    ];
+    const { browser } = harness(() => ({
+      detect: loggedIn,
+      fetchJson() {
+        const page = pages.shift();
+        return { ok: true, status: 200, body: { resource_response: { data: { results: page.items }, bookmark: page.bookmark } } };
+      },
+      fetchBytes: async () => imageBytes(),
+    }));
+    const summary = await execute(baseConfig(dir, { allowAnonymous: true, limit: 1, minWidth: 800 }), { browser, fs, path, now: () => 20 });
+    assert.equal(summary.ok, true);
+    assert.equal(summary.downloads.length, 1);
+    assert.equal(summary.skipped.length, 1);
+    assert.match(summary.skipped[0].reason, /width 400 < 800/);
+    assert.equal(summary.min_width, 800);
+  });
+
+  await withDir(async (dir) => {
+    const { browser } = harness(() => ({
+      detect: loggedIn,
+      fetchJson() {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            resource_response: {
+              data: {
+                results: [
+                  pin(3, { images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/3.jpg", width: 1000, height: 400 } } }),
+                ],
+              },
+              bookmark: "-end-",
+            },
+          },
+        };
+      },
+      fetchBytes: async () => imageBytes(),
+    }));
+    const summary = await execute(baseConfig(dir, { allowAnonymous: true, limit: 1, minWidth: 800, minHeight: 700 }), {
+      browser,
+      fs,
+      path,
+      now: () => 21,
+    });
+    assert.equal(summary.ok, false);
+    assert.equal(summary.exitCode, 1);
+    assert.equal(summary.downloads.length, 0);
+    assert.match(summary.error, /minimum resolution/);
+    assert.match(summary.skipped[0].reason, /height 400 < 700/);
+  });
+
+  await withDir(async (dir) => {
+    const { browser, calls } = harness(() => ({
+      detect: loggedIn,
+      fetchJson() {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            resource_response: {
+              data: {
+                results: [
+                  pin(8, {
+                    images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/8.jpg", width: 1080, height: 1080 } },
+                    videos: {
+                      video_list: {
+                        V_HLSV4: {
+                          url: "https://v1.pinimg.com/videos/iht/hls/ab/cd/ef/abcd.m3u8",
+                          width: 320,
+                          height: 320,
+                        },
+                      },
+                    },
+                  }),
+                  pin(9, {
+                    images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/9.jpg", width: 1080, height: 1080 } },
+                    videos: {
+                      video_list: {
+                        V_720P: { url: "https://v.pinimg.com/videos/mc/720p/wide.mp4", width: 1280, height: 720, duration: 1000 },
+                      },
+                    },
+                  }),
+                ],
+              },
+              bookmark: "-end-",
+            },
+          },
+        };
+      },
+      fetchBytes: async (url) =>
+        String(url).includes(".mp4") ? { ok: true, status: 200, type: "video/mp4", buf: mp4(), error: null } : imageBytes(),
+    }));
+    const summary = await execute(baseConfig(dir, { allowAnonymous: true, media: "video", limit: 1, minWidth: 500 }), {
+      browser,
+      fs,
+      path,
+      now: () => 22,
+    });
+    assert.equal(summary.downloads.length, 1);
+    assert.equal(summary.downloads[0].kind, "video");
+    assert.equal(summary.skipped.length, 1);
+    assert.match(summary.skipped[0].reason, /width 320 < 500/);
+    assert.equal(calls.bytes[0], "https://v.pinimg.com/videos/mc/720p/wide.mp4");
+  });
+
+  await withDir(async (dir) => {
+    const cmfv = "https://v1.pinimg.com/videos/iht/hls/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.cmfv";
+    const { browser, calls } = harness(() => ({
+      detect: loggedIn,
+      fetchBytes: async (url) => {
+        if (String(url).includes("/expMp4/") && String(url).includes("_720w.mp4")) {
+          return { ok: true, status: 200, type: "video/mp4", buf: mp4(), error: null };
+        }
+        return { ok: false, status: 404, type: "application/xml", buf: Buffer.alloc(0), error: "HTTP 404" };
+      },
+    }));
+    const summary = await execute(
+      baseConfig(dir, { command: "download", allowAnonymous: true, minWidth: 9000, minHeight: 9000, urls: [cmfv] }),
+      { browser, fs, path, now: () => 23 },
+    );
+    assert.equal(summary.ok, true);
+    assert.equal(summary.downloads[0].kind, "video");
+    assert.equal(summary.skipped.length, 0);
+    assert.equal(calls.bytes[0], "https://v1.pinimg.com/videos/iht/expMp4/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.mp4");
+    const saved = await fs.readFile(summary.downloads[0].path);
+    assert.equal(saved.slice(4, 8).toString("ascii"), "ftyp");
+  });
+
+  await withDir(async (dir) => {
+    const { browser } = harness(() => ({
+      detect: loggedIn,
+      fetchJson() {
+        return { ok: true, status: 200, body: { resource_response: { data: pin(4, { images: { orig: { url: "https://i.pinimg.com/originals/aa/bb/4.jpg", width: 200, height: 200 } } }) } } };
+      },
+      fetchBytes: async () => imageBytes(),
+    }));
+    const summary = await execute(baseConfig(dir, { command: "pin", pin: "4", minWidth: 500 }), { browser, fs, path, now: () => 24 });
+    assert.equal(summary.exitCode, 1);
+    assert.equal(summary.downloads.length, 0);
+    assert.equal(summary.pins.length, 1);
+    assert.equal(summary.skipped.length, 1);
+  });
+});
+
 test("a browser open failure is reported without a stack escape", async () => {
   await withDir(async (dir) => {
     const browser = {

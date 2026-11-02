@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: public repo; **`pinterest-download`** and **`instagram-saved-download`**. Requires ego lite / `ego-browser`. Each skill checks its own login. No separate cookie-healthcheck skill. Star-only, no commercial features.
+> Status: public repo; **`pinterest-download`**, **`instagram-saved-download`**, and **`wechat-channels-video`**. Requires ego lite / `ego-browser`. Each skill checks its own login. No separate cookie-healthcheck skill. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---
@@ -66,12 +66,13 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 |---|----------|------|--------------|
 | 1 | `pinterest-download` | Batch-save pin images while logged in (**shipping**) | Pain everyone hits; cookies matter |
 | 2 | `instagram-saved-download` | Save your own Instagram Saved posts (**shipping**) | Login is the product; personal archive only |
+| 2b | `wechat-channels-video` | Save a WeChat Channels video draft (**shipping**) | Login expires fast; publish stays human |
 | 3 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
 | 4 | `github-starred-export` | Export the user's own starred repos | Not started |
 | 5 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
 | 6 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Not started |
 
-**Shipped:** `pinterest-download` and `instagram-saved-download`. Both need ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
+**Shipped:** `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. Each needs ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
 
 ---
 
@@ -156,7 +157,7 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 | Phase | Where | Deliverable |
 |-------|-------|-------------|
-| Now | `github.com/terryso/ego-skills` | `pinterest-download` and `instagram-saved-download`. Bilingual README. Install script links `skills/*`. ego lite / `ego-browser` required. |
+| Now | `github.com/terryso/ego-skills` | `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. Bilingual README. Install script links `skills/*`. ego lite / `ego-browser` required. |
 | Later | Community PRs | New skills only when they are actually useful. No SaaS language. |
 
 The public repo is `https://github.com/terryso/ego-skills` (MIT). Do not add paid tiers, npm publish, or hosted runners.
