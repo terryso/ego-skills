@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // pinterest-download — search pins and save images with the Ego Lite session.
 //
 // ego-browser nodejs does not forward process.argv, process.env (beyond HOME/USER),
@@ -192,7 +193,8 @@ async function runCli() {
   }
 
   const self = fileURLToPath(import.meta.url);
-  const source = await fs.readFile(self, "utf8");
+  let source = await fs.readFile(self, "utf8");
+  if (source.startsWith("#!")) source = source.slice(source.indexOf("\n") + 1);
   const prelude = `globalThis.EGO_PINTEREST_CONFIG = ${JSON.stringify(config)};\n`;
   const child = spawn("ego-browser", ["nodejs"], { stdio: ["pipe", "pipe", "pipe"] });
   let stdoutBuf = "";
