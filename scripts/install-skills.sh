@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Link skills/* into agent skill directories.
-# Skills shipped: pinterest-download, instagram-saved-download, wechat-channels-video.
+# Skills shipped: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video.
 # Prerequisite: ego lite installed, `ego-browser` on PATH.
 #
 #   ./scripts/install-skills.sh

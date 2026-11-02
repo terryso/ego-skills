@@ -10,4 +10,4 @@ Four working options (Claude Code marketplace, `npx skills add terryso/ego-skill
 
 Prerequisite: install [ego lite](https://lite.ego.app/) and finish onboarding so `ego-browser` is on `PATH` (`command -v ego-browser`).
 
-The installer links every directory under `skills/` (`pinterest-download`, `instagram-saved-download`, `wechat-channels-video`). This repo is not an npm package.
+The installer links every directory under `skills/` (`pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`). This repo is not an npm package.
