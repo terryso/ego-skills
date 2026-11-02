@@ -61,7 +61,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. Optional `--min-width` / `--min-height`. |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | Save a WeChat Channels video draft. Login-check first. Does not click Publish. |
-| [`kuaishou-video`](./skills/kuaishou-video/) | Publish a local video to the Kuaishou creator platform. Login-check first. Success is 审核中. |
+| [`kuaishou-video`](./skills/kuaishou-video/) | Publish a local video to the Kuaishou creator platform. Login-check first. Success means the work shows as under review. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -79,7 +79,7 @@ node skills/wechat-channels-video/scripts/check-login.mjs
 
 ```bash
 node skills/kuaishou-video/scripts/check-login.mjs
-bash skills/kuaishou-video/scripts/publish.sh /absolute/path/to/video.mp4 "描述 #话题"
+bash skills/kuaishou-video/scripts/publish.sh /absolute/path/to/video.mp4 "A short description #topic"
 ```
 
 If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it). See each skill's `references/login.md`.
