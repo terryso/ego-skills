@@ -1,9 +1,7 @@
-# Demo GIFs (placeholder)
+# Demo GIFs
 
-Star-bait assets to record after CascadeProjects implementation:
+Not recorded yet. `pinterest-download` is usable without a GIF.
 
-- `pinterest-download.gif`
-- `web-screenshot.gif`
-- `logged-in-scrape.gif`
-
-Embed above the fold in root README.
+- `pinterest-download.gif` — after a logged-in run
+- `web-screenshot.gif` — when that stub ships
+- `logged-in-scrape.gif` — when that stub ships

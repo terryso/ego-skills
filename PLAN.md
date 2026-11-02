@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: plan + skeleton; **#1 `pinterest-download` in progress toward `@sunkimkk/pinterest-mcp` search+download parity** (box path). Later: personal CascadeProjects → public GitHub.
+> Status: public repo; **#1 `pinterest-download` shipping** with search, related pins, boards, previews, and MP4 download. Install paths match claw-skills (Claude marketplace, `npx skills`, submodule, clone). `web-screenshot` and `logged-in-scrape-pattern` stay stubs. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---
@@ -64,7 +64,7 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 
 | # | Skill id | Hook | Why it stars |
 |---|----------|------|--------------|
-| 1 | `pinterest-download` | Batch-save pin images while logged in (**in progress: sunkim search+download parity**) | Pain everyone hits; cookies matter |
+| 1 | `pinterest-download` | Batch-save pin images while logged in (**shipping: search + download N**) | Pain everyone hits; cookies matter |
 | 2 | `web-screenshot` | Full-page / element screenshots to disk | Universal demo; GIF-friendly |
 | 3 | `logged-in-scrape-pattern` | Canonical pattern: reuse session → snapshot → extract | Meta-skill others fork |
 | 4 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Teaching skill for agents |
@@ -73,7 +73,7 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 | 7 | `cookie-healthcheck` | Detect "am I logged in?" for a domain before scrape | Reliability primitive |
 | 8 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Aligns with ego's QA pitch |
 
-**Starter trio:** `#1 pinterest-download` in progress (ego-browser search+download → sunkim parity); 2–3 still stubs.
+**Starter trio:** `#1 pinterest-download` is the first shipping skill (CLI: query, count, out dir; logged-out soft-fail). Skills 2–3 stay stubs.
 
 ---
 
@@ -158,12 +158,11 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 | Phase | Where | Deliverable |
 |-------|-------|-------------|
-| Now | `/workspace/research/ego-skills-skeleton/` | PLAN + stubs; **#1 pinterest-download implementing sunkim search+download parity** |
-| Next | `~/CascadeProjects/ego-skills` | Real scripts for starter trio; GIFs; install.sh |
-| Public | GitHub (personal) | MIT release, README polish, no SaaS language |
-| Later | Community PRs | skills 4–8, site learnings packs |
+| Now | `github.com/terryso/ego-skills` | **#1 `pinterest-download` shipping** (search + download). README is bilingual. Install script links skills into `~/.agents/skills`. |
+| Next | same repo | Real scripts for skills 2–3; demo GIFs. Still star-only. |
+| Later | Community PRs | skills 4–8, site learnings packs. No SaaS language. |
 
-**Do not** create the GitHub repo until NEE explicitly asks.
+The public repo is `https://github.com/terryso/ego-skills` (MIT). Do not add paid tiers, npm publish, or hosted runners.
 
 ---
 

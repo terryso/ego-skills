@@ -1,9 +1,11 @@
-# Install (placeholder)
+# Install
 
-1. Install [ego lite](https://lite.ego.app/) and finish onboarding so `ego-browser` is on PATH.
-2. Confirm: `command -v ego-browser && ego-browser skill | head`.
-3. Clone this repo (later: CascadeProjects → GitHub).
-4. Run `./scripts/install-skills.sh` to symlink `skills/*` into `~/.agents/skills/`.
-5. Restart / re-index the agent so new SKILL.md files are discovered.
+English: [../README.md](../README.md). 中文: [../README_CN.md](../README_CN.md).
 
-Stub only — do not curl | bash from an unpublished URL yet.
+Four working options (Claude Code marketplace, `npx skills add terryso/ego-skills`, git submodule, clone and symlink). Marketplace and `npx skills` follow the GitHub default branch.
+
+```bash
+./scripts/install-skills.sh --help
+```
+
+`ego-browser` must already be on `PATH`. This repo is not an npm package.

@@ -1,72 +1,83 @@
 ---
 name: pinterest-download
-description: Search Pinterest by keyword and download pin images (prefer originals) using the user's ego-browser session. Parity target for @sunkimkk/pinterest-mcp search+download. Use when an agent must save pins to disk without a cloud browser MCP. Respect Pinterest ToS; personal use only.
+description: Search Pinterest and save images or MP4s with the user's Ego Lite cookies. Also related pins, board feeds, and small previews the model can read. Parity with @sunkimkk/pinterest-mcp. Soft-fails if Pinterest is logged out, and always tells the user that signing in inside Ego improves results. Personal use only.
 metadata:
-  version: "0.2.0"
+  version: "0.4.0"
   requires:
     bins:
       - ego-browser
+      - node
   ego:
     min_skill_guide: "2.1.0"
   parity:
     target: "@sunkimkk/pinterest-mcp"
-    tools: ["pinterest_search", "pinterest_download"]
+    tools: ["pinterest_search", "pinterest_get_pin", "pinterest_related_pins", "pinterest_board_pins", "pinterest_preview_images", "pinterest_download"]
 ---
 
 # pinterest-download
 
-Keyword search → prefer high-res / `originals` → save images + JSON summary, driven by `ego-browser nodejs`.
+用当前 Ego Lite 会话搜索并保存 Pinterest 图片和 MP4。也支持相关 Pin、画板、以及给模型看的小预览图。
 
-## Tool-like interface (agent contract)
+Search and save Pinterest images and MP4s with the Ego Lite session. Related pins, boards, and model-facing thumbnails are included.
 
-| Arg | Type | Default | Notes |
-|-----|------|---------|-------|
-| `query` | string | *(required)* | Search keywords (any language). Alias: `keyword`. |
-| `limit` | number | `10` | Max pins to collect/download (1–100). |
-| `outDir` | string | `~/Downloads/pinterest-ego` | **Absolute** output directory. |
-| `size` | enum | `originals` | `originals` \| `736x` \| `474x` (falls back to 736x if originals 404). |
-| `media` | enum | `image` | `image` skips video pins; `any` keeps them (image still downloaded). |
+## Tell the user about login
 
-**Output (stdout JSON + `outDir/manifest.json`):**
-- `pins[]`: `{ id?, pin_url?, title?, image_url, width?, height?, low_res? }`
-- `downloads[]`: `{ n, path, url, bytes, contentType, pin_id? }`
-- `failures[]`, `method` (`BaseSearchResource` and/or `dom`), `spaceId`, `ok`
+On every run, **tell the user** the `login_tip` / `login_tip_zh` from the JSON:
 
-Parity with sunkim: search by query + limit, return image URLs with dims when available, download originals to a chosen folder. Not yet: related pins, board feed, MCP thumbnails/`previews`, video MP4 download, bookmark pagination across multiple resource pages.
+Signing in to Pinterest inside Ego Lite improves results compared with anonymous mode. Logged-in results have real numeric pin ids, related pins, and boards that account can open. Anonymous mode still returns public images, but ids are often `e1_…` and related or board lookups are weaker.
 
-## How to run
+如果退出码是 `2`（`login_required: true`），把 `how_to_login` / `how_to_login_zh` 一并给用户，然后停。不要输入密码。详见 `references/login.md`。
 
-1. Confirm `command -v ego-browser` (else install ego lite; see ego-browser Skill `references/install.md`).
-2. Edit the `CONFIG` block at the top of `scripts/download.mjs` (ego does **not** inherit shell env or cwd — absolute paths only).
-3. Run:
+## CLI
+
+`ego-browser nodejs` 不转发 shell 参数。下面的命令会把配置写进一个临时模块，再用 `ego-browser nodejs -e "await import('file://…')"` 执行。
 
 ```bash
-ego-browser nodejs < /absolute/path/to/skills/pinterest-download/scripts/download.mjs
+node skills/pinterest-download/scripts/download.mjs --query wallpaper --count 2 --out /tmp/pins
+node skills/pinterest-download/scripts/download.mjs search --query wallpaper --count 2 --out /tmp/pins --previews 2
+node skills/pinterest-download/scripts/download.mjs related --pin 123456789 --count 4 --out /tmp/pins
+node skills/pinterest-download/scripts/download.mjs board --board https://www.pinterest.com/user/board/ --count 4 --out /tmp/pins
+node skills/pinterest-download/scripts/download.mjs pin --pin https://www.pinterest.com/pin/123456789/
+node skills/pinterest-download/scripts/download.mjs preview --url https://i.pinimg.com/originals/aa/bb/cc/x.jpg
+node skills/pinterest-download/scripts/download.mjs download --url https://i.pinimg.com/...jpg --url https://v.pinimg.com/...mp4 --out /tmp/pins
 ```
 
-Or copy CONFIG into a one-shot `/tmp/pinterest-run.mjs` and `ego-browser nodejs < /tmp/pinterest-run.mjs`.
+| Arg | Default | Notes |
+|-----|---------|-------|
+| command | `search` | `search` `related` `board` `pin` `preview` `download`. A bare `--query` is still search. |
+| `--query` | search only | Any language. |
+| `--pin` | | Numeric id, `pinterest.com/pin/…`, or `pin.it`. `e1_…` is rejected. |
+| `--board` | | `pinterest.com/<user>/<board>/` or `/user/board/`. |
+| `--url` | | Repeatable. `preview` and `download`. MP4 / HLS / cmfv count as video. |
+| `--count` | `10` | 1–100 pins. |
+| `--out` | `~/Downloads/pinterest-ego` | Absolute path before the browser runs. |
+| `--size` | `originals` | `originals` falls back to `736x`. Also `474x`, `236x`. |
+| `--media` | `image` | `image` skips video pins. `video` saves MP4. `any` keeps both but still saves the image unless `--media video`. |
+| `--previews` | `0` | Up to 8 thumbnails, base64 in the JSON, for the model. |
+| `--bookmark` | | Continue a resource page. |
+| `--allow-anonymous` | off | Logged-out public results. Default is a soft fail. |
+| `--keep` | off | Leave the Pinterest tab open. |
 
-PowerShell: write UTF-8 `.mjs`, then `ego-browser nodejs -e "await import('file:///C:/Users/<name>/ego/pinterest-run.mjs')"`.
+Stdout is one JSON object (Ego 0.6.x also echoes logs on stderr; the CLI copies the summary to stdout). Files plus `manifest.json` go to `--out`. Do not commit them.
+
+Exit `0` when at least one image, video, preview, or pin record is saved. Exit `2` when Pinterest is logged out or the pin/board input is unusable. Exit `1` on other failures.
+
+## Tool surface
+
+| sunkim tool | this CLI |
+|-------------|----------|
+| `pinterest_search` | `search --query --count --media --bookmark --previews` |
+| `pinterest_related_pins` | `related --pin` |
+| `pinterest_board_pins` | `board --board` |
+| `pinterest_get_pin` | `pin --pin` |
+| `pinterest_preview_images` | `preview --url` or `--previews N` |
+| `pinterest_download` | `download --url` and the save step on search/related/board/pin |
+
+Checklist: `references/parity-sunkim.md`. Personal use only: `references/tos-notes.md`.
 
 ## Agent steps
 
-1. Prefer this skill over cloud browser / anonymous MCP when the user already has Pinterest cookies in Ego Lite.
-2. Set `CONFIG.query`, `CONFIG.limit`, `CONFIG.outDir` (absolute).
-3. Inject via `ego-browser nodejs` using documented TaskSpace / Page APIs only (`taskSpace`, `page.goto`, `page.fetch`, `page.evaluate`, … — no Playwright `locator()`).
-4. Script flow: open search URL → soft-detect login wall → `page.fetch` `BaseSearchResource` (sunkim-shaped) with session cookies → DOM fallback → Node `fetch` pinimg originals → write files + manifest → `task.finish`.
-5. On login / captcha wall: stop, ask user to sign in in Ego GUI, resume same `taskSpace` name — do **not** automate passwords.
-6. Cap batches; personal use only — see `references/tos-notes.md`.
-
-## Example CONFIG
-
-```js
-const CONFIG = {
-  query: "舒淇",
-  limit: 3,
-  outDir: "/tmp/ego-pinterest-smoke",
-  size: "originals",
-  media: "image",
-  taskName: "pinterest-download",
-  keepBrowser: false,
-};
-```
+1. Prefer this skill when the user wants their Pinterest session instead of a cloud browser.
+2. Run the CLI with an absolute `--out`. Show the user `login_tip` even when the run succeeds anonymously with `--allow-anonymous`.
+3. On exit `2`, show `how_to_login` and stop.
+4. On success, report `downloads[].path`, `previews` (if any), and `count`.

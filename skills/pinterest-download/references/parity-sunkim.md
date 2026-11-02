@@ -1,17 +1,23 @@
 # Parity vs `@sunkimkk/pinterest-mcp`
 
-| Capability | sunkim MCP | this ego skill |
-|------------|------------|----------------|
-| Keyword search (`query` / `keyword`) | `pinterest_search` | CONFIG.query → BaseSearchResource via `page.fetch` |
-| `limit` | yes (default 20) | yes (script default often 10; smoke uses 3) |
-| Prefer originals / high-res | `image_url` from `orig`; download size `originals` | same resizeUrl + originals→736x fallback |
-| Return URLs + dims | yes | yes when resource JSON available |
-| Save files to chosen dir | `pinterest_download` `directory`/`folder` | CONFIG.outDir + manifest.json |
-| Logged-in cookies | anonymous jar | Ego Lite profile / session |
-| Related pins / board feed | yes | **gap** (not in v0.2) |
-| Bookmark multi-page | yes | **gap** (single resource page) |
-| `previews` thumbnails to model | yes | **gap** |
-| Video MP4 download | yes | **gap** (image focus) |
-| Headless / no browser | undici only | requires ego-browser |
+Checked against the public tool list: search, get pin, related pins, board feed, previews, image and MP4 download.
 
-Approach difference is intentional: ego skill showcases cookie reuse; sunkim is browserless JSON.
+| Capability | sunkim MCP | this skill | done |
+|------------|------------|------------|------|
+| Keyword search (`query`) | `pinterest_search` | `search --query` via `BaseSearchResource` and page cookies | yes |
+| Count / limit (1–100) | yes, default 20 | `--count`, default 10 | yes |
+| Bookmark pages | yes | `--bookmark`, up to 4 pages | yes |
+| Prefer originals, fall back to 736x | `size: originals` | `--size originals` | yes |
+| Width / height when the JSON has them | yes | `pins[].width/height` | yes |
+| Related pins | `pinterest_related_pins` | `related --pin` (`RelatedModulesResource`) | yes |
+| Board feed | `pinterest_board_pins` | `board --board` (`BoardResource` + `BoardFeedResource`) | yes |
+| One pin | `pinterest_get_pin` | `pin --pin` (`PinResource`), including `pin.it` | yes |
+| Model-facing thumbnails | `pinterest_preview_images` / `previews` | `preview --url` or `--previews N` (base64, max 8, max 120KB) | yes |
+| Save images to a directory | `pinterest_download` | `--out` + `manifest.json` | yes |
+| Video MP4 | `pinterest_download` video URLs | `download --url …mp4`, `--media video`; HLS rewritten to a 720p file when the URL matches; cmfv steps 720/540/360; cap 200MB | yes |
+| Skip promoted pins | yes | yes | yes |
+| `e1_…` anonymous ids | cannot open | rejected with a login hint | yes |
+| Session | anonymous cookie jar | Ego Lite. Logged out → exit 2 unless `--allow-anonymous` | different on purpose |
+| Headless, no browser | yes | requires `ego-browser` | different on purpose |
+
+`resource_response.message` is a locale status string (for example `确定`). It is not an error. Failures are HTTP status, `http_status >= 400`, or `status === "failure"`.
