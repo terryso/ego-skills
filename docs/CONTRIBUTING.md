@@ -1,4 +1,6 @@
-# Contributing (placeholder)
+# Contributing
+
+`pinterest-download` is the reference layout. Other skills are still stubs.
 
 - One skill per PR under `skills/<id>/`.
 - Match ego layout: `SKILL.md` frontmatter, optional `agents/openai.yaml`, `scripts/*.mjs`, `references/`.

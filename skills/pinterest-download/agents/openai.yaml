@@ -1,5 +1,5 @@
 interface:
   display_name: "pinterest-download"
-  short_description: "Search + download Pinterest pins via ego-browser"
+  short_description: "Search Pinterest and save pin images with ego-browser"
   brand_color: "#E60023"
-  default_prompt: "Use $pinterest-download with ego-browser: set CONFIG.query/limit/outDir, prefer originals, save files + JSON manifest."
+  default_prompt: "Use $pinterest-download. Run node skills/pinterest-download/scripts/download.mjs --query \"<keywords>\" --count <N> --out <absolute-dir>. It calls ego-browser nodejs with the Ego Lite session. If the JSON says login_required, ask the user to sign in once at pinterest.com in Ego Lite and do not type the password."

@@ -1,8 +1,8 @@
 {
   "name": "ego-skills",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Community Agent Skills for ego-browser (logged-in Chromium automation). Skeleton only.",
+  "description": "Community Agent Skills for ego-browser (logged-in Chromium automation). First skill: pinterest-download. Not published to npm.",
   "license": "MIT",
   "keywords": [
     "ego-browser",
