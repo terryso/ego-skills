@@ -58,7 +58,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 
 | Skill | What it does |
 |-------|----------------|
-| [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. |
+| [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. Optional `--min-width` / `--min-height`. |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
 
 ```bash

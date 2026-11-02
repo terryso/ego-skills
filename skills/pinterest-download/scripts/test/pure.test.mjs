@@ -16,8 +16,11 @@ import {
   exitCodeFor,
   foldDomUrls,
   hlsDerivedMp4,
+  ihtVideoId,
   interpretSession,
   isVideoUrl,
+  mediaDimensions,
+  meetsMinResolution,
   normalizePin,
   outputName,
   parseArgs,
@@ -66,6 +69,11 @@ test("parseArgs keeps the legacy search positionals and the new commands", () =>
   const urls = parseArgs(["download", "--url", "https://i.pinimg.com/a.jpg", "--url", "https://v.pinimg.com/a.mp4"]);
   assert.deepEqual(urls.urls, ["https://i.pinimg.com/a.jpg", "https://v.pinimg.com/a.mp4"]);
   assert.equal(parseArgs(["--help"]).help, true);
+  const sized = parseArgs(["--query", "wallpaper", "--min-width", "720", "--min-height", "480"]);
+  assert.equal(sized.minWidth, 720);
+  assert.equal(sized.minHeight, 480);
+  assert.throws(() => parseArgs(["--min-width", "-1", "--query", "a"]), /min-width/);
+  assert.throws(() => parseArgs(["--min-height", "tall", "--query", "a"]), /min-height/);
   assert.equal(parseArgs(["board", "pinterest.com/a/b"]).board, "pinterest.com/a/b");
   assert.equal(parseArgs(["preview", "https://i.pinimg.com/a.jpg"]).urls[0], "https://i.pinimg.com/a.jpg");
 });
@@ -84,13 +92,15 @@ test("parseArgs rejects unknown flags and missing values", () => {
 });
 
 test("toConfig resolves a safe directory and validates commands", () => {
-  const config = toConfig(parseArgs(["--query", "wallpaper", "--out", "/tmp/pins", "--previews", "1"]), {
+  const config = toConfig(parseArgs(["--query", "wallpaper", "--out", "/tmp/pins", "--previews", "1", "--min-width", "640"]), {
     resolve,
     now: 5,
   });
   assert.equal(config.command, "search");
   assert.equal(config.taskName, "pinterest-download-5");
   assert.equal(config.previews, 1);
+  assert.equal(config.minWidth, 640);
+  assert.equal(config.minHeight, 0);
   assert.equal(config.outDir, path.resolve("/tmp/pins"));
   assert.throws(() => toConfig(parseArgs(["--size", "huge", "--query", "a"]), { resolve }), /--size/);
   assert.throws(() => toConfig(parseArgs(["--media", "nope", "--query", "a"]), { resolve }), /--media/);
@@ -138,8 +148,13 @@ test("normalizePin, video picking, and media filters", () => {
   const hlsOnly = pickVideo({
     story_pin_data: { pages: [{ blocks: [{ video: { video_list: { V_HLSV4: { url: "https://v.pinimg.com/videos/iht/hls/zz.m3u8", duration: 1500 } } } }] }] },
   });
-  assert.match(hlsOnly.video_url, /_720w\.cmfv$/);
+  assert.equal(hlsOnly.video_url, "https://v.pinimg.com/videos/iht/expMp4/zz_720w.mp4");
+  assert.equal(hlsOnly.video_hls, "https://v.pinimg.com/videos/iht/hls/zz.m3u8");
   assert.equal(hlsDerivedMp4("https://v.pinimg.com/videos/mc/hls/abc.m3u8"), "https://v.pinimg.com/videos/mc/720p/abc.mp4");
+  assert.equal(
+    hlsDerivedMp4("https://v1.pinimg.com/videos/iht/hls/f9/91/17/f99117a3c598ab87cd1233848fe90011.m3u8"),
+    "https://v1.pinimg.com/videos/iht/expMp4/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.mp4",
+  );
   assert.equal(hlsDerivedMp4("https://cdn.example/plain.mp4"), undefined);
   assert.equal(pickVideo({}), undefined);
 });
@@ -153,6 +168,7 @@ test("urls, sniffing, names, and fetch limits", () => {
   assert.equal(toOriginals(null), null);
   assert.equal(toOriginals("https://example.com/a.jpg"), "https://example.com/a.jpg");
   assert.equal(assertPinimg("https://i.pinimg.com/a.jpg").hostname, "i.pinimg.com");
+  assert.equal(assertPinimg("https://v1.pinimg.com/videos/iht/hls/a_720w.cmfv").hostname, "v1.pinimg.com");
   assert.throws(() => assertPinimg("http://i.pinimg.com/a.jpg"), /https/);
   assert.throws(() => assertPinimg("https://evil.com/a.jpg"), /pinimg/);
   assert.throws(() => assertPinimg("not a url"), /Invalid/);
@@ -171,11 +187,28 @@ test("urls, sniffing, names, and fetch limits", () => {
   assert.equal(sniffVideo(mp4), true);
   assert.equal(sniffVideo(Buffer.from("nope")), false);
   assert.equal(isVideoUrl("https://v.pinimg.com/a.mp4?x=1"), true);
-  assert.deepEqual(videoTryUrls("https://v.pinimg.com/videos/iht/hls/a.m3u8"), [
-    "https://v.pinimg.com/videos/iht/hls/a_720w.cmfv",
-  ]);
+  assert.equal(videoTryUrls("https://v.pinimg.com/videos/iht/hls/a.m3u8")[0], "https://v.pinimg.com/videos/iht/expMp4/a_720w.mp4");
   assert.equal(videoTryUrls("https://v.pinimg.com/nope.m3u8").length, 0);
   assert.equal(videoTryUrls("https://v.pinimg.com/v_720w.cmfv").length, 3);
+  assert.deepEqual(videoTryUrls("https://v.pinimg.com/videos/mc/720p/abc.mp4"), ["https://v.pinimg.com/videos/mc/720p/abc.mp4"]);
+  const sample = "https://v1.pinimg.com/videos/iht/hls/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.cmfv";
+  const tries = videoTryUrls(sample);
+  assert.equal(tries[0], "https://v1.pinimg.com/videos/iht/expMp4/f9/91/17/f99117a3c598ab87cd1233848fe90011_720w.mp4");
+  assert.ok(tries.includes(sample));
+  assert.equal(
+    videoTryUrls("https://v1.pinimg.com/videos/iht/720p/f9/91/17/f99117a3c598ab87cd1233848fe90011.mp4")[0],
+    tries[0],
+  );
+  assert.equal(ihtVideoId("https://cdn.example/plain.mp4"), null);
+  assert.equal(meetsMinResolution({ width: 800, height: 600 }, 0, 0).ok, true);
+  assert.equal(meetsMinResolution({ width: 800, height: 400 }, 720, 0).ok, true);
+  assert.equal(meetsMinResolution({ width: 800, height: 400 }, 900, 0).ok, false);
+  assert.equal(meetsMinResolution({ width: 800, height: 400 }, 0, 500).reason, "height 400 < 500");
+  assert.equal(meetsMinResolution({ width: 800, height: 400 }, 700, 500).ok, false);
+  assert.equal(meetsMinResolution({ height: 900 }, 100, 0).reason, "width unknown");
+  assert.equal(meetsMinResolution({ video_width: 320, video_height: 320, width: 1080, height: 1920 }, 500, 0, "video").ok, false);
+  assert.deepEqual(mediaDimensions({ video_width: 1280, width: 100 }, "video"), { width: 1280, height: 0 });
+  assert.match(USAGE, /min-width/);
   assert.deepEqual(sizeCandidates("https://i.pinimg.com/originals/a.jpg", "originals")[0].includes("originals"), true);
   assert.ok(previewCandidates("https://i.pinimg.com/originals/a.jpg")[0].includes("/236x/"));
   assert.match(outputName(0, "https://i.pinimg.com/originals/aa/bb/file.jpg", "jpg"), /^01_file\.jpg$/);

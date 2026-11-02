@@ -56,6 +56,8 @@ Options:
   --count, --limit       How many pins to save (1-100, default 10)
   --out, --out-dir       Output directory (default ~/Downloads/pinterest-ego)
   --size                 originals | 736x | 474x | 236x
+  --min-width            Skip pins narrower than this many pixels (0 or omit = no floor)
+  --min-height           Skip pins shorter than this many pixels (0 or omit = no floor)
   --media                image | video | any
   --previews             Embed up to 8 small thumbnails (base64) for the model
   --bookmark             Continue a previous resource page
@@ -64,6 +66,8 @@ Options:
   --task-name            Ego task space name
 
 Logged-out runs exit 2 with how_to_login. Every result includes login_tip: tell the user that an Ego login improves results.
+
+Resolution: set one of --min-width / --min-height to enforce that side. Set both and the pin must be known on both sides and at least those sizes. Video saves use video_width / video_height when present, otherwise the cover image size. Pins with an unknown required side are skipped. Direct download --url targets are not filtered. Skips are listed on skipped[].
 `;
 
 export function strip(obj) {
@@ -88,6 +92,14 @@ export function clampPreviews(value) {
   const i = Math.floor(n);
   if (i < 0 || i > MAX_PREVIEWS) return null;
   return i;
+}
+
+export function clampPixels(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  if (!/^\d+$/.test(String(value).trim())) return null;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n)) return null;
+  return n;
 }
 
 export function defaultOut(home = process.env.HOME || "/tmp") {
@@ -124,6 +136,8 @@ export function parseArgs(argv) {
     keepBrowser: false,
     allowAnonymous: false,
     taskName: "",
+    minWidth: 0,
+    minHeight: 0,
     help: false,
   };
   let args = [...argv];
@@ -146,6 +160,16 @@ export function parseArgs(argv) {
     }
     else if (arg === "--out" || arg === "--out-dir" || arg === "--outdir" || arg === "--dir") out.outDir = take(args, ++i, arg);
     else if (arg === "--size") out.size = take(args, ++i, arg);
+    else if (arg === "--min-width") {
+      const parsed = clampPixels(take(args, ++i, arg));
+      if (parsed === null) throw new Error("--min-width must be a non-negative integer (pixels)");
+      out.minWidth = parsed;
+    }
+    else if (arg === "--min-height") {
+      const parsed = clampPixels(take(args, ++i, arg));
+      if (parsed === null) throw new Error("--min-height must be a non-negative integer (pixels)");
+      out.minHeight = parsed;
+    }
     else if (arg === "--media") out.media = take(args, ++i, arg);
     else if (arg === "--previews") {
       const parsed = clampPreviews(take(args, ++i, arg));
@@ -214,6 +238,8 @@ export function toConfig(args, { resolve = (value) => value, home, now = Date.no
     keepBrowser: Boolean(args.keepBrowser),
     allowAnonymous: Boolean(args.allowAnonymous),
     taskName: String(args.taskName || `pinterest-download-${now}`),
+    minWidth: clampPixels(args.minWidth) || 0,
+    minHeight: clampPixels(args.minHeight) || 0,
     maxVideoBytes: args.maxVideoBytes || DEFAULT_MAX_VIDEO_BYTES,
     maxPages: args.maxPages || MAX_PAGES,
   };
@@ -224,11 +250,28 @@ export function pickImage(images, ...keys) {
   return undefined;
 }
 
+const IHT_MP4_WIDTHS = ["720w", "540w", "360w", "240w"];
+const IHT_CMFV_WIDTHS = ["720w", "540w", "360w"];
+
+// iht HLS is a byte-range playlist. The single progressive file (video + audio, ftyp isom)
+// lives at /videos/iht/expMp4/<id>_<width>w.mp4. /videos/iht/720p/<id>.mp4 is access-denied.
+// The *_720w.cmfv sibling is the video-only CMAF track, kept as a fallback.
+export function ihtVideoId(url) {
+  const path = String(url || "").split("?")[0];
+  const match = path.match(/^(https:\/\/[^/]+)\/videos\/iht\/(?:hls|expMp4|720p|mp4)\/(.+)$/i);
+  if (!match) return null;
+  let id = match[2];
+  id = id.replace(/_\d+w\.(?:m3u8|cmfv|cmfa|mp4)$/i, "");
+  id = id.replace(/\.(m3u8|cmfv|cmfa|mp4)$/i, "");
+  if (!id) return null;
+  return { origin: match[1], id };
+}
+
 export function hlsDerivedMp4(url) {
   if (!url) return undefined;
-  const derived = url
-    .replace(/\/videos\/mc\/hls\/(.+)\.m3u8(?:\?.*)?$/, "/videos/mc/720p/$1.mp4")
-    .replace(/\/videos\/iht\/hls\/(.+)\.m3u8(?:\?.*)?$/, "/videos/iht/hls/$1_720w.cmfv");
+  const iht = ihtVideoId(url);
+  if (iht) return `${iht.origin}/videos/iht/expMp4/${iht.id}_720w.mp4`;
+  const derived = String(url).replace(/\/videos\/mc\/hls\/(.+)\.m3u8(?:\?.*)?$/, "/videos/mc/720p/$1.mp4");
   return derived === url ? undefined : derived;
 }
 
@@ -296,6 +339,37 @@ export function acceptMedia(pin, media) {
   return true;
 }
 
+export function mediaDimensions(pin, kind = "image") {
+  const imageW = Number(pin?.width) || 0;
+  const imageH = Number(pin?.height) || 0;
+  if (kind === "video") {
+    return {
+      width: Number(pin?.video_width) || imageW,
+      height: Number(pin?.video_height) || imageH,
+    };
+  }
+  return { width: imageW, height: imageH };
+}
+
+// ok when every requested side is known and >= its floor. 0 means that side is not checked.
+// Both floors set: both sides must pass. One floor set: only that side is checked.
+export function meetsMinResolution(pin, minWidth = 0, minHeight = 0, kind = "image") {
+  const minW = clampPixels(minWidth) || 0;
+  const minH = clampPixels(minHeight) || 0;
+  const { width, height } = mediaDimensions(pin, kind);
+  if (minW <= 0 && minH <= 0) return { ok: true, width, height, reason: "" };
+  const reasons = [];
+  if (minW > 0) {
+    if (!(width > 0)) reasons.push("width unknown");
+    else if (width < minW) reasons.push(`width ${width} < ${minW}`);
+  }
+  if (minH > 0) {
+    if (!(height > 0)) reasons.push("height unknown");
+    else if (height < minH) reasons.push(`height ${height} < ${minH}`);
+  }
+  return { ok: reasons.length === 0, width, height, reason: reasons.join("; ") };
+}
+
 export function resizeUrl(url, size) {
   const swapped = String(url).replace(/(pinimg\.com\/)(originals|\d+x\d*(?:_RS)?)\//, `$1${size}/`);
   return size === "originals" ? swapped : swapped.replace(/\.(png|gif|webp)$/i, ".jpg");
@@ -355,14 +429,25 @@ export function previewCandidates(url) {
 }
 
 export function videoTryUrls(url) {
-  if (/\.m3u8($|\?)/i.test(url)) {
-    const derived = hlsDerivedMp4(url);
+  const raw = String(url || "");
+  const iht = ihtVideoId(raw);
+  if (iht) {
+    const urls = [];
+    const push = (value) => {
+      if (value && !urls.includes(value)) urls.push(value);
+    };
+    for (const width of IHT_MP4_WIDTHS) push(`${iht.origin}/videos/iht/expMp4/${iht.id}_${width}.mp4`);
+    for (const width of IHT_CMFV_WIDTHS) push(`${iht.origin}/videos/iht/hls/${iht.id}_${width}.cmfv`);
+    return urls;
+  }
+  if (/\.m3u8($|\?)/i.test(raw)) {
+    const derived = hlsDerivedMp4(raw);
     return derived ? [derived] : [];
   }
-  if (/_\d+w\.cmfv($|\?)/i.test(url)) {
-    return ["720w", "540w", "360w"].map((width) => url.replace(/_\d+w\.cmfv/, `_${width}.cmfv`));
+  if (/_\d+w\.cmfv($|\?)/i.test(raw)) {
+    return ["720w", "540w", "360w"].map((width) => raw.replace(/_\d+w\.cmfv/i, `_${width}.cmfv`));
   }
-  return [url];
+  return raw ? [raw] : [];
 }
 
 export function outputName(index, url, ext) {

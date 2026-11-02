@@ -58,7 +58,7 @@ cd ego-skills
 
 | 技能 | 做什么 |
 |------|--------|
-| [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。 |
+| [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。可选 `--min-width` / `--min-height`。 |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
 
 ```bash

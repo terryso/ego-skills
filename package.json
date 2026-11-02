@@ -22,9 +22,11 @@
       "skills/pinterest-download/scripts/lib/pure.mjs",
       "skills/pinterest-download/scripts/lib/run.mjs",
       "skills/pinterest-download/scripts/lib/launch.mjs",
+      "skills/pinterest-download/scripts/lib/media-fetch.mjs",
       "skills/instagram-saved-download/scripts/lib/pure.mjs",
       "skills/instagram-saved-download/scripts/lib/run.mjs",
-      "skills/instagram-saved-download/scripts/lib/launch.mjs"
+      "skills/instagram-saved-download/scripts/lib/launch.mjs",
+      "skills/instagram-saved-download/scripts/lib/media-fetch.mjs"
     ],
     "exclude": [
       "skills/*/scripts/test/**"

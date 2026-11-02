@@ -8,6 +8,7 @@ import {
   interpretSession,
   isVideoUrl,
   loginRequiredSummary,
+  meetsMinResolution,
   normalizePin,
   outputName,
   parseBoard,
@@ -35,7 +36,26 @@ async function publish(summary, fs, path) {
   await fs.writeFile(manifest, JSON.stringify(summary, null, 2));
 }
 
-async function loadPins(session, build, { limit, media, bookmark, maxPages, now }) {
+function rejectResolution(pin, config, skipped) {
+  if (!config || config.command === "download" || config.command === "preview") return false;
+  const minWidth = Number(config.minWidth) || 0;
+  const minHeight = Number(config.minHeight) || 0;
+  if (minWidth <= 0 && minHeight <= 0) return false;
+  const kind = config.media === "video" ? "video" : "image";
+  const gate = meetsMinResolution(pin, minWidth, minHeight, kind);
+  if (gate.ok) return false;
+  skipped?.push({
+    url: pin.pin_url || pin.video_url || pin.image_url,
+    image_url: pin.image_url,
+    pin_id: pin.id,
+    width: gate.width,
+    height: gate.height,
+    reason: gate.reason,
+  });
+  return true;
+}
+
+async function loadPins(session, build, { limit, media, bookmark, maxPages, now, minWidth, minHeight, command, skipped }) {
   const pins = [];
   const seen = new Set();
   let next = bookmark || undefined;
@@ -52,6 +72,7 @@ async function loadPins(session, build, { limit, media, bookmark, maxPages, now 
       if (!pin?.image_url || seen.has(pin.image_url)) continue;
       seen.add(pin.image_url);
       if (!acceptMedia(pin, media)) continue;
+      if (rejectResolution(pin, { command, media, minWidth, minHeight }, skipped)) continue;
       pins.push(pin);
     }
     if (!parsed.bookmark || parsed.items.length === 0) break;
@@ -185,11 +206,14 @@ export async function execute(config, deps) {
     outDir: config.outDir,
     size: config.size,
     media: config.media,
+    min_width: config.minWidth || 0,
+    min_height: config.minHeight || 0,
     method: null,
     spaceId: null,
     pins: [],
     downloads: [],
     previews: [],
+    skipped: [],
     failures: [],
     error: null,
     exitCode: 1,
@@ -253,6 +277,10 @@ export async function execute(config, deps) {
           bookmark: config.bookmark,
           maxPages: config.maxPages,
           now,
+          minWidth: config.minWidth,
+          minHeight: config.minHeight,
+          command: config.command,
+          skipped: summary.skipped,
         });
         summary.method = "BaseSearchResource";
       } catch (error) {
@@ -263,9 +291,11 @@ export async function execute(config, deps) {
       if (pins.length < config.limit) {
         const domPins = foldDomUrls(await session.domImages(config.limit), config.limit);
         const seen = new Set(pins.map((pin) => pin.image_url));
+        for (const row of summary.skipped) if (row.image_url) seen.add(row.image_url);
         for (const pin of domPins) {
           if (pins.length >= config.limit) break;
           if (seen.has(pin.image_url)) continue;
+          if (rejectResolution(pin, config, summary.skipped)) continue;
           seen.add(pin.image_url);
           pins.push(pin);
         }
@@ -279,6 +309,10 @@ export async function execute(config, deps) {
         bookmark: config.bookmark,
         maxPages: config.maxPages,
         now,
+        minWidth: config.minWidth,
+        minHeight: config.minHeight,
+        command: config.command,
+        skipped: summary.skipped,
       });
       summary.method = "RelatedModulesResource";
       summary.pin_id = pinId;
@@ -301,7 +335,17 @@ export async function execute(config, deps) {
       summary.pins = await loadPins(
         session,
         (bookmark) => boardFeedRequest(data.id, board.path, bookmark),
-        { limit: config.limit, media: config.media, bookmark: config.bookmark, maxPages: config.maxPages, now },
+        {
+          limit: config.limit,
+          media: config.media,
+          bookmark: config.bookmark,
+          maxPages: config.maxPages,
+          now,
+          minWidth: config.minWidth,
+          minHeight: config.minHeight,
+          command: config.command,
+          skipped: summary.skipped,
+        },
       );
       summary.method = "BoardFeedResource";
     } else if (config.command === "pin") {
@@ -329,6 +373,7 @@ export async function execute(config, deps) {
       for (let index = 0; index < pins.length; index++) {
         const pin = pins[index];
         try {
+          if (rejectResolution(pin, config, summary.skipped)) continue;
           const saved = await savePinMedia(session, fs, path, pin, config.outDir, index, config);
           saved.pin_id = pin.id;
           summary.downloads.push(saved);
@@ -344,10 +389,19 @@ export async function execute(config, deps) {
 
     summary.count = summary.downloads.length;
     const previewOk = config.command === "preview" && summary.previews.length > 0;
-    const pinOk = config.command === "pin" && summary.pins.length > 0;
+    const blockedByResolution = summary.skipped.length > 0 && summary.downloads.length === 0;
+    const pinOk = config.command === "pin" && summary.pins.length > 0 && !blockedByResolution;
     summary.ok = summary.downloads.length > 0 || previewOk || pinOk;
     summary.exitCode = summary.ok ? 0 : 1;
-    if (!summary.ok) summary.error = summary.error || "No images were saved.";
+    if (!summary.ok) {
+      summary.error =
+        summary.error ||
+        (blockedByResolution
+          ? "No media met the minimum resolution."
+          : config.media === "video"
+            ? "No videos were saved."
+            : "No images were saved.");
+    }
     return summary;
   } catch (error) {
     summary.ok = false;

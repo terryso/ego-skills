@@ -1,5 +1,5 @@
-import fs from "node:fs/promises";
-import { BASE, UA, bufferFetchResponse, sniffImage, sniffVideo } from "./pure.mjs";
+import { browserSave, fetchMediaBytes, requestBytes } from "./media-fetch.mjs";
+import { BASE, UA, bufferFetchResponse } from "./pure.mjs";
 
 export function createEgoBrowser() {
   return {
@@ -78,39 +78,19 @@ export function createEgoBrowser() {
           }, limit);
         },
         async fetchBytes(targetUrl, { maxBytes } = {}) {
-          let read = { ok: false, status: 0, type: "", buf: Buffer.alloc(0), error: "not fetched" };
-          try {
-            const response = await fetch(targetUrl, {
-              headers: { "User-Agent": UA, Referer: `${BASE}/`, Accept: "*/*" },
-              redirect: "follow",
-            });
-            read = await bufferFetchResponse(response, maxBytes);
-            const useful =
-              read.ok &&
-              (sniffImage(read.buf) || sniffVideo(read.buf) || String(read.type || "").startsWith("video/"));
-            if (useful || read.error) return read;
-          } catch (error) {
-            read = { ok: false, status: 0, type: "", buf: Buffer.alloc(0), error: String(error.message || error) };
-          }
-          if (/\.(mp4|m3u8|cmfv)($|\?)/i.test(targetUrl)) return read;
-          const partial = `/tmp/.pinterest-partial-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-          try {
-            await page.fetch(targetUrl, {
-              headers: { Referer: `${BASE}/`, Accept: "image/*,*/*" },
-              timeout: 20_000,
-              saveAs: partial,
-            });
-            const buf = await fs.readFile(partial);
-            const sniffed = sniffImage(buf);
-            if (sniffed && buf.length >= 100 && (!maxBytes || buf.length <= maxBytes)) {
-              return { ok: true, status: 200, type: sniffed, buf, error: null };
-            }
-          } catch (error) {
-            return { ok: false, status: read.status || 0, type: read.type || "", buf: Buffer.alloc(0), error: String(error.message || error) };
-          } finally {
-            await fs.rm(partial, { force: true }).catch(() => {});
-          }
-          return read;
+          const headers = { "User-Agent": UA, Referer: `${BASE}/`, Accept: "*/*" };
+          const referer = `${BASE}/`;
+          return fetchMediaBytes({
+            url: targetUrl,
+            maxBytes,
+            headers,
+            nodeFetch: async (url, options) => {
+              const response = await fetch(url, { headers: options.headers, redirect: "follow" });
+              return bufferFetchResponse(response, options.maxBytes);
+            },
+            directFetch: (url, options) => requestBytes(url, { ...options, family: 4 }),
+            browserFetch: (url, options) => browserSave(page, url, { ...options, referer }),
+          });
         },
         async finish() {
           if (finished) return;
