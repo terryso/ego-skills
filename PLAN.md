@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: public repo; **#1 `pinterest-download` shipping** with search, related pins, boards, previews, and MP4 download. Install paths match claw-skills (Claude marketplace, `npx skills`, submodule, clone). `web-screenshot` and `logged-in-scrape-pattern` stay stubs. Star-only, no commercial features.
+> Status: public repo; the only skill is **`pinterest-download`** (search, related pins, boards, previews, MP4). Requires ego lite / `ego-browser`. The unused `web-screenshot` and `logged-in-scrape-pattern` stubs are removed. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---
@@ -64,16 +64,14 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 
 | # | Skill id | Hook | Why it stars |
 |---|----------|------|--------------|
-| 1 | `pinterest-download` | Batch-save pin images while logged in (**shipping: search + download N**) | Pain everyone hits; cookies matter |
-| 2 | `web-screenshot` | Full-page / element screenshots to disk | Universal demo; GIF-friendly |
-| 3 | `logged-in-scrape-pattern` | Canonical pattern: reuse session → snapshot → extract | Meta-skill others fork |
-| 4 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Teaching skill for agents |
-| 5 | `github-starred-export` | Scrape own starred repos (auth cookie) | Dogfood for agent authors |
-| 6 | `notion-page-dump` | Export a logged-in Notion page to md/json | Session reuse showcase |
-| 7 | `cookie-healthcheck` | Detect "am I logged in?" for a domain before scrape | Reliability primitive |
-| 8 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Aligns with ego's QA pitch |
+| 1 | `pinterest-download` | Batch-save pin images while logged in (**the only skill in the repo**) | Pain everyone hits; cookies matter |
+| 2 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
+| 3 | `github-starred-export` | Export the user's own starred repos | Not started |
+| 4 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
+| 5 | `cookie-healthcheck` | Detect "am I logged in?" for a domain | Not started |
+| 6 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Not started |
 
-**Starter trio:** `#1 pinterest-download` is the first shipping skill (CLI: query, count, out dir; logged-out soft-fail). Skills 2–3 stay stubs.
+**Shipped:** only `pinterest-download`. It needs ego lite and `ego-browser` on `PATH`. The screenshot and logged-in-scrape stubs were removed.
 
 ---
 
@@ -143,10 +141,10 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 ## 8. Star-growth hooks
 
-1. **Demo GIFs first** — `assets/demos/pinterest-download.gif`, `web-screenshot.gif`, `logged-in-scrape.gif`; README embeds above the fold.
+1. **Demo GIF** — `assets/demos/pinterest-download.gif` when a logged-in run is recorded.
 2. **One-liner install** — working `scripts/install-skills.sh` + README badge.
 3. **"Works with ego lite"** badge + link to https://lite.ego.app/; reciprocal mention if ego ships a community skills list.
-4. **Awesome-agents / skills directories** PRs after first 3 skills are non-stub.
+4. **Awesome-agents / skills directories** once `pinterest-download` is on `main`.
 5. **Short "before/after"** in README: cloud MCP (login wall) vs ego-skills (already in).
 6. **Issue templates**: "New site skill request" with domain + logged-in? checkbox.
 7. **Keep skills tiny** — each SKILL.md ≤ ~80 lines + one example `.mjs`; agents actually load them.
@@ -158,9 +156,8 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 | Phase | Where | Deliverable |
 |-------|-------|-------------|
-| Now | `github.com/terryso/ego-skills` | **#1 `pinterest-download` shipping** (search + download). README is bilingual. Install script links skills into `~/.agents/skills`. |
-| Next | same repo | Real scripts for skills 2–3; demo GIFs. Still star-only. |
-| Later | Community PRs | skills 4–8, site learnings packs. No SaaS language. |
+| Now | `github.com/terryso/ego-skills` | Only `pinterest-download`. Bilingual README. Install script links that skill. ego lite / `ego-browser` required. |
+| Later | Community PRs | New skills only when they are actually useful. No SaaS language. |
 
 The public repo is `https://github.com/terryso/ego-skills` (MIT). Do not add paid tiers, npm publish, or hosted runners.
 

@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** 第一个技能 [`pinterest-download`](./skills/pinterest-download/) 已可用（搜索、相关 Pin、画板、预览图、视频）。`web-screenshot` 和 `logged-in-scrape-pattern` 仍是骨架。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** 目前只有 [`pinterest-download`](./skills/pinterest-download/)（搜索、相关 Pin、画板、预览图、视频）。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -56,11 +56,9 @@ cd ego-skills
 
 ## 技能
 
-| 技能 | 状态 | 做什么 |
-|------|------|--------|
-| [`pinterest-download`](./skills/pinterest-download/) | 可用 | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。 |
-| [`web-screenshot`](./skills/web-screenshot/) | 骨架 | 整页 / 元素截图。 |
-| [`logged-in-scrape-pattern`](./skills/logged-in-scrape-pattern/) | 骨架 | 复用登录态再抽取内容。 |
+| 技能 | 做什么 |
+|------|--------|
+| [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \

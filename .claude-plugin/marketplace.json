@@ -10,7 +10,7 @@
     {
       "name": "ego-skills",
       "source": "./",
-      "description": "Pinterest download (search, related, boards, previews, video) plus screenshot and logged-in scrape stubs.",
+      "description": "pinterest-download for ego lite: search, related pins, boards, previews, and video. Requires ego-browser.",
       "homepage": "https://github.com/terryso/ego-skills",
       "license": "MIT",
       "keywords": [

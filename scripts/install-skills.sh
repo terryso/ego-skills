@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Link skills/* into agent skill directories.
+# The repo ships one skill: pinterest-download.
+# Prerequisite: ego lite installed, `ego-browser` on PATH.
 #
 #   ./scripts/install-skills.sh
 #       -> ~/.agents/skills   (Codex, and the shared agents path)
@@ -40,7 +42,7 @@ else
         destinations+=("$(agent_dest "${1:-}")")
         ;;
       --help|-h)
-        sed -n '2,16p' "$0"
+        sed -n '2,17p' "$0"
         exit 0
         ;;
       *)

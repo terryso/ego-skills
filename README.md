@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [中文文档](README_CN.md)
 
-> **Status:** first skill shipping — [`pinterest-download`](./skills/pinterest-download/) (search, related pins, boards, previews, video). `web-screenshot` and `logged-in-scrape-pattern` are still stubs. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** one skill — [`pinterest-download`](./skills/pinterest-download/) (search, related pins, boards, previews, video). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -56,11 +56,9 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 
 ## Skills
 
-| Skill | State | What it does |
-|-------|--------|----------------|
-| [`pinterest-download`](./skills/pinterest-download/) | shipping | Search, related pins, board feed, model thumbnails, image and MP4 download through Ego. |
-| [`web-screenshot`](./skills/web-screenshot/) | stub | Full-page / element screenshots. |
-| [`logged-in-scrape-pattern`](./skills/logged-in-scrape-pattern/) | stub | Reuse a logged-in session, then extract. |
+| Skill | What it does |
+|-------|----------------|
+| [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \

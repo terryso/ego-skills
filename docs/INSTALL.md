@@ -8,4 +8,6 @@ Four working options (Claude Code marketplace, `npx skills add terryso/ego-skill
 ./scripts/install-skills.sh --help
 ```
 
-`ego-browser` must already be on `PATH`. This repo is not an npm package.
+Prerequisite: install [ego lite](https://lite.ego.app/) and finish onboarding so `ego-browser` is on `PATH` (`command -v ego-browser`).
+
+The only skill linked by the installer is `pinterest-download`. This repo is not an npm package.
