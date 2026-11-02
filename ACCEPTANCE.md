@@ -1,12 +1,12 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `skills/pinterest-download/scripts/lib/pure.mjs`, `run.mjs`, `launch.mjs`.
+`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs`, and `launch.mjs` under both `pinterest-download` and `instagram-saved-download`.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 22 passed |
-| Line coverage | **98.91%** |
-| Statement coverage | 98.91% |
+| Tests | 34 passed |
+| Line coverage | **98.37%** |
+| Statement coverage | 98.37% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).

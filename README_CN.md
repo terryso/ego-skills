@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** 目前只有 [`pinterest-download`](./skills/pinterest-download/)（搜索、相关 Pin、画板、预览图、视频）。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/) 和 [`instagram-saved-download`](./skills/instagram-saved-download/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -59,13 +59,19 @@ cd ego-skills
 | 技能 | 做什么 |
 |------|--------|
 | [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。 |
+| [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
   --query wallpaper --count 2 --out "$HOME/Downloads/pinterest-ego"
 ```
 
-如果还没登录 Pinterest，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录 Pinterest，结果会好于匿名模式。说明见 [skills/pinterest-download/references/login.md](./skills/pinterest-download/references/login.md)。
+```bash
+node skills/instagram-saved-download/scripts/download.mjs \
+  --count 5 --out "$HOME/Downloads/instagram-saved"
+```
+
+如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
 

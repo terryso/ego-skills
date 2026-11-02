@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: public repo; the only skill is **`pinterest-download`** (search, related pins, boards, previews, MP4). Requires ego lite / `ego-browser`. The unused `web-screenshot` and `logged-in-scrape-pattern` stubs are removed. Star-only, no commercial features.
+> Status: public repo; **`pinterest-download`** and **`instagram-saved-download`**. Requires ego lite / `ego-browser`. Each skill checks its own login. No separate cookie-healthcheck skill. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---
@@ -64,14 +64,14 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 
 | # | Skill id | Hook | Why it stars |
 |---|----------|------|--------------|
-| 1 | `pinterest-download` | Batch-save pin images while logged in (**the only skill in the repo**) | Pain everyone hits; cookies matter |
-| 2 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
-| 3 | `github-starred-export` | Export the user's own starred repos | Not started |
-| 4 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
-| 5 | `cookie-healthcheck` | Detect "am I logged in?" for a domain | Not started |
+| 1 | `pinterest-download` | Batch-save pin images while logged in (**shipping**) | Pain everyone hits; cookies matter |
+| 2 | `instagram-saved-download` | Save your own Instagram Saved posts (**shipping**) | Login is the product; personal archive only |
+| 3 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
+| 4 | `github-starred-export` | Export the user's own starred repos | Not started |
+| 5 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
 | 6 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Not started |
 
-**Shipped:** only `pinterest-download`. It needs ego lite and `ego-browser` on `PATH`. The screenshot and logged-in-scrape stubs were removed.
+**Shipped:** `pinterest-download` and `instagram-saved-download`. Both need ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
 
 ---
 
@@ -148,7 +148,7 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 5. **Short "before/after"** in README: cloud MCP (login wall) vs ego-skills (already in).
 6. **Issue templates**: "New site skill request" with domain + logged-in? checkbox.
 7. **Keep skills tiny** — each SKILL.md ≤ ~80 lines + one example `.mjs`; agents actually load them.
-8. **Ship a `cookie-healthcheck` early** — reduces "skill broke" issues that kill stars.
+8. **Login check stays inside each skill** — no separate cookie-healthcheck skill.
 
 ---
 
@@ -156,7 +156,7 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 | Phase | Where | Deliverable |
 |-------|-------|-------------|
-| Now | `github.com/terryso/ego-skills` | Only `pinterest-download`. Bilingual README. Install script links that skill. ego lite / `ego-browser` required. |
+| Now | `github.com/terryso/ego-skills` | `pinterest-download` and `instagram-saved-download`. Bilingual README. Install script links `skills/*`. ego lite / `ego-browser` required. |
 | Later | Community PRs | New skills only when they are actually useful. No SaaS language. |
 
 The public repo is `https://github.com/terryso/ego-skills` (MIT). Do not add paid tiers, npm publish, or hosted runners.

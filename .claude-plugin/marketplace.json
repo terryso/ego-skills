@@ -10,7 +10,7 @@
     {
       "name": "ego-skills",
       "source": "./",
-      "description": "pinterest-download for ego lite: search, related pins, boards, previews, and video. Requires ego-browser.",
+      "description": "ego lite skills: pinterest-download and instagram-saved-download. Requires ego-browser.",
       "homepage": "https://github.com/terryso/ego-skills",
       "license": "MIT",
       "keywords": [
@@ -19,6 +19,7 @@
         "ego-lite",
         "skills",
         "pinterest",
+        "instagram",
         "cursor",
         "codex"
       ]
