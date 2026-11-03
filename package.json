@@ -1,8 +1,8 @@
 {
   "name": "ego-skills",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video. Not published to npm.",
+  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video. Not published to npm.",
   "license": "MIT",
   "keywords": [
     "ego-browser",
@@ -12,10 +12,11 @@
     "claude",
     "cursor",
     "browser-automation",
-    "kuaishou"
+    "kuaishou",
+    "youtube"
   ],
   "scripts": {
-    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs skills/instagram-saved-download/scripts/test/*.test.mjs skills/wechat-channels-video/scripts/test/*.test.mjs skills/kuaishou-video/scripts/test/*.test.mjs",
+    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs skills/instagram-saved-download/scripts/test/*.test.mjs skills/wechat-channels-video/scripts/test/*.test.mjs skills/kuaishou-video/scripts/test/*.test.mjs skills/youtube-video/scripts/test/*.test.mjs",
     "install-skills": "bash ./scripts/install-skills.sh"
   },
   "c8": {
@@ -35,7 +36,14 @@
       "skills/kuaishou-video/scripts/lib/run-check.mjs",
       "skills/kuaishou-video/scripts/lib/launch-check.mjs",
       "skills/kuaishou-video/scripts/lib/config-file.mjs",
-      "skills/kuaishou-video/scripts/lib/run-ego.mjs"
+      "skills/kuaishou-video/scripts/lib/run-ego.mjs",
+      "skills/youtube-video/scripts/lib/pure.mjs",
+      "skills/youtube-video/scripts/lib/run-check.mjs",
+      "skills/youtube-video/scripts/lib/launch-check.mjs",
+      "skills/youtube-video/scripts/lib/config-file.mjs",
+      "skills/youtube-video/scripts/lib/run-ego.mjs",
+      "skills/youtube-video/scripts/lib/publish-flow.mjs",
+      "skills/youtube-video/scripts/lib/studio-dom.mjs"
     ],
     "exclude": [
       "skills/*/scripts/test/**"
