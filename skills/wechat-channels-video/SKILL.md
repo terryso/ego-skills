@@ -2,7 +2,7 @@
 name: wechat-channels-video
 description: Publish a WeChat Channels video draft with Ego Lite via ego-browser — login-check first (sessions expire fast), upload video, fill description/short title/topics/location/cover, save draft only. Soft-fails if Channels is logged out and tells the human to scan QR inside Ego. Personal use. Use when the user asks to post to 视频号 / Channels assistant.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   requires:
     bins:
       - ego-browser
@@ -156,6 +156,16 @@ await page.evaluate((p) => {
 
 真 `<input>`，必须 native setter；验证读 `input.value`（innerText 不含 input 值）。
 
+**服务端硬限制**（实测多期，触发即红字警告，保存被拒）：
+
+- **≤16 字**：超长直接拒（17 字实测被拒）。
+- **符号白名单**：只有书名号、引号、冒号、加号、问号、百分号、摄氏度。
+  - 全角逗号「，」→ 换空格（如「烂推荐看够了，自己搭一个」→「烂推荐看够了 自己搭一个」）。
+  - 小数点会触发「特殊字符」警告：版本号里的 `6.1` 这类写法要改说法规避。
+  - `|`、`#`、`@` 都不行：自带标题里的分隔符取主句（如「标题文字|栏目#066」→「标题文字」）。
+
+填完后检查输入框下方有没有红字警告；有就改写后再保存。
+
 ### 4. 位置
 
 默认常带城市。稳妥：`mouse.click` 打开 → snapshot/截图 → 点「不显示位置」→ **回读字段**确认。evaluate 坐标可能点到隐藏层。
@@ -165,6 +175,17 @@ await page.evaluate((p) => {
 点「保存草稿」。成功信号：「已保存」+ 底部按钮变灰。再 goto 草稿箱核对。**草稿箱可见前不要离开编辑器**。
 
 可选：声明原创、活动搜索（native setter 写搜索词；搜不到就「不参与活动」）。
+
+#### 声明原创
+
+真 checkbox（授权钥匙串行）。勾选后弹协议层：勾「我已阅读并同意…」→ 点层内「声明原创」确认按钮。两步都要坐标点击并回读 `input[type=checkbox].checked` 确认。
+
+#### 活动搜索弹层
+
+- 打开弹层点「不参与活动」字段；**弹层可能不弹**（点击被吞），探测 `input[placeholder*="搜索活动"]` 失败就重试 2–3 次。
+- 搜索词用 **native setter + input/change 事件**（`keyboard.insertText` 间歇性失效）；**二次搜索前先清空**——native setter 是覆盖，但焦点点击后残留词会被追加成「AI科普AI科普」。
+- 列表渲染后**截图引导点击**：弹层行序和 y 坐标每期都可能变（还见过偏移一行的渲染 bug），按截图上的可见坐标点，点完**回读活动字段**确认选中项。点错行（相邻活动）若主题也合适可接受，不必强改。
+- 视口尺寸变化会让「滚到顶部再点开」的既有坐标失效——每次都要重新探测触发器坐标。
 
 ### 6. 封面（可选）
 
@@ -190,6 +211,8 @@ await page.evaluate((p) => {
 10. 登录页「加载失败」是红鲱鱼；handOff 让人扫码。
 11. **每次发布前 check-login**；exit 2 必须停。
 12. 发表是人工终点；本技能只到草稿。
+13. 短标题 ≤16 字 + 符号白名单（见 §3）；触发红字就改写，别硬保存。
+14. 原创两段式（勾选 + 协议层确认），活动弹层截图引导 + 回读（见 §5）；「已保存」标签偶尔错过时机，草稿箱核对是最终事实。
 
 ## 测试
 
