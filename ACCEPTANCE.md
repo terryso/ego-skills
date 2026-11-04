@@ -1,12 +1,12 @@
 # Acceptance
 
-`npm test` on 2026-11-04 (Node v22.23.4, c8). The test script and c8 include are globs (`skills/*/scripts/test/*.test.mjs`, `scripts/test/*.test.mjs`, `skills/*/scripts/lib/**/*.mjs`). `ego-deps.mjs` and entry files such as `tb.mjs` stay outside the include. Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `teambition-ego` covers `pure.mjs`, `launch-check.mjs`, `run-check.mjs`, `session.mjs`, `write.mjs`, and `domains/testcase.mjs`. `x-post` covers `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, and `post-flow.mjs`. `skills/_template/scripts/lib/pure.mjs` is included and is 100% lines.
+`npm test` on 2026-11-04 (Node v22.23.4, c8). The test script and c8 include are globs (`skills/*/scripts/test/*.test.mjs`, `scripts/test/*.test.mjs`, `skills/*/scripts/lib/**/*.mjs`). `ego-deps.mjs` and entry files such as `tb.mjs` stay outside the include. Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `teambition-ego` covers `pure.mjs`, `launch-check.mjs`, `run-check.mjs`, `session.mjs`, `write.mjs`, and `domains/testcase.mjs`. `x-post` covers `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, and `post-flow.mjs`. `xiaohongshu-ego` covers `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, `creator-dom.mjs`, and `publish-flow.mjs`. `skills/_template/scripts/lib/pure.mjs` is included and is 100% lines.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 313 passed |
-| Line coverage | **98.27%** |
-| Statement coverage | 98.27% |
+| Tests | 362 passed |
+| Line coverage | **98.46%** |
+| Statement coverage | 98.46% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
@@ -14,6 +14,7 @@
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
 | `x-post` included lib lines | **95.80%** (`launch.mjs`, `run-check.mjs` 100%; `pure.mjs` 99.71%; `post-flow.mjs` 97.56%; `loaded-script.mjs` 93.54%; `session.mjs` 91.64%; `fetch-public.mjs` 91.07%; `transaction.mjs` 88.96%) |
+| `xiaohongshu-ego` included lib lines | **100%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, `creator-dom.mjs`, `publish-flow.mjs`) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -193,4 +194,21 @@ Included line coverage under the c8 glob: `launch.mjs` and `run-check.mjs` are 1
 ```bash
 node skills/x-post/scripts/check-login.mjs
 node skills/x-post/scripts/post.mjs --text "ego-skills x-post: post on X from a logged-in Ego Lite session (page.fetch CreateTweet). Login-check first. Nothing sends without --yes. https://github.com/terryso/ego-skills"
+```
+
+## xiaohongshu-ego
+
+Publishes one Xiaohongshu video note through the creator web UI. Ego Lite only, not MCP. Login-check first. Logged out, nickname mismatch, or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip`. check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+`post-video.mjs` without `--yes` checks login, prints a plan JSON that includes the cover path, and exits 3. It does not upload. `post-video.mjs --yes` uploads one video. When `--cover` is set, it calls `setInputFiles` on `input.pk-cover-list-file-input` after the video is ready, then waits for the toast 「已添加 PK 封面」 and a cover counter advance such as `0/3` → `1/3`. There is no crop dialog. If that confirmation fails, the run exits 1 and does not click 发布. Without `--cover`, the platform keeps the first frame and the skill does not invent one. Success is `https://www.xiaohongshu.com/explore/<noteId>`.
+
+`edit-cover.mjs` is best-effort for a note that already published. It opens the update URL, uses the same PK cover input, and clicks the footer 发布 only after the same toast and counter check. A save can return the note to 审核中. `加载失败` does not click 发布. Prefer the pre-publish cover.
+
+Unit tests mock the page and session and do not call xiaohongshu.com. No Ego smoke was run in this environment (no logged-in browser).
+
+```bash
+node skills/xiaohongshu-ego/scripts/check-login.mjs
+node skills/xiaohongshu-ego/scripts/post-video.mjs \
+  --video /absolute/path/to/video.mp4 --title "Title" --desc "Description" \
+  --cover /absolute/path/to/cover-3x4.png
 ```

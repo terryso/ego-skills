@@ -72,12 +72,13 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 | 2e | `douyin-video` | Publish a local video to the Douyin creator center (**shipping**) | Public by default; success is content management or a publish-success message |
 | 2f | `teambition-ego` | Read Teambition test plans and cases, and write one case at a time, through the Ego session (**shipping**, Phase 2a) | Login matters; the testcase API is not the Open API token |
 | 2g | `x-post` | Post on X through the logged-in Ego session (**shipping**) | `page.fetch` CreateTweet; nothing sends without `--yes`; success is the status URL |
+| 2h | `xiaohongshu-ego` | Publish one Xiaohongshu video note through the creator web UI (**shipping**) | Nothing uploads without `--yes`; `--cover` must replace the first frame before 发布; success is the explore URL |
 | 3 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
 | 4 | `github-starred-export` | Export the user's own starred repos | Not started |
 | 5 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
 | 6 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Not started |
 
-**Shipped:** `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, `teambition-ego` (testcase read plus Phase 2a single-case create / update / set-status / archive), and `x-post`. Each needs ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
+**Shipped:** `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, `teambition-ego` (testcase read plus Phase 2a single-case create / update / set-status / archive), `x-post`, and `xiaohongshu-ego`. Each needs ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
 
 ---
 
@@ -162,7 +163,7 @@ Links each `skills/<id>` into `~/.agents/skills/<id>` (and notes Codex/Claude/Cu
 
 | Phase | Where | Deliverable |
 |-------|-------|-------------|
-| Now | `github.com/terryso/ego-skills` | `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, `teambition-ego`, and `x-post`. Bilingual README. Install script links `skills/*`. ego lite / `ego-browser` required. |
+| Now | `github.com/terryso/ego-skills` | `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, `teambition-ego`, `x-post`, and `xiaohongshu-ego`. Bilingual README. Install script links `skills/*`. ego lite / `ego-browser` required. |
 | Later | Community PRs | New skills only when they are actually useful. No SaaS language. |
 
 The public repo is `https://github.com/terryso/ego-skills` (MIT). Do not add paid tiers, npm publish, or hosted runners.
