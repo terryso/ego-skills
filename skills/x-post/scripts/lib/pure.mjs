@@ -2,6 +2,8 @@
 // CreateTweet and CreateNoteTweet match the 2026-11-04 Ego captures
 // (main.0a76dc3677efe2b2a.js). Do not add other operation query ids here.
 
+import { MAX_IMAGES, mediaTypeForName } from "./media.mjs";
+
 export const SKILL = "x-post";
 export const HOME_URL = "https://x.com/home";
 export const COMPOSE_URL = "https://x.com/compose/post";
@@ -100,16 +102,21 @@ export const USAGE = `x-post — post on X via the logged-in Ego Lite session (p
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
 Nothing is sent without --yes. Show the draft to the user first.
+--image is repeatable (up to 4 png/jpeg/webp, each <= 5 MiB). GIF is rejected.
+Without --yes the draft lists each image's bytes and md5 and nothing is uploaded.
 Reply (--reply-to) is best-effort: a live page.fetch reply returned GraphQL 226 and was not verified.
 
   node scripts/check-login.mjs
   node scripts/check-login.mjs --keep
   node scripts/post.mjs --text "..."
   node scripts/post.mjs --text "..." --yes [--json] [--reply-to <statusId>]
+  node scripts/post.mjs --text "..." --image /absolute/path/to/image.png
+  node scripts/post.mjs --text "..." --image /absolute/path/to/image.png --yes
   node scripts/cleanup.mjs
 
 check-login exits 0 when x.com is signed in, 2 when login is required or ego-browser is missing.
 post without --yes prints the draft and exits 3. post --yes prints https://x.com/<screen_name>/status/<id>.
+A missing, empty, oversized, or unsupported image exits 1 before any network call.
 Default finish({ keep: [] }). --keep leaves the page.
 cleanup closes the x-post browser space. It does not delete a post.
 `;
@@ -152,10 +159,12 @@ export function parsePostArgs(argv) {
     queryId: "",
     transactionId: "",
     taskName: SPACE_NAME,
+    images: [],
   };
   const parsed = parseFlags(argv, out, {
     "--text": (value) => { out.text = value == null ? "" : String(value); },
     "--reply-to": (value) => { out.replyTo = String(value || ""); },
+    "--image": (value) => { out.images.push(String(value == null ? "" : value)); },
     "--yes": () => { out.yes = true; },
     "--json": () => { out.json = true; },
     "--keep": () => { out.keep = true; },
@@ -166,10 +175,14 @@ export function parsePostArgs(argv) {
   });
   if (parsed.help) return parsed;
   out.text = out.text.trim();
+  out.images = out.images.map((value) => value.trim());
   if (!out.text) throw new Error("Missing --text");
   if (charCount(out.text) > MAX_TEXT_CHARS) throw new Error("--text is longer than 25000 characters");
   if (out.replyTo && !/^\d{1,25}$/.test(out.replyTo)) throw new Error("--reply-to must be a numeric status id");
   if (out.queryId && !isQueryId(out.queryId)) throw new Error("--query-id is not a web-client query id");
+  if (out.images.length > MAX_IMAGES) throw new Error(`At most ${MAX_IMAGES} --image files`);
+  if (out.images.some((value) => !value)) throw new Error("Missing value for --image");
+  for (const image of out.images) mediaTypeForName(image);
   return out;
 }
 
@@ -183,7 +196,7 @@ function parseFlags(argv, out, handlers) {
     const arg = args[i];
     const handler = handlers[arg];
     if (!handler) throw new Error(`Unknown arg: ${arg}`);
-    const takesValue = arg === "--text" || arg === "--reply-to" || arg === "--query-id" || arg === "--task-name" || arg === "--transaction-id";
+    const takesValue = arg === "--text" || arg === "--reply-to" || arg === "--image" || arg === "--query-id" || arg === "--task-name" || arg === "--transaction-id";
     if (takesValue) {
       const value = args[i + 1];
       if (value == null || String(value).startsWith("--")) throw new Error(`Missing value for ${arg}`);
@@ -196,10 +209,18 @@ function parseFlags(argv, out, handlers) {
   return out;
 }
 
-export function draftOf({ text = "", replyTo = "", long = false } = {}) {
+export function draftOf({ text = "", replyTo = "", long = false, images = [] } = {}) {
   const chars = charCount(text);
   const weighted = weightedLength(text);
   const note = needsNoteTweet(text, { long });
+  const media = (images || []).map((image) => {
+    if (typeof image === "string") return { path: image };
+    return strip({
+      path: image && image.path ? image.path : "",
+      bytes: image && image.bytes,
+      md5: image && image.md5,
+    });
+  });
   return {
     text: String(text),
     reply_to: replyTo || null,
@@ -208,6 +229,7 @@ export function draftOf({ text = "", replyTo = "", long = false } = {}) {
     long_text: note,
     operation: note ? "CreateNoteTweet" : "CreateTweet",
     reply_best_effort: Boolean(replyTo),
+    media,
   };
 }
 
@@ -238,6 +260,17 @@ export function formatDraftText(summary) {
   }
   if (draft.long_text) {
     lines.push(`note: weighted length ${draft.weighted ?? "?"} is over ${MAX_WEIGHTED_TWEET_LENGTH}, or --long was set. --yes sends CreateNoteTweet.`);
+  }
+  const media = draft.media || [];
+  if (media.length) {
+    lines.push("media (not uploaded):");
+    for (const item of media) {
+      const size = item.bytes == null ? "size unknown" : `${item.bytes} bytes`;
+      const hash = item.md5 ? `, md5 ${item.md5}` : "";
+      lines.push(`- ${item.path} (${size}${hash})`);
+    }
+  } else {
+    lines.push("media: (none)");
   }
   lines.push("---", draft.text, "---", summary.error || "");
   return `${lines.join("\n")}\n`;
@@ -502,10 +535,16 @@ export function normalizeLanguage(value) {
   return text;
 }
 
-export function buildStatusBody({ text, replyTo = "", queryId, features = CAPTURED_FEATURES, note = false } = {}) {
+export function buildStatusBody({ text, replyTo = "", queryId, features = CAPTURED_FEATURES, note = false, mediaIds = [] } = {}) {
   const variables = {
     tweet_text: String(text || ""),
-    media: { media_entities: [], possibly_sensitive: false },
+    media: {
+      media_entities: (mediaIds || []).filter(Boolean).map((id) => ({
+        media_id: String(id),
+        tagged_users: [],
+      })),
+      possibly_sensitive: false,
+    },
     semantic_annotation_ids: [],
     disallowed_reply_options: null,
     semantic_annotation_options: note

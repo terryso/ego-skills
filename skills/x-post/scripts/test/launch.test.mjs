@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { CAPTURED_CREATE_TWEET_QUERY_ID, RESULT_TAG, SMOKE_TEXT } from "../lib/pure.mjs";
 import { renderEntry, runCli, whichEgo } from "../lib/launch.mjs";
@@ -170,4 +173,98 @@ test("spawn failures and untagged output", async () => {
     spawn() { return childWith({ stdout: `${RESULT_TAG}${JSON.stringify({ exitCode: 0 })}\n` }); },
   });
   assert.equal(await runCli("cleanup", ["--task-name", "x-post"], noRm), 0);
+});
+
+function writePng(name = "card.png", bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "x-post-cli-"));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, bytes);
+  return file;
+}
+
+test("image files are checked before ego, and a dry-run prints size and md5", async () => {
+  let probes = 0;
+  const missing = io({
+    whichEgo() { probes += 1; return "ego-browser"; },
+    spawn() { throw new Error("should not spawn"); },
+  });
+  assert.equal(await runCli("post", ["--text", "hi", "--image", "/tmp/no-such-x-post.png"], missing), 1);
+  assert.match(missing.stderr.text(), /Image not found/);
+  assert.equal(probes, 0);
+
+  const gif = io({
+    whichEgo() { probes += 1; return "ego-browser"; },
+    spawn() { throw new Error("should not spawn"); },
+  });
+  assert.equal(await runCli("post", ["--text", "hi", "--image", "anim.gif"], gif), 1);
+  assert.match(gif.stderr.text(), /GIF is not supported/);
+  assert.equal(probes, 0);
+
+  const big = writePng("big.png");
+  fs.truncateSync(big, 5 * 1024 * 1024 + 1);
+  const oversized = io({ spawn() { throw new Error("should not spawn"); } });
+  assert.equal(await runCli("post", ["--text", "hi", "--image", big], oversized), 1);
+  assert.match(oversized.stderr.text(), /exceeds 5 MiB/);
+
+  const file = writePng();
+  let spawned = 0;
+  const draft = io({ spawn() { spawned += 1; } });
+  assert.equal(await runCli("post", ["--text", "hi", "--image", file], draft), 3);
+  assert.match(draft.stdout.text(), /media \(not uploaded\)/);
+  assert.match(draft.stdout.text(), /md5 [0-9a-f]{32}/);
+  assert.match(draft.stdout.text(), new RegExp(`${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.equal(draft.stdout.text().includes("media_id"), false);
+  assert.equal(spawned, 0);
+
+  const asJson = io({ spawn() { spawned += 1; } });
+  assert.equal(await runCli("post", ["--text", "hi", "--image", file, "--json"], asJson), 3);
+  assert.match(asJson.stdout.text(), /"md5":/);
+  assert.equal(asJson.stdout.text().includes("media_id"), false);
+
+  const absent = io({
+    whichEgo: () => null,
+    spawn() { throw new Error("should not spawn"); },
+  });
+  assert.equal(await runCli("post", ["--text", "hello", "--image", file], absent), 2);
+  assert.match(absent.stdout.text(), /md5/);
+  assert.match(absent.stdout.text(), /ego-browser not found/);
+});
+
+test("--yes passes image paths into the entry and does not inline the bytes", async () => {
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7, 7]);
+  const first = writePng("one.png", bytes);
+  const second = writePng("two.webp", Buffer.concat([
+    Buffer.from("RIFF"),
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.from("WEBP"),
+  ]));
+  let entry = "";
+  const deps = io({
+    fs: {
+      writeFile: async (_file, source) => { entry = source; },
+      rm: async () => {},
+    },
+    spawn() {
+      return childWith({
+        stdout: `${RESULT_TAG}${JSON.stringify({
+          ok: true,
+          sent: true,
+          exitCode: 0,
+          url: "https://x.com/Suchuanyi/status/1",
+          media: [{ path: first, media_id: "2117874109082427392", bytes: bytes.length }],
+          transaction_id_source: "generated",
+          query_id_source: "bundle",
+        })}\n`,
+      });
+    },
+  });
+  const code = await runCli("post", ["--text", "hi", "--image", first, "--image", second, "--yes", "--json"], deps);
+  assert.equal(code, 0);
+  assert.match(deps.stdout.text(), /"media_id": "2117874109082427392"/);
+  assert.match(deps.stdout.text(), /"transaction_id_source": "generated"/);
+  assert.match(deps.stdout.text(), /"query_id_source": "bundle"/);
+  assert.match(entry, /"images":\[/);
+  assert.match(entry, new RegExp(first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(entry, new RegExp(second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(entry.includes(bytes.toString("base64")), false);
 });

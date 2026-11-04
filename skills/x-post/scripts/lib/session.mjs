@@ -2,6 +2,7 @@
 
 import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
 import { loadClientWebBytes, readLoadedClientScript, warmClientScript } from "./loaded-script.mjs";
+import { uploadImagesOnPage } from "./media-upload.mjs";
 import { COMPOSE_URL, HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
 import {
   animationPathsFromHtml,
@@ -287,8 +288,10 @@ export function createXSession({ task, page, pageName = "p1", keep = false, fetc
       });
       return String(href || "");
     },
+    async uploadImages(request) {
+      return uploadImagesOnPage(page, request);
+    },
     async postJson(request) {
-      // Media upload is not implemented. The body is the captured text-only CreateTweet shape.
       const response = await page.fetch(request.url, {
         method: "POST",
         credentials: "include",

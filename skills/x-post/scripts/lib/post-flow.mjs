@@ -1,4 +1,5 @@
 import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
+import { describeImages } from "./media.mjs";
 import {
   CAPTURED_CREATE_NOTE_TWEET_QUERY_ID,
   CAPTURED_CREATE_TWEET_QUERY_ID,
@@ -10,6 +11,7 @@ import {
   HOW_TO_LOGIN_ZH,
   LOGIN_TIP,
   LOGIN_TIP_ZH,
+  PUBLIC_WEB_BEARER,
   SKILL,
   SPACE_NAME,
   buildStatusBody,
@@ -128,6 +130,20 @@ async function requireTransaction(session, path, config) {
 
 export async function performPost(config, session) {
   if (!config || !config.yes) return confirmationSummary(config || {});
+  const imagePaths = Array.isArray(config.images) ? config.images : [];
+  let prepared = [];
+  if (imagePaths.length) {
+    try {
+      prepared = await describeImages(imagePaths);
+    } catch (error) {
+      return {
+        ok: false,
+        sent: false,
+        exitCode: 1,
+        error: error && error.message ? error.message : String(error),
+      };
+    }
+  }
   await session.ensureSite();
   let detected = await session.detect();
   if (needsRepaint(detected)) {
@@ -195,6 +211,49 @@ export async function performPost(config, session) {
       // Opening the composer is pacing, not the post itself.
     }
   }
+  let media = [];
+  if (prepared.length) {
+    if (typeof session.uploadImages !== "function") {
+      return {
+        ok: false,
+        sent: false,
+        exitCode: 1,
+        error: "Image upload is unavailable in this session",
+        operation,
+        note,
+        transaction_id_source: transaction.source,
+        query_id: discovered.queryId,
+        query_id_source: discovered.source,
+        page,
+      };
+    }
+    try {
+      media = await session.uploadImages({
+        images: prepared,
+        bearer: discovered.bearer || PUBLIC_WEB_BEARER,
+        csrfToken,
+      });
+    } catch (error) {
+      if (error && error.loginRequired) {
+        if (config.keep) {
+          try { await session.handOff(); } catch { /* handOff is optional */ }
+        }
+        return { ...loginStop(error.message || "X login required in Ego Lite"), page };
+      }
+      return {
+        ok: false,
+        sent: false,
+        exitCode: 1,
+        error: `Image upload failed: ${error && error.message ? error.message : error}`,
+        operation,
+        note,
+        transaction_id_source: transaction.source,
+        query_id: discovered.queryId,
+        query_id_source: discovered.source,
+        page,
+      };
+    }
+  }
   const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language, note });
   headers["x-client-transaction-id"] = transaction.id;
   const request = {
@@ -206,6 +265,7 @@ export async function performPost(config, session) {
       queryId: discovered.queryId,
       features: CAPTURED_FEATURES,
       note,
+      mediaIds: media.map((item) => item.media_id),
     }),
   };
   const response = await session.postJson(request);
@@ -255,6 +315,7 @@ export async function performPost(config, session) {
     transaction_id_source: transaction.source,
     query_id: discovered.queryId,
     query_id_source: discovered.source,
+    media: media.length ? media : undefined,
     reply_best_effort: Boolean(config.replyTo) || undefined,
     warning: config.replyTo
       ? "Reply via page.fetch was not verified. A capture on 2026-11-04 returned GraphQL 226."
