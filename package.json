@@ -17,44 +17,18 @@
     "douyin"
   ],
   "scripts": {
-    "test": "c8 node --test skills/pinterest-download/scripts/test/*.test.mjs skills/instagram-saved-download/scripts/test/*.test.mjs skills/wechat-channels-video/scripts/test/*.test.mjs skills/kuaishou-video/scripts/test/*.test.mjs skills/youtube-video/scripts/test/*.test.mjs skills/douyin-video/scripts/test/*.test.mjs",
+    "test": "c8 node --test skills/*/scripts/test/*.test.mjs scripts/test/*.test.mjs",
+    "new-skill": "node scripts/new-skill.mjs",
     "install-skills": "bash ./scripts/install-skills.sh"
   },
   "c8": {
+    "all": true,
     "include": [
-      "skills/pinterest-download/scripts/lib/pure.mjs",
-      "skills/pinterest-download/scripts/lib/run.mjs",
-      "skills/pinterest-download/scripts/lib/launch.mjs",
-      "skills/pinterest-download/scripts/lib/media-fetch.mjs",
-      "skills/instagram-saved-download/scripts/lib/pure.mjs",
-      "skills/instagram-saved-download/scripts/lib/run.mjs",
-      "skills/instagram-saved-download/scripts/lib/launch.mjs",
-      "skills/instagram-saved-download/scripts/lib/media-fetch.mjs",
-      "skills/wechat-channels-video/scripts/lib/pure.mjs",
-      "skills/wechat-channels-video/scripts/lib/run-check.mjs",
-      "skills/wechat-channels-video/scripts/lib/launch-check.mjs",
-      "skills/kuaishou-video/scripts/lib/pure.mjs",
-      "skills/kuaishou-video/scripts/lib/run-check.mjs",
-      "skills/kuaishou-video/scripts/lib/launch-check.mjs",
-      "skills/kuaishou-video/scripts/lib/config-file.mjs",
-      "skills/kuaishou-video/scripts/lib/run-ego.mjs",
-      "skills/youtube-video/scripts/lib/pure.mjs",
-      "skills/youtube-video/scripts/lib/run-check.mjs",
-      "skills/youtube-video/scripts/lib/launch-check.mjs",
-      "skills/youtube-video/scripts/lib/config-file.mjs",
-      "skills/youtube-video/scripts/lib/run-ego.mjs",
-      "skills/youtube-video/scripts/lib/publish-flow.mjs",
-      "skills/youtube-video/scripts/lib/studio-dom.mjs",
-      "skills/douyin-video/scripts/lib/pure.mjs",
-      "skills/douyin-video/scripts/lib/run-check.mjs",
-      "skills/douyin-video/scripts/lib/launch-check.mjs",
-      "skills/douyin-video/scripts/lib/config-file.mjs",
-      "skills/douyin-video/scripts/lib/run-ego.mjs",
-      "skills/douyin-video/scripts/lib/publish-flow.mjs",
-      "skills/douyin-video/scripts/lib/douyin-dom.mjs"
+      "skills/*/scripts/lib/**/*.mjs"
     ],
     "exclude": [
-      "skills/*/scripts/test/**"
+      "skills/*/scripts/test/**",
+      "skills/*/scripts/lib/ego-deps.mjs"
     ],
     "reporter": [
       "text",

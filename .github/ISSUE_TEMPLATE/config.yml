@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Non-ego skills
+    url: https://github.com/terryso/claw-skills
+    about: CLI or MCP skills that do not use ego-browser belong in claw-skills, or in your own repo installed with npx skills add.
