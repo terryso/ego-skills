@@ -89,7 +89,7 @@ node skills/x-post/scripts/cleanup.mjs
 
 加权长度用 twitter-text v3 的 `maxWeightedTweetLength`（280）。不超过就发 **CreateTweet**。超过，或显式 `--long`，就发 **CreateNoteTweet**（2026-11-04 捕获）。普通 `/compose/post` 的长文就会走这条，不必打开 Articles。
 
-CreateNoteTweet 的 `page.fetch` 不带 `x-client-transaction-id` 会返回 226。脚本用当前页面的 verification key、`ondemand.s` 和 `loading-x-anim` 现算一个。算不出来可以传 `--transaction-id`（从 UI 请求里抄来的值）。不要编一个假的。
+CreateTweet 和 CreateNoteTweet 都会带上现算的 `x-client-transaction-id`。材料先读 `https://x.com/i/jf/`，没有再读 `https://x.com/home`：verification key、`ondemand.s`、`loading-x-anim`。缺任何一项就退出码 `1`、`sent: false`，**不会**裸发。也可以传 `--transaction-id`（从 UI 请求里抄来的值）。不要编一个假的。
 
 成功仍然是 `https://x.com/<screen_name>/status/<id>`。长文的完整正文在 `note_tweet.note_tweet_results.result.text`；`legacy.full_text` 会被截断，不当成全文。
 

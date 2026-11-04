@@ -434,11 +434,15 @@ export function needsNoteTweet(text, { long = false } = {}) {
 }
 
 export function extractScriptUrls(html) {
-  const re = /(?:src|href)=["'](https:\/\/abs\.twimg\.com\/responsive-web\/client-web[^"']+\.js)["']/g;
+  const source = String(html || "");
   const urls = [];
-  for (const match of String(html || "").matchAll(re)) {
-    if (!urls.includes(match[1])) urls.push(match[1]);
-  }
+  const add = (value) => {
+    if (value && !urls.includes(value)) urls.push(value);
+  };
+  const quoted = /(?:src|href)=["'](https:\/\/abs\.twimg\.com\/responsive-web\/client-web[^"']+\.js)["']/g;
+  for (const match of source.matchAll(quoted)) add(match[1]);
+  const loose = /https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/[A-Za-z0-9._-]+\.js/g;
+  for (const match of source.matchAll(loose)) add(match[0]);
   return urls;
 }
 

@@ -5,15 +5,15 @@
 | Metric | Result |
 |--------|--------|
 | Tests | 302 passed |
-| Line coverage | **98.76%** |
-| Statement coverage | 98.76% |
+| Line coverage | **98.58%** |
+| Statement coverage | 98.58% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
-| `x-post` included lib lines | **97.68%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `post-flow.mjs` 100%; `session.mjs` 97.93%; `transaction.mjs` 85.71%) |
+| `x-post` included lib lines | **96.80%** (`pure.mjs`, `launch.mjs`, `run-check.mjs` 100%; `post-flow.mjs` 99.32%; `session.mjs` 92.3%; `transaction.mjs` 87.26%) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -188,7 +188,7 @@ Posts to X through the logged-in Ego session. Login-check first. Logged out or m
 
 Unit tests mock the session and do not call x.com. No Ego smoke was run in this environment (no logged-in browser). Pro smoke: show the exact text in `skills/x-post/SKILL.md`, then re-run that command with `--yes`. Leave the announcement up.
 
-Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, `run-check.mjs`, and `post-flow.mjs` are 100% lines. `session.mjs` is 97.93%. `transaction.mjs` is 85.71%. `ego-deps.mjs` and the entry scripts stay outside the include.
+Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, and `run-check.mjs` are 100% lines. `post-flow.mjs` is 99.32%. `session.mjs` is 92.3%. `transaction.mjs` is 87.26%. CreateTweet and CreateNoteTweet both refuse to post when `x-client-transaction-id` cannot be built from `https://x.com/i/jf/` (verification key, `ondemand.s`, `loading-x-anim`). `ego-deps.mjs` and the entry scripts stay outside the include.
 
 ```bash
 node skills/x-post/scripts/check-login.mjs

@@ -49,7 +49,7 @@ Sent by `page.fetch` with `credentials: "include"` so the browser attaches `auth
 | `content-type` | `application/json` |
 | `referer` | `https://x.com/compose/post` |
 
-`x-client-transaction-id` is not required for the captured short CreateTweet (one `page.fetch` succeeded without it). Do not invent a value for that call.
+Both CreateTweet and CreateNoteTweet now send `x-client-transaction-id`. The skill reads it from the x.com shell document (`https://x.com/i/jf/`, then home) — verification key, `ondemand.s`, and `loading-x-anim` — and does not post when any of those are missing. `--transaction-id` supplies a value copied from a real UI request. Do not invent one.
 
 Do not set a `Cookie` header. The jar rides along with `credentials: "include"`.
 

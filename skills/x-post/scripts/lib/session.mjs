@@ -1,7 +1,13 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
 import { HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
-import { buildTransactionId, onDemandFileUrl } from "./transaction.mjs";
+import {
+  animationPathsFromHtml,
+  buildTransactionId,
+  describeMissingMaterials,
+  onDemandFileUrl,
+  shellHasMaterials,
+} from "./transaction.mjs";
 
 export async function readCookieJar(page) {
   if (!page || typeof page.cdp !== "function") return { cookies: [], read: false };
@@ -136,13 +142,55 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       });
       return Array.isArray(paths) ? paths.map((path) => String(path || "")) : [];
     },
-    async clientTransaction({ method, path } = {}) {
-      const html = await this.pageSource();
-      let paths = [];
+    async shellHtml() {
+      if (this._shell) return this._shell;
+      const urls = ["https://x.com/i/jf/", "https://x.com/home", "https://x.com/"];
+      let best = "";
+      for (const url of urls) {
+        let text = "";
+        try {
+          text = await this.fetchText(url);
+        } catch {
+          text = "";
+        }
+        if (shellHasMaterials(text)) {
+          this._shell = text;
+          return text;
+        }
+        if (text && text.length > best.length) best = text;
+      }
       try {
-        paths = await this.animationPaths();
+        await this.goto("https://x.com/i/jf/");
       } catch {
-        paths = [];
+        // The fetched documents above are enough when they already contain the shell.
+      }
+      try {
+        const live = await this.pageSource();
+        if (shellHasMaterials(live)) {
+          this._shell = live;
+          return live;
+        }
+        if (live && live.length > best.length) best = live;
+      } catch {
+        // pageSource can fail when the DOM is too large to read back.
+      }
+      try {
+        await this.goto(HOME_URL);
+      } catch {
+        // Stay where navigation left us; the POST does not depend on the visible tab.
+      }
+      this._shell = best;
+      return best;
+    },
+    async clientTransaction({ method, path } = {}) {
+      const html = await this.shellHtml();
+      let paths = animationPathsFromHtml(html);
+      if (!paths.some(Boolean)) {
+        try {
+          paths = await this.animationPaths();
+        } catch {
+          paths = [];
+        }
       }
       const chunkUrl = onDemandFileUrl(html);
       let chunk = "";
@@ -153,7 +201,12 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
           chunk = "";
         }
       }
-      return buildTransactionId({ method, path, html, ondemandSource: chunk, paths });
+      const id = await buildTransactionId({ method, path, html, ondemandSource: chunk, paths });
+      if (id) return id;
+      const missing = describeMissingMaterials({ html, ondemandSource: chunk, paths });
+      const error = new Error(`x.com document is missing ${missing.join(", ") || "transaction materials"}`);
+      error.code = "TRANSACTION_MATERIALS";
+      throw error;
     },
     async screenName() {
       const href = await page.evaluate(() => {

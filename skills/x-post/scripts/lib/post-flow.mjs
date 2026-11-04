@@ -50,10 +50,20 @@ export async function resolveOperationQuery(session, operationName, override) {
   const capturedSource = note ? CAPTURED_NOTE_QUERY_SOURCE : CAPTURED_QUERY_SOURCE;
   if (override) return { queryId: override, source: "flag", bearer: "", operation: operationName };
   let html = "";
-  try {
-    html = await session.pageSource();
-  } catch {
-    html = "";
+  if (typeof session.shellHtml === "function") {
+    try {
+      const shell = await session.shellHtml();
+      if (shell && extractScriptUrls(shell).length) html = shell;
+    } catch {
+      html = "";
+    }
+  }
+  if (!html) {
+    try {
+      html = await session.pageSource();
+    } catch {
+      html = "";
+    }
   }
   const urls = rankScriptUrls(extractScriptUrls(html));
   let bearer = extractWebBearer(html);
@@ -77,14 +87,19 @@ export function resolveCreateTweetQuery(session, override) {
   return resolveOperationQuery(session, "CreateTweet", override);
 }
 
-async function noteTransaction(session, path, config) {
+async function requireTransaction(session, path, config) {
   if (config.transactionId) return { id: config.transactionId, source: "flag" };
-  if (typeof session.clientTransaction !== "function") return { id: "", source: "missing" };
+  const refused = "Refusing to post without x-client-transaction-id. Load https://x.com/i/jf/ in Ego until it includes twitter-site-verification, ondemand.s, and loading-x-anim, or pass --transaction-id from a real UI request.";
+  if (typeof session.clientTransaction !== "function") {
+    return { id: "", source: "missing", error: refused };
+  }
   try {
     const id = String(await session.clientTransaction({ method: "POST", path }) || "");
-    return { id, source: id ? "generated" : "missing" };
-  } catch {
-    return { id: "", source: "missing" };
+    if (!id) return { id: "", source: "missing", error: refused };
+    return { id, source: "generated" };
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error);
+    return { id: "", source: "missing", error: `${refused} ${detail}` };
   }
 }
 
@@ -135,9 +150,23 @@ export async function performPost(config, session) {
   }
   const language = normalizeLanguage(detected.lang);
   const pathname = new URL(url).pathname;
-  const transaction = note ? await noteTransaction(session, pathname, config) : { id: "", source: "not-used" };
+  const transaction = await requireTransaction(session, pathname, config);
+  if (!transaction.id) {
+    return {
+      ok: false,
+      sent: false,
+      exitCode: 1,
+      error: transaction.error,
+      operation,
+      note,
+      transaction_id_source: "missing",
+      query_id: discovered.queryId,
+      query_id_source: discovered.source,
+      page,
+    };
+  }
   const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language });
-  if (transaction.id) headers["x-client-transaction-id"] = transaction.id;
+  headers["x-client-transaction-id"] = transaction.id;
   const request = {
     url,
     headers,

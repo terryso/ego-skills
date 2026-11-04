@@ -20,6 +20,8 @@ export function verificationKeyFromHtml(html) {
 
 export function onDemandFileUrl(html) {
   const source = String(html || "");
+  const direct = source.match(/https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/ondemand\.s\.[A-Za-z0-9_-]+\.js/);
+  if (direct) return direct[0];
   const re = /(\d+):\s*["']ondemand\.s["'][\s\S]*?\}\)\[e\]\s*\|\|\s*e\)\s*\+\s*["']\.["']\s*\+\s*\(\{[\s\S]*?\b\1:\s*["']([a-zA-Z0-9_-]+)["']/;
   const hash = re.exec(source)?.[2];
   if (!hash) return "";
@@ -27,10 +29,44 @@ export function onDemandFileUrl(html) {
 }
 
 export function keyByteIndices(source) {
-  const indices = Array.from(String(source || "").matchAll(/\(\w\[(\d{1,2})\],\s*16\)/g), (match) => Number(match[1]));
+  const text = String(source || "");
+  let indices = Array.from(text.matchAll(/\(\w\[(\d{1,2})\],\s*16\)/g), (match) => Number(match[1]));
+  if (!indices.length) {
+    indices = Array.from(text.matchAll(/\(\s*\w+\s*\[\s*(\d{1,2})\s*\]\s*,\s*16\s*\)/g), (match) => Number(match[1]));
+  }
   if (!indices.length) return null;
   const [rowIndex, ...keyBytesIndices] = indices;
   return { rowIndex, keyBytesIndices };
+}
+
+export function animationPathsFromHtml(html) {
+  const source = String(html || "");
+  const blocks = [];
+  const re = /id=["']loading-x-anim-(\d+)["'][^>]*>([\s\S]*?)<\/svg>/gi;
+  for (const match of source.matchAll(re)) {
+    const paths = Array.from(match[2].matchAll(/\bd=["']([^"']+)["']/gi)).map((item) => item[1]);
+    blocks.push({ index: Number(match[1]), path: paths[1] || paths[0] || "" });
+  }
+  blocks.sort((a, b) => a.index - b.index);
+  return blocks.map((block) => block.path);
+}
+
+export function shellHasMaterials(html) {
+  return Boolean(
+    verificationKeyFromHtml(html)
+    && onDemandFileUrl(html)
+    && animationPathsFromHtml(html).some(Boolean),
+  );
+}
+
+export function describeMissingMaterials({ html, ondemandSource, paths } = {}) {
+  const missing = [];
+  if (!verificationKeyFromHtml(html)) missing.push("twitter-site-verification");
+  if (!onDemandFileUrl(html)) missing.push("ondemand.s url");
+  else if (!keyByteIndices(ondemandSource || "")) missing.push("ondemand.s key-byte indices");
+  const frames = (paths && paths.some(Boolean)) ? paths : animationPathsFromHtml(html);
+  if (!frames.some(Boolean)) missing.push("loading-x-anim");
+  return missing;
 }
 
 export function frameRowsFromPath(path) {

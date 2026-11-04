@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   animationKey,
+  animationPathsFromHtml,
   buildTransactionId,
   decodeKeyBytes,
+  describeMissingMaterials,
   encodeTransactionId,
   frameRowsFromPath,
   keyByteIndices,
   onDemandFileUrl,
+  shellHasMaterials,
   verificationKeyFromHtml,
 } from "../lib/transaction.mjs";
 
@@ -20,6 +23,12 @@ test("page inputs parse, and a missing page does not invent an id", async () => 
   assert.equal(verificationKeyFromHtml("<html>"), "");
   assert.match(onDemandFileUrl(HTML), /ondemand\.s\.h4sha\.js$/);
   assert.equal(onDemandFileUrl("no chunk"), "");
+  assert.equal(onDemandFileUrl('<script src="https://abs.twimg.com/responsive-web/client-web/ondemand.s.directHash.js"></script>'), "https://abs.twimg.com/responsive-web/client-web/ondemand.s.directHash.js");
+  assert.deepEqual(keyByteIndices("( n [ 12 ] , 16 )"), { rowIndex: 12, keyBytesIndices: [] });
+  const svg = `<svg id="loading-x-anim-1"><g><path d="M0"/><path d="M 1 2 C 3 4 5 6 7 8 9"/></g></svg><svg id="loading-x-anim-0"><g><path d="M0"/><path d="M 9 9 C 1 1 2 2 3 3 4"/></g></svg>`;
+  assert.deepEqual(animationPathsFromHtml(svg), ["M 9 9 C 1 1 2 2 3 3 4", "M 1 2 C 3 4 5 6 7 8 9"]);
+  assert.equal(shellHasMaterials(`<meta name="twitter-site-verification" content="AAAAAAAA">${svg}<script src="https://abs.twimg.com/responsive-web/client-web/ondemand.s.directHash.js"></script>`), true);
+  assert.deepEqual(describeMissingMaterials({ html: "<html></html>", ondemandSource: "", paths: [] }), ["twitter-site-verification", "ondemand.s url", "loading-x-anim"]);
   assert.deepEqual(keyByteIndices("(a[0], 16)(b[3], 16)"), { rowIndex: 0, keyBytesIndices: [3] });
   assert.equal(keyByteIndices("none"), null);
   assert.deepEqual(decodeKeyBytes(""), []);

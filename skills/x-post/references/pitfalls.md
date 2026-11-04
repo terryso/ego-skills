@@ -8,7 +8,7 @@
 4. **不要猜 POST body，也不要猜 queryId。** 只使用 `references/create-tweet.md` 里 2026-11-04 捕获并验证过的 CreateTweet。客户端包里读到的 `operationName:"CreateTweet"` 可以覆盖捕获值。读不到就用 `l4hk8uVGvR-a8kzQ4nOhPA`。不要发明别的 mutation。
 5. **功能开关用捕获下来的那一份。** 少字段或多字段都可能失败。不要为了“补全”去添键。
 6. **登录墙和限流。** 401 或没有 `auth_token` 就是要在 Ego 里登录 x.com。HTTP 429 或错误码 88 是限流，不要重试，不要换端点。
-7. **GraphQL 226。** “looks like it might be automated”。短帖 CreateTweet 在 2026-11-04 有一次不带 `x-client-transaction-id` 也成功。CreateNoteTweet 不带这个头会 226；带上页面算出来的、或 UI 刚发出的那个头，才会 200。回复仍然是尽力而为。遇到 226 就把错误给人，不要改去点作曲框，也不要重试。
+7. **GraphQL 226 / 缺 transaction id。** 不带 `x-client-transaction-id` 的 CreateNoteTweet 会 226。登录后的首页 DOM 往往已经丢掉 `loading-x-anim`，所以要先读 `https://x.com/i/jf/` 的文档，而不是只读 `documentElement.outerHTML`。材料不全就退出，`sent: false`，不要裸发。带上算出来的头仍可能 226 或 **344**（每日上限）；把错误给人，不要重试，不要改去点作曲框。
 8. **`ct0` 必须等于 `x-csrf-token`。** 对不上会 403。这是会话密钥，禁止打印、禁止写进日志、禁止让用户粘贴。
 9. **`auth_token` 是 HttpOnly。** `document.cookie` 看不到它。`page.fetch` 必须 `credentials: "include"`，由浏览器自己带上。不要自己拼 Cookie 头。
 10. **成功只认状态链接。** `rest_id` 加上 `core.user_results.result.core.screen_name` 组成 `https://x.com/<screen_name>/status/<id>`。没有链接就不是成功。不要把页面上的 toast 当成唯一证据，也不要点掉无关确认框。

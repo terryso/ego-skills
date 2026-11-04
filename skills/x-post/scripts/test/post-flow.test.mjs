@@ -74,6 +74,7 @@ function session(overrides = {}) {
       if (overrides.finishError) throw new Error("finish");
     },
     async cleanup() { calls.finish += 1; },
+    async clientTransaction() { return "tid-from-session"; },
   };
 }
 
@@ -88,7 +89,8 @@ test("a verified CreateTweet response becomes the status URL", async () => {
   assert.equal(live.calls.post.headers["x-csrf-token"], CSRF);
   assert.equal(live.calls.post.headers.authorization, `Bearer ${PUBLIC_WEB_BEARER}`);
   assert.equal(live.calls.post.headers["x-twitter-client-language"], "zh-cn");
-  assert.equal("x-client-transaction-id" in live.calls.post.headers, false);
+  assert.equal(live.calls.post.headers["x-client-transaction-id"], "tid-from-session");
+  assert.equal(summary.transaction_id_source, "generated");
   assert.equal(live.calls.post.body.variables.disallowed_reply_options, null);
   assert.equal(JSON.stringify(summary).includes(CSRF), false);
   assert.equal(JSON.stringify(summary).includes(PUBLIC_WEB_BEARER), false);
@@ -257,8 +259,12 @@ test("text over the short limit uses CreateNoteTweet and a transaction id", asyn
   const broken = session();
   broken.clientTransaction = async () => { throw new Error("anim down"); };
   const missed = await performPost({ yes: true, text: "x".repeat(281) }, broken);
+  assert.equal(missed.sent, false);
+  assert.equal(missed.exitCode, 1);
   assert.equal(missed.transaction_id_source, "missing");
-  assert.equal("x-client-transaction-id" in broken.calls.post.headers, false);
+  assert.equal(broken.calls.post, null);
+  assert.match(missed.error, /Refusing to post without x-client-transaction-id/);
+  assert.match(missed.error, /loading-x-anim/);
 
   const forced = session();
   forced.clientTransaction = async () => { throw new Error("anim down"); };
@@ -268,12 +274,20 @@ test("text over the short limit uses CreateNoteTweet and a transaction id", asyn
   assert.equal(forced.calls.post.headers["x-client-transaction-id"], "from-flag");
   assert.equal(JSON.stringify(flagged).includes("from-flag"), false);
 
-  const bare = await performPost({ yes: true, text: "x".repeat(281) }, session({
-    response: { status: 200, body: { errors: [{ code: 226, message: "This request looks like it might be automated." }] } },
-  }));
+  const bareSession = session();
+  delete bareSession.clientTransaction;
+  const bare = await performPost({ yes: true, text: "x".repeat(281) }, bareSession);
+  assert.equal(bare.sent, false);
   assert.equal(bare.exitCode, 1);
-  assert.match(bare.error, /without x-client-transaction-id/);
+  assert.equal(bare.calls ? bare.calls.post : bareSession.calls.post, null);
+  assert.match(bare.error, /Refusing to post without x-client-transaction-id/);
   assert.equal(bare.transaction_id_source, "missing");
+
+  const emptyId = session();
+  emptyId.clientTransaction = async () => "";
+  const emptyPost = await performPost({ yes: true, text: "hi" }, emptyId);
+  assert.equal(emptyPost.sent, false);
+  assert.equal(emptyId.calls.post, null);
 
   const rejected = session();
   rejected.clientTransaction = async () => "still-secret";
@@ -304,6 +318,20 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
   const fallback = await resolveCreateTweetQuery(missed, "");
   assert.equal(fallback.queryId, CAPTURED_CREATE_TWEET_QUERY_ID);
   assert.equal(missed.calls.fetched.length, 1);
+  const shell = session({ html: "<html>no scripts</html>" });
+  shell.shellHtml = async () => `<script src="https://abs.twimg.com/responsive-web/client-web/main.live.js"></script>`;
+  shell.fetchText = async (url) => {
+    shell.calls.fetched.push(url);
+    if (String(url).includes("main.live")) return `queryId:"LiveNoteQueryId123",operationName:"CreateNoteTweet"`;
+    return "";
+  };
+  shell.clientTransaction = async () => "tid-shell";
+  const fromShell = await performPost({ yes: true, text: "x".repeat(300) }, shell);
+  assert.equal(fromShell.query_id, "LiveNoteQueryId123");
+  assert.equal(fromShell.query_id_source, "bundle");
+  assert.equal(fromShell.operation, "CreateNoteTweet");
+  assert.equal(shell.calls.post.headers["x-client-transaction-id"], "tid-shell");
+
   const htmlId = session({ html: `queryId:"FromHtmlBundle1234",operationName:"CreateTweet" ${PUBLIC_WEB_BEARER}` });
   const fromHtml = await resolveCreateTweetQuery(htmlId, "");
   assert.equal(fromHtml.queryId, "FromHtmlBundle1234");
