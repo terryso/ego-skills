@@ -19,6 +19,7 @@ test("install-skills.sh links shipped skills and skips _template", () => {
   const linked = fs.readdirSync(dest);
   assert.ok(linked.includes("pinterest-download"));
   assert.ok(linked.includes("douyin-video"));
+  assert.ok(linked.includes("x-post"));
   assert.ok(linked.includes("wechat-channels-video"));
   assert.equal(linked.includes("_template"), false);
   assert.ok(linked.every((name) => !name.startsWith("_")));

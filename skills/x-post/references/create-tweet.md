@@ -1,0 +1,101 @@
+# CreateTweet (verified 2026-11-04)
+
+Source: Ego Lite `page.fetch` against a logged-in x.com session, after a UI Network capture of the same call. Client bundle at capture time: `https://abs.twimg.com/responsive-web/client-web/main.0a76dc3677efe2b2a.js`.
+
+This file is the API contract for `x-post`. Do not invent a different mutation, query id, or body.
+
+## Create text post — verified
+
+`POST https://x.com/i/api/graphql/l4hk8uVGvR-a8kzQ4nOhPA/CreateTweet`
+
+| Piece | Value |
+|-------|--------|
+| Method | `POST` |
+| Path | `/i/api/graphql/{queryId}/CreateTweet` |
+| Captured `queryId` | `l4hk8uVGvR-a8kzQ4nOhPA` |
+| Bundle marker | `operationName:"CreateTweet"` |
+
+`queryId` rotates when X ships a new `main.*.js`. The script reads the loaded client bundle first and uses this captured id only when that read finds nothing. `--query-id` is for a human to pass a newly captured id. No other query id is shipped.
+
+### Body
+
+Top-level JSON: `variables`, `features`, `queryId` (same id as the path).
+
+`variables` for a text-only post:
+
+| Field | Captured value |
+|-------|----------------|
+| `tweet_text` | the post text |
+| `media` | `{ "media_entities": [], "possibly_sensitive": false }` |
+| `semantic_annotation_ids` | `[]` |
+| `disallowed_reply_options` | `null` (kept; do not drop the key) |
+| `semantic_annotation_options` | `{ "source": "UniversalLink" }` |
+
+`features` is the object in `CAPTURED_FEATURES` inside `scripts/lib/pure.mjs`, copied from the UI request. Do not add or remove keys.
+
+The exact text used in the capture was `ego-x-post-capture-ping`. That post was deleted after capture. It is not the smoke text.
+
+### Headers
+
+Sent by `page.fetch` with `credentials: "include"` so the browser attaches `auth_token` (HttpOnly) and `ct0`.
+
+| Header | Notes |
+|--------|--------|
+| `authorization` | Public web-client bearer (`Bearer AAAA…ANRILg…`). Read it from the loaded bundle when present. Not a user secret. Do not print it next to `ct0`. |
+| `x-csrf-token` | Must equal cookie `ct0`. Session secret. Never log it. |
+| `x-twitter-auth-type` | `OAuth2Session` |
+| `x-twitter-active-user` | `yes` |
+| `x-twitter-client-language` | Page language when it looks like `zh-cn` / `en`. Omitted when unknown. |
+| `content-type` | `application/json` |
+| `referer` | `https://x.com/compose/post` |
+
+`x-client-transaction-id` is **not** synthesized. One captured `page.fetch` CreateTweet succeeded without it. Do not invent the value.
+
+Do not set a `Cookie` header. The jar rides along with `credentials: "include"`.
+
+### Success
+
+Envelope: `data.create_tweet.tweet_results.result`.
+
+| Field | Use |
+|-------|-----|
+| `rest_id` | status id |
+| `legacy.id_str` | same id |
+| `core.user_results.result.core.screen_name` | screen name |
+
+Public URL: `https://x.com/{screen_name}/status/{rest_id}`.
+
+Captured example (deleted throwaway): `https://x.com/Suchuanyi/status/2117826677376160218`.
+
+If the response has no screen name, the script reads the profile link (`a[data-testid="AppTabBar_Profile_Link"]`, or the anchor labeled 个人资料 / Profile). It does not scrape a random author link out of the timeline.
+
+## Reply — best-effort, not verified
+
+Same CreateTweet URL and body, plus:
+
+```json
+"reply": {
+  "in_reply_to_tweet_id": "<parent rest_id>",
+  "exclude_reply_user_ids": []
+}
+```
+
+The shape is from the client bundle. A live `page.fetch` reply on 2026-11-04 returned HTTP 200 with GraphQL **226** (`AuthorizationError`, request looked automated). No UI reply was driven. Treat `--reply-to` as best-effort. On 226, stop. Do not click the reply composer and do not retry.
+
+## DeleteTweet — verified, not called
+
+Captured and verified the same day, then left unwired. `cleanup` only closes the local Ego task space. It does not delete a post. Do not call this from `post.mjs`.
+
+`POST https://x.com/i/api/graphql/nxpZCY2K-I6QoFHAHeojFQ/DeleteTweet`
+
+```json
+{ "variables": { "tweet_id": "<rest_id>", "dark_request": false }, "queryId": "nxpZCY2K-I6QoFHAHeojFQ" }
+```
+
+Success: HTTP 200 `{"data":{"delete_tweet":{"tweet_results":{}}}}`.
+
+`CreateNoteTweet` (`seOZkIS8AysCGfPo6yYPVA` in that bundle) was not exercised. This skill does not call it.
+
+## Smoke
+
+Pro posts the exact string in `SKILL.md` / `SMOKE_TEXT` after the user confirms, with `--yes`. Success is the status URL. Leave that announcement up.

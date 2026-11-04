@@ -1,18 +1,19 @@
 # Acceptance
 
-`npm test` on 2026-11-04 (Node v24.22.1, c8). The test script and c8 include are globs (`skills/*/scripts/test/*.test.mjs`, `scripts/test/*.test.mjs`, `skills/*/scripts/lib/**/*.mjs`). `ego-deps.mjs` and entry files such as `tb.mjs` stay outside the include. Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `teambition-ego` covers `pure.mjs`, `launch-check.mjs`, `run-check.mjs`, `session.mjs`, and `domains/testcase.mjs`. `skills/_template/scripts/lib/pure.mjs` is included and is 100% lines.
+`npm test` on 2026-11-04 (Node v22.23.4, c8). The test script and c8 include are globs (`skills/*/scripts/test/*.test.mjs`, `scripts/test/*.test.mjs`, `skills/*/scripts/lib/**/*.mjs`). `ego-deps.mjs` and entry files such as `tb.mjs` stay outside the include. Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `teambition-ego` covers `pure.mjs`, `launch-check.mjs`, `run-check.mjs`, `session.mjs`, `write.mjs`, and `domains/testcase.mjs`. `x-post` covers `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, and `post-flow.mjs`. `skills/_template/scripts/lib/pure.mjs` is included and is 100% lines.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 246 passed |
-| Line coverage | **98.92%** |
-| Statement coverage | 98.92% |
+| Tests | 298 passed |
+| Line coverage | **99.14%** |
+| Statement coverage | 99.14% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
-| `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
+| `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
+| `x-post` included lib lines | **100%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, `post-flow.mjs`) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -177,4 +178,19 @@ Included line coverage under the c8 glob (everything in `scripts/lib/` except `e
 ```bash
 node skills/teambition-ego/scripts/check-login.mjs
 node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambition.com/project/PROJECT/testplan/PLAN/group/GROUP"
+```
+
+## x-post
+
+Posts to X through the logged-in Ego session. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip`. check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+`post.mjs` without `--yes` prints the draft and exits 3. It does not call X. `post.mjs --yes` sends `page.fetch` CreateTweet (`credentials: "include"`). Success is `https://x.com/<screen_name>/status/<id>` from `data.create_tweet.tweet_results.result.rest_id` and `core.user_results.result.core.screen_name`. The query id is read from the loaded `main.*.js` (`operationName:"CreateTweet"`). If that read fails, the script uses the id captured on 2026-11-04: `l4hk8uVGvR-a8kzQ4nOhPA`. It does not ship any other mutation id. `--reply-to` adds `variables.reply` and is best-effort: a live `page.fetch` reply returned GraphQL 226 and was not verified. `cleanup` only closes the `x-post` task space. It does not call DeleteTweet.
+
+Unit tests mock the session and do not call x.com. No Ego smoke was run in this environment (no logged-in browser). Pro smoke: show the exact text in `skills/x-post/SKILL.md`, then re-run that command with `--yes`. Leave the announcement up.
+
+Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, and `post-flow.mjs` are all 100% lines. `ego-deps.mjs` and the entry scripts stay outside the include.
+
+```bash
+node skills/x-post/scripts/check-login.mjs
+node skills/x-post/scripts/post.mjs --text "ego-skills x-post: post on X from a logged-in Ego Lite session (page.fetch CreateTweet). Login-check first. Nothing sends without --yes. https://github.com/terryso/ego-skills"
 ```

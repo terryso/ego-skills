@@ -1,0 +1,113 @@
+---
+name: x-post
+description: >
+  Post on X (x.com / twitter.com) through the logged-in Ego Lite session.
+  Login-check first and soft-fail with exit 2 when ego-browser is missing or
+  x.com is logged out. Sends only with --yes after the draft is shown.
+  Uses page.fetch CreateTweet, not the composer click path. Reply is best-effort.
+  Use when the user asks to tweet, post, or reply on X or Twitter from Ego.
+metadata:
+  version: "0.1.0"
+  requires:
+    bins:
+      - ego-browser
+      - node
+  ego:
+    min_skill_guide: "2.1.0"
+---
+
+# x-post
+
+用 Ego Lite 里已经登录的 Chromium 会话往 X 发帖。主路径是 `page.fetch` 的 **CreateTweet**，不点「发帖」。
+
+Post to X through the logged-in Ego Lite session. The primary path is `page.fetch` **CreateTweet**. Do not click the composer.
+
+成功标准是 stdout 打出 `https://x.com/<screen_name>/status/<id>`。没有这条链接就不算成功。不要顺手点其它确认框。
+
+Success is the status URL on stdout: `https://x.com/<screen_name>/status/<id>`. Do not click unrelated confirmations.
+
+## 先装 Ego
+
+先装 **Ego Lite**，保证 `ego-browser` 在 `PATH`。缺失则 soft-fail（退出码 `2`），**不要**改用 Playwright、Puppeteer 或云端浏览器。
+
+Install **Ego Lite** and put `ego-browser` on `PATH`. If it is missing, soft-fail with exit `2`. Do not switch to Playwright, Puppeteer, or a cloud browser.
+
+## 每次发帖前：登录闸门（必做）
+
+```bash
+node scripts/check-login.mjs
+node scripts/check-login.mjs --keep
+```
+
+| 退出码 | 含义 | Agent 做什么 |
+|--------|------|----------------|
+| `0` | 已登录 | 把 `login_tip` 告诉用户，继续 |
+| `2` | 未登录 / 无 ego-browser | 展示 `how_to_login` / `how_to_login_zh`，**停** |
+| `1` | 其它错误 | 报告 JSON `error`，不要假装已经发出 |
+
+`auth_token` 是 HttpOnly，只存在于浏览器 Cookie 罐。不要打印 Cookie，不要粘贴 Cookie，不要代填密码。
+
+默认 `finish({ keep: [] })`。`--keep` 才把页面留着并 `handOff()`。
+
+## 确认规则
+
+没有 `--yes` 只打印草稿并退出码 `3`，**不发送**。Agent 必须把草稿给人看，等人确认后再加 `--yes`。
+
+Without `--yes` the command prints the draft and exits `3`. It does not send. Show that draft to the user. Add `--yes` only after they confirm.
+
+## 命令
+
+仓库根目录：
+
+```bash
+node skills/x-post/scripts/check-login.mjs
+node skills/x-post/scripts/post.mjs --text "..."
+node skills/x-post/scripts/post.mjs --text "..." --yes
+node skills/x-post/scripts/post.mjs --text "..." --reply-to <statusId> --yes
+node skills/x-post/scripts/post.mjs --text "..." --yes --json
+node skills/x-post/scripts/cleanup.mjs
+```
+
+已安装的技能目录里用 `node scripts/...`。
+
+| 退出码 | 含义 |
+|--------|------|
+| `0` | 已登录，或已发出并打印状态链接，或 cleanup 关掉了本机空间 |
+| `3` | 草稿已打印，拒绝发送 |
+| `2` | 未登录，或没有 `ego-browser` |
+| `1` | 参数、HTTP、GraphQL 或浏览器错误 |
+
+`--json` 打出摘要 JSON。不加 `--json` 且发送成功时，stdout 只有状态链接。
+
+`cleanup` 只对任务空间 `x-post` 执行 `finish({ keep: [] })`。它不删帖。
+
+## 回复
+
+`--reply-to` 会在已捕获的 CreateTweet 变量上加 `variables.reply`。2026-11-04 的实页 `page.fetch` 回复返回 GraphQL **226**（看起来像自动化），**没有**验证成功。当尽力而为：失败就把错误给人，不要改去点回复框，不要重试，不要编造 transaction id。
+
+## 接口
+
+只使用 2026-11-04 捕获并经 `page.fetch` 验证的 CreateTweet。`queryId` 会随 `main.*.js` 轮换：先从当前页面的客户端包里读 `operationName:"CreateTweet"`，读不到再用捕获值 `l4hk8uVGvR-a8kzQ4nOhPA`。不要发明其它 query id。字段、功能开关和 226 说明见 `references/create-tweet.md`。坑见 `references/pitfalls.md`。
+
+媒体上传、私信、点赞、关注都不做。`media.media_entities` 保持 `[]`。
+
+## Pro 冒烟（公告原文）
+
+先 `check-login`（退出码 0）。把下面这段原文给人看，确认后再加 `--yes`。成功时 stdout 是 `https://x.com/<screen_name>/status/<id>`。不要删这条公告。
+
+```text
+ego-skills x-post: post on X from a logged-in Ego Lite session (page.fetch CreateTweet). Login-check first. Nothing sends without --yes. https://github.com/terryso/ego-skills
+```
+
+```bash
+node skills/x-post/scripts/post.mjs --text "ego-skills x-post: post on X from a logged-in Ego Lite session (page.fetch CreateTweet). Login-check first. Nothing sends without --yes. https://github.com/terryso/ego-skills"
+node skills/x-post/scripts/post.mjs --text "ego-skills x-post: post on X from a logged-in Ego Lite session (page.fetch CreateTweet). Login-check first. Nothing sends without --yes. https://github.com/terryso/ego-skills" --yes
+```
+
+## 测试
+
+```bash
+npm test
+```
+
+`npm test` 用 c8 统计 `scripts/lib/**/*.mjs`（不含 `ego-deps.mjs`），行覆盖率不低于 80%。单测不访问 x.com。
