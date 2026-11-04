@@ -25,6 +25,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const RUNNERS = {
   check: { exportName: "executeCheck", runModule: "run-check.mjs", command: "check-login" },
   post: { exportName: "executePost", runModule: "publish-flow.mjs", command: "post-video" },
+  postImage: { exportName: "executePost", runModule: "publish-flow.mjs", command: "post-image-text" },
   cleanup: { exportName: "executeCleanup", runModule: "publish-flow.mjs", command: "cleanup" },
   edit: { exportName: "executeEdit", runModule: "publish-flow.mjs", command: "edit-cover" },
 };
@@ -57,6 +58,12 @@ function parseKind(kind, argv) {
   if (kind === "cleanup") return parseCleanupArgs(argv);
   if (kind === "edit") return parseEditArgs(argv);
   return parsePostArgs(argv);
+}
+
+function needsInputValidation(runner) {
+  return runner.command === "post-video"
+    || runner.command === "post-image-text"
+    || runner.command === "edit-cover";
 }
 
 export async function runCli(kind, argv, deps = {}) {
@@ -93,7 +100,7 @@ export async function runCli(kind, argv, deps = {}) {
   }
 
   let checked = null;
-  if (runner.command === "post-video" || runner.command === "edit-cover") {
+  if (needsInputValidation(runner)) {
     checked = runner.command === "edit-cover"
       ? validateEditInput(args, { exists: io.existsSync, stat: io.statSync })
       : validatePostInput(args, { exists: io.existsSync, stat: io.statSync });
@@ -117,6 +124,7 @@ export async function runCli(kind, argv, deps = {}) {
     taskName: args.taskName,
     yes: Boolean(args.yes),
     video: args.video,
+    images: Array.isArray(args.images) ? args.images : [],
     title: args.title,
     desc: args.desc,
     topics: args.topics,

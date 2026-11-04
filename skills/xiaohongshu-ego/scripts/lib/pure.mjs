@@ -18,12 +18,18 @@ export const COVER_INPUT_SELECTOR = "input.pk-cover-list-file-input";
 export const MAIN_COVER_LABEL = "选择图片上传";
 export const TITLE_RECOMMENDED_CHARS = 20;
 export const LINKS_EXIT = 4;
+export const IMAGE_TAB_LABEL = "上传图文";
+export const IMAGE_TEXT_COMMAND = "post-image-text";
+export const IMAGE_TEXT_MAX_IMAGES = 18;
 
 const VIDEO_EXT = new Set([".mp4", ".mov", ".flv", ".f4v", ".mkv", ".rm", ".rmvb", ".m4v", ".mpg", ".mpeg", ".ts"]);
 const COVER_EXT = new Set([".jpg", ".jpeg", ".png"]);
+// Matches the creator image-tab input accept seen on 2026-11-05:
+// ".jpg,.jpeg,.png,.webp" (no gif).
+const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 const VALUE_FLAGS = new Set([
-  "--video", "--title", "--desc", "--topics", "--cover", "--expect-account", "--task-name", "--note-id",
+  "--video", "--images", "--title", "--desc", "--topics", "--cover", "--expect-account", "--task-name", "--note-id",
 ]);
 
 export const HOW_TO_LOGIN = [
@@ -48,25 +54,31 @@ export const LOGIN_TIP =
 export const LOGIN_TIP_ZH =
   "请告诉用户：在 Ego Lite 里登录 creator.xiaohongshu.com 之后才能发笔记。要对创作者页眉昵称，不要只看 www.xiaohongshu.com。若 login-check 退出码是 2，请人在 Ego Lite 登录后再跑。先展示计划，等人确认后再加 --yes。不要代填密码，不要粘贴 Cookie。";
 
-export const USAGE = `xiaohongshu-ego — publish one Xiaohongshu video note via Ego Lite (creator web UI)
+export const USAGE = `xiaohongshu-ego — publish one Xiaohongshu note (video or image-text) via Ego Lite (creator web UI)
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
 Nothing is uploaded without --yes: that run only checks login and prints a plan (exit 3).
-With --yes and --cover, 发布 is clicked only after 选择图片上传 changes the main-cover preview.
+--video and --images are mutually exclusive: one note is either a video or an image-text note.
+With --yes and --cover (video only), 发布 is clicked only after 选择图片上传 changes the main-cover preview.
 If that preview does not change, the run fails and does not publish. PK slots are not used.
 Without --cover, the platform keeps the first frame. This skill does not invent a cover.
+Image-text notes take 1-18 images (.jpg/.jpeg/.png/.webp, max 32MB each) through the 上传图文 tab.
+The first image becomes the note cover; --cover is rejected for image-text notes.
 
   node scripts/check-login.mjs [--expect-account <nickname>] [--keep]
   node scripts/post-video.mjs --video <abs> --title <text> --desc <text> [--topics "#a #b"] [--cover <abs png/jpg>] [--expect-account <nickname>]
   node scripts/post-video.mjs --video <abs> --title <text> --desc <text> --cover <abs> --yes [--json] [--keep]
+  node scripts/post-images.mjs --images <abs1,abs2,...> --title <text> --desc <text> [--topics "#a #b"] [--expect-account <nickname>]
+  node scripts/post-images.mjs --images <abs1,abs2,...> --title <text> --desc <text> --yes [--json] [--keep]
   node scripts/edit-cover.mjs --note-id <id> --cover <abs> [--yes] [--json]
   node scripts/cleanup.mjs [--task-name <prefix>]
 
 check-login exits 0 when the creator site is signed in, 2 when login is required, the nickname mismatches, or ego-browser is missing.
-post-video without --yes checks login, prints a plan JSON (cover_mode=main-cover, cover_selector=选择图片上传), and exits 3. It does not upload.
+post-video/post-images without --yes check login, print a plan JSON, and exit 3. They do not upload.
 Notes cannot contain links. http(s), www, bare domains, and t.co in --title, --desc, or --topics exit 4 unless --strip-links is set.
 post-video --yes sets the main cover via 选择图片上传 when --cover is passed, then prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
 If the main-cover preview does not change, --yes exits 1 and does not click 发布.
+post-images --yes clicks the 上传图文 tab, uploads all images through the image input, waits for every thumbnail, then publishes.
 edit-cover.mjs is best-effort for a note that already published. Prefer --cover on post-video.
 Default finish({ keep: [] }). --keep leaves the page.
 cleanup closes spaces whose names start with xiaohongshu-ego. It does not delete notes.
@@ -214,6 +226,33 @@ export function coverExtensionOk(file) {
   return COVER_EXT.has(path.extname(String(file || "")).toLowerCase());
 }
 
+export function imageExtensionOk(file) {
+  return IMAGE_EXT.has(path.extname(String(file || "")).toLowerCase());
+}
+
+export function parseImagePaths(value) {
+  const seen = new Set();
+  const paths = [];
+  for (const part of String(value || "").split(",")) {
+    const file = part.trim();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    paths.push(file);
+  }
+  return paths;
+}
+
+// The creator image tab shows one `input.upload-input` with an image accept and
+// `multiple`; the video tab input has the same class but a video accept. The
+// 2026-11-05 capture switched tabs with a click on the leaf text 上传图文 and
+// the URL gained `target=image`.
+export function isImageAccept(accept) {
+  const value = String(accept || "").toLowerCase();
+  if (!value) return false;
+  if (/\.(mp4|mov|flv|f4v|mkv|rm|m4v|mpg|mpeg|ts)/.test(value)) return false;
+  return value.includes("image/") || IMAGE_EXT.has(value) || /\.(jpg|jpeg|png|webp)/.test(value);
+}
+
 function parseFlags(argv, out, handlers) {
   const args = argv || [];
   if (args.includes("--help") || args.includes("-h")) {
@@ -260,6 +299,7 @@ export function parsePostArgs(argv) {
     keep: false,
     stripLinks: false,
     video: "",
+    images: [],
     title: "",
     desc: "",
     topics: "",
@@ -269,6 +309,7 @@ export function parsePostArgs(argv) {
   };
   const parsed = parseFlags(argv, out, {
     "--video": (value) => { out.video = String(value || "").trim(); },
+    "--images": (value) => { out.images = parseImagePaths(value); },
     "--title": (value) => { out.title = String(value || "").trim(); },
     "--desc": (value) => { out.desc = String(value == null ? "" : value).trim(); },
     "--topics": (value) => { out.topics = String(value || "").trim(); },
@@ -281,7 +322,8 @@ export function parsePostArgs(argv) {
     "--task-name": (value) => { out.taskName = String(value || "").trim() || out.taskName; },
   });
   if (parsed.help) return parsed;
-  if (!parsed.video) throw new Error("Missing --video");
+  if (parsed.video && parsed.images.length) throw new Error("--video and --images are mutually exclusive: one note is either a video or an image-text note");
+  if (!parsed.video && !parsed.images.length) throw new Error("Missing --video or --images");
   if (!parsed.title) throw new Error("Missing --title");
   if (!parsed.desc) throw new Error("Missing --desc");
   return parsed;
@@ -328,26 +370,61 @@ function fileProblem(file, label, exists, stat) {
   return "";
 }
 
+export function isImageTextPost(args = {}) {
+  return Array.isArray(args.images) && args.images.length > 0;
+}
+
+export function postCommand(args = {}) {
+  return isImageTextPost(args) ? IMAGE_TEXT_COMMAND : "post-video";
+}
+
+function validateImageList(images, { exists, stat } = {}) {
+  for (const file of images) {
+    if (!isAbsolutePath(file)) return `--images entries must be absolute paths: ${file}`;
+    if (!imageExtensionOk(file)) return `--images entry is not a .jpg, .jpeg, .png, or .webp file: ${file}`;
+    const problem = fileProblem(file, "images", exists, stat);
+    if (problem) return problem.replace("--images", `--images entry ${file}`);
+  }
+  return "";
+}
+
 export function validatePostInput(args = {}, { exists, stat } = {}) {
   const video = String(args.video || "").trim();
+  const images = isImageTextPost(args) ? args.images : [];
   const title = String(args.title || "").trim();
   const desc = String(args.desc || "").trim();
   const topics = String(args.topics || "").trim();
   const cover = String(args.cover || "").trim();
-  const fields = { video, title, desc, topics, cover, body: composeBody(desc, topics) };
-  if (!video) return { ok: false, error: "Missing --video", ...fields };
-  if (!isAbsolutePath(video)) return { ok: false, error: "--video must be an absolute path", ...fields };
-  if (!videoExtensionOk(video)) return { ok: false, error: "--video extension is not accepted by the creator upload input", ...fields };
-  const videoError = fileProblem(video, "video", exists, stat);
-  if (videoError) return { ok: false, error: videoError, ...fields };
+  const fields = { video, images, title, desc, topics, cover, body: composeBody(desc, topics) };
+  if (images.length) {
+    if (video) return { ok: false, error: "--video and --images are mutually exclusive", ...fields };
+    if (images.length > IMAGE_TEXT_MAX_IMAGES) {
+      return { ok: false, error: `--images allows at most ${IMAGE_TEXT_MAX_IMAGES} files per note (got ${images.length})`, ...fields };
+    }
+    const imageError = validateImageList(images, { exists, stat });
+    if (imageError) return { ok: false, error: imageError, ...fields };
+    if (cover) {
+      return {
+        ok: false,
+        error: "--cover applies to video notes only. An image-text note uses its first image as the cover.",
+        ...fields,
+      };
+    }
+  } else {
+    if (!video) return { ok: false, error: "Missing --video", ...fields };
+    if (!isAbsolutePath(video)) return { ok: false, error: "--video must be an absolute path", ...fields };
+    if (!videoExtensionOk(video)) return { ok: false, error: "--video extension is not accepted by the creator upload input", ...fields };
+    const videoError = fileProblem(video, "video", exists, stat);
+    if (videoError) return { ok: false, error: videoError, ...fields };
+    if (cover) {
+      if (!isAbsolutePath(cover)) return { ok: false, error: "--cover must be an absolute path", ...fields };
+      if (!coverExtensionOk(cover)) return { ok: false, error: "--cover must be a .jpg, .jpeg, or .png file", ...fields };
+      const coverError = fileProblem(cover, "cover", exists, stat);
+      if (coverError) return { ok: false, error: coverError, ...fields };
+    }
+  }
   if (!title) return { ok: false, error: "Missing --title", ...fields };
   if (!desc) return { ok: false, error: "Missing --desc", ...fields };
-  if (cover) {
-    if (!isAbsolutePath(cover)) return { ok: false, error: "--cover must be an absolute path", ...fields };
-    if (!coverExtensionOk(cover)) return { ok: false, error: "--cover must be a .jpg, .jpeg, or .png file", ...fields };
-    const coverError = fileProblem(cover, "cover", exists, stat);
-    if (coverError) return { ok: false, error: coverError, ...fields };
-  }
   const copy = preparePostCopy({ title, desc, topics, stripLinks: Boolean(args.stripLinks) });
   const copied = {
     ...fields,
@@ -390,20 +467,27 @@ export function validateEditInput(args = {}, { exists, stat } = {}) {
 }
 
 export function planOf(config = {}, checked = {}, gate = {}) {
+  const imageMode = isImageTextPost(config) || isImageTextPost(checked || {});
   const cover = String((checked && checked.cover) || config.cover || "").trim();
   const plan = {
+    note_type: imageMode ? "image-text" : "video",
     video: String((checked && checked.video) || config.video || ""),
     title: String((checked && checked.title) || config.title || ""),
     desc: String((checked && checked.desc) || config.desc || ""),
     topics: String((checked && checked.topics) || config.topics || ""),
     body: (checked && checked.body) || composeBody(config.desc, config.topics),
     cover: cover || null,
-    cover_mode: cover ? "main-cover" : "platform-default-first-frame",
+    cover_mode: imageMode ? "first-image" : (cover ? "main-cover" : "platform-default-first-frame"),
     cover_selector: cover ? MAIN_COVER_LABEL : null,
     expect_account: config.expectAccount || null,
     nickname: (gate && gate.nickname) || null,
     task_name: config.taskName || PUBLISH_TASK,
   };
+  if (imageMode) {
+    const images = (checked && Array.isArray(checked.images) && checked.images.length ? checked.images : config.images) || [];
+    plan.images = images;
+    plan.image_count = images.length;
+  }
   if (checked && checked.titleWarning) plan.title_warning = checked.titleWarning;
   if (checked && Array.isArray(checked.links_removed) && checked.links_removed.length) {
     plan.links_removed = checked.links_removed;
@@ -417,7 +501,9 @@ export function planOf(config = {}, checked = {}, gate = {}) {
     plan.update_url = updateUrl(noteId) || null;
     plan.best_effort = true;
   }
-  if (!cover) {
+  if (imageMode) {
+    plan.cover_note = "Image-text note. The first image is the cover; --cover is not accepted. Images upload through the 上传图文 tab input.";
+  } else if (!cover) {
     plan.cover_note = "No --cover. Xiaohongshu keeps the video first frame. This skill does not invent a cover.";
   } else if (noteId) {
     plan.cover_note = "Best-effort edit. Use 选择图片上传 for the main cover, then confirm the main-cover preview changed before 发布. PK slots are not used. Save may return the note to 审核中. If the page says 加载失败, 发布 is not clicked.";
@@ -425,6 +511,38 @@ export function planOf(config = {}, checked = {}, gate = {}) {
     plan.cover_note = "Set the main cover with 选择图片上传. Confirm the main-cover preview changed before 发布. PK slots stay unused: they leave the thumbnail as the first frame until PK ends. If confirmation fails, 发布 is not clicked.";
   }
   return plan;
+}
+
+export function imageUploadFailed(text) {
+  return /上传失败|格式不支持|图片过大|图片尺寸不符合/.test(String(text || ""));
+}
+
+export function imageUploadPending(text) {
+  return /上传中\s*\d+%/.test(String(text || ""));
+}
+
+// The image-text editor footer (暂存离开 | 发布) renders inside a closed shadow
+// root: querySelector and innerText cannot see it, but the accessibility
+// snapshot can. Parse `button [ref=N]` followed by its exact `text "发布"`
+// child. 发布笔记 and 暂存离开 must never match.
+export function publishButtonRef(snapshot) {
+  const lines = String(snapshot || "").split("\n");
+  let lastButtonRef = null;
+  let lastButtonIndent = -1;
+  for (const line of lines) {
+    const indent = line.match(/^\s*/)[0].length;
+    const button = line.match(/^\s*button \[ref=(\d+)\]/);
+    if (button) {
+      lastButtonRef = Number(button[1]);
+      lastButtonIndent = indent;
+      continue;
+    }
+    const text = line.match(/^\s*text "(.+)"$/);
+    if (text && text[1] === "发布" && lastButtonRef != null && indent > lastButtonIndent) {
+      return lastButtonRef;
+    }
+  }
+  return null;
 }
 
 export function onCreator(url) {

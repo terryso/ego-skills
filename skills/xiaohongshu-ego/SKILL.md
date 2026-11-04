@@ -1,16 +1,19 @@
 ---
 name: xiaohongshu-ego
 description: >
-  Publish one Xiaohongshu (小红书) video note through the creator web UI in Ego Lite.
-  Login-check first. Soft-fail with exit 2 when ego-browser is missing, the creator
-  site is logged out, or --expect-account does not match the header nickname.
-  Nothing is uploaded without --yes: that run only inspects login and prints a plan.
-  With --yes and --cover, 发布 runs only after 选择图片上传 changes the main-cover
-  preview. If the preview does not change, the run refuses to publish.
-  Without --cover the platform keeps the video first frame. Ego Lite only, not MCP.
-  Use when the user asks to post a video note to 小红书 or creator.xiaohongshu.com.
+  Publish one Xiaohongshu (小红书) note — video or image-text (图文) — through the
+  creator web UI in Ego Lite. Login-check first. Soft-fail with exit 2 when
+  ego-browser is missing, the creator site is logged out, or --expect-account
+  does not match the header nickname. Nothing is uploaded without --yes: that
+  run only inspects login and prints a plan. Video notes accept --cover: with
+  --yes, 发布 runs only after 选择图片上传 changes the main-cover preview; if the
+  preview does not change, the run refuses to publish. Without --cover the
+  platform keeps the video first frame. Image-text notes take 1-18 images
+  (--images) through the 上传图文 tab; the first image becomes the cover and
+  --cover is rejected. Ego Lite only, not MCP. Use when the user asks to post a
+  video or image-text note to 小红书 or creator.xiaohongshu.com.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   requires:
     bins:
       - ego-browser
@@ -21,9 +24,9 @@ metadata:
 
 # xiaohongshu-ego
 
-用 Ego Lite 里已经登录的创作者会话，发**一条**小红书视频笔记。只走 creator 网页，不走 MCP。
+用 Ego Lite 里已经登录的创作者会话，发**一条**小红书笔记：视频笔记或图文笔记。只走 creator 网页，不走 MCP。
 
-Publish **one** video note through the logged-in creator site. Ego Lite and `ego-browser` only. Not MCP.
+Publish **one** note — a video note or an image-text note — through the logged-in creator site. Ego Lite and `ego-browser` only. Not MCP.
 
 成功标准是 stdout 打出 `https://www.xiaohongshu.com/explore/<noteId>`，页面曾出现「发布成功」。没有这条链接就不算成功。
 
@@ -43,11 +46,30 @@ PK 封面槽不能代替主封面。只上传 PK 时，主封面和笔记管理�
 
 不传 `--cover` 时，平台默认就是视频首帧。技能不会自己造一张封面。
 
+图文笔记没有 `--cover`：第一张图就是封面，传了 `--cover` 直接校验失败。图文走「上传图文」tab，见下面的图文一节。
+
 Pass `--cover` to set the **main** cover (for example `cover-3x4.png`) through the verified control 「选择图片上传」. The file input is the one next to that control, not `input.upload-input` and not `input.pk-cover-list-file-input`. Click 发布 only after the main-cover preview changes. If that confirmation fails, the run fails and does not publish the first frame.
 
 PK slots are not this path. Uploading only a PK cover leaves the main cover and the note-manager thumbnail as the video's first frame (badge 封面待PK) until the 72-hour PK ends. `--cover` does not use the PK slots.
 
 Without `--cover`, Xiaohongshu keeps the first frame. This skill does not invent a cover.
+
+Image-text notes have no `--cover`: the first image is the cover, and passing `--cover` fails validation. Image-text publishes through the 上传图文 tab, see the image-text section below.
+
+## 图文笔记
+
+`--images` 接受逗号分隔的绝对路径（1–18 张，`.jpg` `.jpeg` `.png` `.webp`，单张不超过 32MB），和 `--video` 互斥。发布走「上传图文」tab：
+
+1. 点文案恰好为「上传图文」的叶子元素。切过去之后 URL 会带 `target=image`。
+2. 找到图片上传框。它和视频上传框**同类名** `input.upload-input`，只能靠 `accept` 区分：图文是 `.jpg,.jpeg,.png,.webp` 且 `multiple`，视频是 `.mp4,...`。绝不能把视频 accept 的输入当图片输入。
+3. 一次 `setInputFiles` 传入全部路径（数组）。
+4. 等所有缩略图出现（`blob:` 或 `sns-img` 的 `img` 数量 ≥ 张数，或计数 N/18 ≥ 张数），且没有「上传中 N%」「上传失败」，才继续。
+5. 图文页的「发布」按钮在 **closed shadow root** 里，DOM 选择器摸不到，要用无障碍快照里的 `button [ref=N]`（精确文本「发布」）点 `ref=N`。**不要**点 `.btn-wrapper`——那是侧边栏「发布笔记」菜单，点了会把草稿存进草稿箱。详见 `references/imagetext-flow.md`。
+6. 之后与视频相同：标题、正文、账号闸门、发布成功。
+
+第一张图就是封面，没有确认环节。`--cover` 在图文模式下校验直接失败。
+
+`--images` takes comma-separated absolute paths (1-18 images, `.jpg` `.jpeg` `.png` `.webp`, max 32MB each) and is mutually exclusive with `--video`. The flow clicks the 上传图文 tab (the URL gains `target=image`), finds the upload input — same class `input.upload-input` as the video input, told apart only by the accept `.jpg,.jpeg,.png,.webp` with `multiple` — sets all files in one `setInputFiles` call, waits until every thumbnail is counted (blob:/sns-img images ≥ count, or the N/18 counter ≥ count) with no 上传中/上传失败 text, then continues like a video: title, body, account gate, 发布, 发布成功. The first image is the cover; `--cover` fails validation on this mode.
 
 ## 不能带链接
 
@@ -107,6 +129,19 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png \
   --expect-account "听懂AI" \
   --yes --json
+node skills/xiaohongshu-ego/scripts/post-images.mjs \
+  --images /absolute/path/to/1.jpg,/absolute/path/to/2.jpg,/absolute/path/to/3.jpg \
+  --title "标题" \
+  --desc "正文" \
+  --topics "#话题1 #话题2" \
+  --expect-account "听懂AI"
+node skills/xiaohongshu-ego/scripts/post-images.mjs \
+  --images /absolute/path/to/1.jpg,/absolute/path/to/2.jpg \
+  --title "标题" \
+  --desc "正文" \
+  --topics "#话题1 #话题2" \
+  --expect-account "听懂AI" \
+  --yes --json
 node skills/xiaohongshu-ego/scripts/edit-cover.mjs \
   --note-id <noteId> --cover /absolute/path/to/cover-3x4.png
 node skills/xiaohongshu-ego/scripts/cleanup.mjs
@@ -126,7 +161,7 @@ node skills/xiaohongshu-ego/scripts/cleanup.mjs
 
 ## 不做
 
-图文笔记、定时发布、一次跑多条、MCP、删笔记。发布后改封面不是主路径。
+定时发布、一次跑多条、MCP、删笔记。图文只支持一次性传齐 1–18 张，不支持追加、排序或删图。发布后改封面不是主路径。
 
 ## 测试
 
@@ -136,4 +171,4 @@ npm test
 
 `npm test` 用 c8 统计 `scripts/lib/**/*.mjs`（不含 `ego-deps.mjs`），行覆盖率不低于 80%。单测不访问小红书。
 
-界面步骤见 `references/publish-flow.md`。登录见 `references/login.md`。
+界面步骤见 `references/publish-flow.md`（视频）与 `references/imagetext-flow.md`（图文）。登录见 `references/login.md`。

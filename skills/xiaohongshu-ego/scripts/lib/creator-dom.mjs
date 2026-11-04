@@ -114,6 +114,72 @@ export function creatorAct(payload) {
 
   if (op === "video-input") return fileInput("input.upload-input", "video");
 
+  // The image-tab input shares the upload-input class with the video input.
+  // Only the accept attribute tells them apart (2026-11-05 capture:
+  // images accept ".jpg,.jpeg,.png,.webp" with multiple; video accepts
+  // ".mp4,.mov,..."). Do not treat a video accept as an image input.
+  function acceptKind(accept) {
+    const value = String(accept || "").toLowerCase();
+    if (!value) return "unknown";
+    if (/\.(mp4|mov|flv|f4v|mkv|rm|m4v|mpg|mpeg|ts)/.test(value)) return "video";
+    if (/image\//.test(value) || /\.(jpg|jpeg|png|webp)/.test(value)) return "image";
+    return "unknown";
+  }
+
+  function isLeaf(el) {
+    const kids = el && el.childNodes ? el.childNodes : [];
+    for (let i = 0; i < kids.length; i += 1) {
+      if (!kids[i] || kids[i].nodeType !== 3) return false;
+    }
+    return true;
+  }
+
+  if (op === "image-tab") {
+    const nodes = qsa("*").filter((el) => {
+      const label = labelOf(el);
+      return (label.full === "上传图文" || label.own === "上传图文") && isLeaf(el);
+    });
+    const target = nodes.length ? nodes[nodes.length - 1] : null;
+    if (!target) return { ok: false, error: "上传图文 tab not found" };
+    if (typeof target.click !== "function") return { ok: false, error: "上传图文 tab is not clickable" };
+    target.click();
+    return { ok: true, href, tag: target.tagName };
+  }
+
+  if (op === "image-input") {
+    const inputs = qsa("input").filter(isFileInput);
+    const imageInputs = inputs.filter((el) => acceptKind(el.getAttribute("accept")) === "image");
+    if (!imageInputs.length) {
+      return { ok: false, error: "image upload input not found; click 上传图文 first" };
+    }
+    const input = imageInputs[imageInputs.length - 1];
+    return {
+      ok: true,
+      selector: mark(input, "data-xhs-image-input"),
+      accept: input.getAttribute("accept") || "",
+      multiple: Boolean(input.multiple) || String(input.getAttribute("multiple") || "") === "multiple",
+      count: imageInputs.length,
+    };
+  }
+
+  if (op === "image-state") {
+    const imgs = qsa("img");
+    const uploads = imgs.filter((el) => {
+      const src = String(el.getAttribute("src") || "");
+      return src.startsWith("blob:") || /sns-img/i.test(src);
+    });
+    const counter = text.match(/(\d+)\s*\/\s*18/);
+    return {
+      ok: true,
+      uploadThumbs: uploads.length,
+      imgTotal: imgs.length,
+      counter: counter ? Number(counter[1]) : null,
+      pending: /上传中\s*\d+%/.test(text),
+      failed: /上传失败|格式不支持|图片过大|图片尺寸不符合/.test(text),
+      text: text.slice(0, 800),
+    };
+  }
+
   function classList(el) {
     return String((el && el.className) || "").split(/\s+/).filter(Boolean);
   }
