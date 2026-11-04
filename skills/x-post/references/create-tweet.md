@@ -26,7 +26,7 @@ Top-level JSON: `variables`, `features`, `queryId` (same id as the path).
 | Field | Captured value |
 |-------|----------------|
 | `tweet_text` | the post text |
-| `media` | `{ "media_entities": [], "possibly_sensitive": false }` |
+| `media` | `{ "media_entities": [], "possibly_sensitive": false }` for text-only. With `--image`, `media_entities` is the list in `references/media-upload.md`. |
 | `semantic_annotation_ids` | `[]` |
 | `disallowed_reply_options` | `null` (kept; do not drop the key) |
 | `semantic_annotation_options` | `{ "source": "UniversalLink" }` |
@@ -106,6 +106,8 @@ Long plain text in `https://x.com/compose/post` uses a different mutation. Artic
 | Bundle marker | `operationName:"CreateNoteTweet"` |
 | features | the same 39 keys as CreateTweet in this capture |
 | Success envelope | `data.notetweet_create.tweet_results.result` |
+
+`variables` match CreateTweet except the annotation object below. The 2026-11-04 note capture was text-only, so `media` was an empty `media_entities` array. `--image` on a note sends that same `media` object with one entity per image. A note that actually carried an image was not on the wire in that capture. See `references/media-upload.md`.
 
 `variables` match CreateTweet except:
 

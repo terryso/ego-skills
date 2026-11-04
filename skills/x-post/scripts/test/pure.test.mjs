@@ -107,6 +107,14 @@ test("argument parsers", () => {
   assert.throws(() => parsePostArgs(["--text", "hi", "--reply-to", "abc"]), /numeric status id/);
   assert.throws(() => parsePostArgs(["--text", "hi", "--query-id", "short"]), /query id/);
   assert.throws(() => parsePostArgs(["--text", "hi", "--nope"]), /Unknown arg/);
+  assert.deepEqual(post.images, []);
+  const images = parsePostArgs(["--text", "hi", "--image", " a.PNG ", "--image", "b.jpeg", "--image", "c.webp"]);
+  assert.deepEqual(images.images, ["a.PNG", "b.jpeg", "c.webp"]);
+  assert.throws(() => parsePostArgs(["--text", "hi", "--image", "a.gif"]), /GIF is not supported/);
+  assert.throws(() => parsePostArgs(["--text", "hi", "--image", "a.txt"]), /Unsupported image type/);
+  assert.throws(() => parsePostArgs(["--text", "hi", "--image"]), /Missing value/);
+  assert.throws(() => parsePostArgs(["--text", "hi", "--image", " "]), /Missing value for --image/);
+  assert.throws(() => parsePostArgs(["--text", "hi", "--image", "a.png", "--image", "b.png", "--image", "c.png", "--image", "d.png", "--image", "e.png"]), /At most 4/);
 });
 
 test("draft formatting refuses to send and warns on replies and long text", () => {
@@ -121,7 +129,19 @@ test("draft formatting refuses to send and warns on replies and long text", () =
   assert.equal(reply.draft.reply_best_effort, true);
   assert.match(formatDraftText(reply), /best-effort/);
   assert.match(formatDraftText(reply), /CreateNoteTweet/);
+  assert.match(formatDraftText(summary), /media: \(none\)/);
+  const pictured = confirmationSummary({
+    text: "hi",
+    images: [{ path: "/absolute/path/to/image.png", bytes: 10, md5: "abc123", data: Buffer.from([1]) }],
+  });
+  assert.match(formatDraftText(pictured), /media \(not uploaded\)/);
+  assert.match(formatDraftText(pictured), /10 bytes, md5 abc123/);
+  const picturedJson = formatResult(pictured, { asJson: true });
+  assert.match(picturedJson, /"md5": "abc123"/);
+  assert.equal(picturedJson.includes("media_id"), false);
+  assert.equal(picturedJson.includes("\"data\""), false);
   assert.equal(formatDraftText({}).includes("chars: 0"), true);
+  assert.match(formatDraftText({ draft: { media: [{ path: "/tmp/plain.png" }] } }), /size unknown/);
   assert.equal(formatResult(null), "");
   assert.equal(formatResult({ exitCode: 0, sent: true, url: "https://x.com/Suchuanyi/status/1" }), "https://x.com/Suchuanyi/status/1\n");
   assert.equal(draftOf({}).reply_to, null);
@@ -280,6 +300,25 @@ test("request body matches the captured text-only contract", () => {
   assert.equal(body.queryId, CAPTURED_CREATE_TWEET_QUERY_ID);
   body.features.premium_content_api_read_enabled = true;
   assert.equal(CAPTURED_FEATURES.premium_content_api_read_enabled, false);
+  const attached = buildCreateTweetBody({
+    text: "hi",
+    queryId: CAPTURED_CREATE_TWEET_QUERY_ID,
+    mediaIds: ["2117874109082427392", "", null],
+  });
+  assert.deepEqual(attached.variables.media, {
+    media_entities: [{ media_id: "2117874109082427392", tagged_users: [] }],
+    possibly_sensitive: false,
+  });
+  const noteMedia = buildCreateNoteTweetBody({
+    text: "x".repeat(300),
+    queryId: "seOZkIS8AysCGfPo6yYPVA",
+    mediaIds: ["1", "2"],
+  });
+  assert.deepEqual(noteMedia.variables.media.media_entities, [
+    { media_id: "1", tagged_users: [] },
+    { media_id: "2", tagged_users: [] },
+  ]);
+  assert.equal(noteMedia.variables.semantic_annotation_options.composition_signal_1, true);
   const reply = buildCreateTweetBody({ text: "r", replyTo: "5", queryId: CAPTURED_CREATE_TWEET_QUERY_ID });
   assert.deepEqual(reply.variables.reply, { in_reply_to_tweet_id: "5", exclude_reply_user_ids: [] });
   assert.equal(normalizeLanguage("zh_CN"), "zh-cn");

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   CAPTURED_CREATE_NOTE_TWEET_QUERY_ID,
@@ -388,4 +391,142 @@ test("cleanup closes the space and reports an open failure", async () => {
   assert.equal(failed.exitCode, 1);
   const unnamed = await executeCleanup(null, { browser: { async open() { return live; } } });
   assert.equal(unnamed.ok, true);
+});
+
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5]);
+
+function pngFile(name, bytes = PNG_BYTES) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "x-post-flow-"));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, bytes);
+  return file;
+}
+
+test("images are attached on CreateTweet and CreateNoteTweet only after login", async () => {
+  const file = pngFile("card.png");
+  const blocked = session();
+  blocked.uploadImages = async () => { throw new Error("should not upload"); };
+  const draft = await performPost({ text: "hi", images: [file] }, blocked);
+  assert.equal(draft.exitCode, 3);
+  assert.equal(blocked.calls.post, null);
+
+  const sent = session();
+  let uploaded = null;
+  sent.uploadImages = async (request) => {
+    uploaded = request;
+    return request.images.map((image) => ({ path: image.path, media_id: "11", bytes: image.bytes }));
+  };
+  const summary = await performPost({ yes: true, text: "hi", images: [file] }, sent);
+  assert.equal(summary.exitCode, 0);
+  assert.equal(summary.sent, true);
+  assert.equal(summary.url, `https://x.com/Suchuanyi/status/${REST_ID}`);
+  assert.equal(summary.transaction_id_source, "generated");
+  assert.equal(summary.query_id_source, "captured-2026-11-04");
+  assert.deepEqual(summary.media, [{ path: file, media_id: "11", bytes: PNG_BYTES.length }]);
+  assert.deepEqual(sent.calls.post.body.variables.media, {
+    media_entities: [{ media_id: "11", tagged_users: [] }],
+    possibly_sensitive: false,
+  });
+  assert.equal(uploaded.csrfToken, CSRF);
+  assert.match(uploaded.bearer, /^AAAA/);
+  assert.equal(uploaded.images[0].mediaType, "image/png");
+  assert.equal(JSON.stringify(summary).includes(CSRF), false);
+  assert.equal(JSON.stringify(summary).includes("\"tweet_id\""), false);
+
+  const other = pngFile("b.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9]));
+  const reply = session();
+  reply.uploadImages = async (request) => request.images.map((image, index) => ({
+    path: image.path,
+    media_id: index === 0 ? "11" : "22",
+    bytes: image.bytes,
+  }));
+  const withReply = await performPost({ yes: true, text: "hi", images: [file, other], replyTo: "5" }, reply);
+  assert.deepEqual(withReply.media.map((item) => item.media_id), ["11", "22"]);
+  assert.equal(reply.calls.post.body.variables.reply.in_reply_to_tweet_id, "5");
+  assert.equal(reply.calls.post.body.variables.media.media_entities[1].tagged_users.length, 0);
+
+  const noted = session();
+  noted.clientTransaction = async () => "tid-note";
+  noted.uploadImages = async (request) => request.images.map((image) => ({
+    path: image.path,
+    media_id: "11",
+    bytes: image.bytes,
+  }));
+  const longPost = await performPost({ yes: true, text: "x".repeat(300), images: [file] }, noted);
+  assert.equal(longPost.operation, "CreateNoteTweet");
+  assert.equal(longPost.note, true);
+  assert.equal(noted.calls.post.body.variables.semantic_annotation_options.composition_signal_1, true);
+  assert.equal(noted.calls.post.body.variables.media.media_entities[0].media_id, "11");
+  assert.deepEqual(longPost.media, [{ path: file, media_id: "11", bytes: PNG_BYTES.length }]);
+
+  const forced = session();
+  forced.clientTransaction = async () => "tid-long";
+  forced.uploadImages = noted.uploadImages;
+  const flagged = await performPost({ yes: true, text: "hi", long: true, images: [file] }, forced);
+  assert.equal(flagged.operation, "CreateNoteTweet");
+  assert.equal(forced.calls.post.body.variables.media.media_entities[0].media_id, "11");
+});
+
+test("a bad image or a failed upload never posts, and the space still closes", async () => {
+  let ensured = 0;
+  const missing = session();
+  missing.ensureSite = async () => { ensured += 1; };
+  const notFound = await performPost({ yes: true, text: "hi", images: ["/tmp/no-such-x-post-flow.png"] }, missing);
+  assert.equal(notFound.exitCode, 1);
+  assert.match(notFound.error, /Image not found/);
+  assert.equal(ensured, 0);
+  assert.equal(missing.calls.post, null);
+
+  const file = pngFile("card.png");
+  const loggedOut = session({
+    detect: { url: "https://x.com/i/flow/login", title: "登录 X", text: "", authCookie: false, jarRead: true, onLoginWall: true },
+  });
+  loggedOut.uploadImages = async () => { throw new Error("uploaded"); };
+  assert.equal((await performPost({ yes: true, text: "hi", images: [file] }, loggedOut)).exitCode, 2);
+
+  const noCsrf = session({ csrf: "" });
+  noCsrf.uploadImages = async () => { throw new Error("uploaded"); };
+  assert.equal((await performPost({ yes: true, text: "hi", images: [file] }, noCsrf)).exitCode, 2);
+
+  const broken = session();
+  broken.clientTransaction = async () => { throw new Error("anim down"); };
+  broken.uploadImages = async () => { throw new Error("uploaded"); };
+  const missed = await performPost({ yes: true, text: "hi", images: [file] }, broken);
+  assert.equal(missed.sent, false);
+  assert.match(missed.error, /x-client-transaction-id/);
+
+  const bare = session();
+  const unavailable = await performPost({ yes: true, text: "hi", images: [file] }, bare);
+  assert.match(unavailable.error, /unavailable/);
+  assert.equal(bare.calls.post, null);
+
+  const failed = session();
+  failed.uploadImages = async () => { throw new Error("append broke"); };
+  const uploadFailed = await performPost({ yes: true, text: "hi", images: [file] }, failed);
+  assert.equal(uploadFailed.exitCode, 1);
+  assert.equal(uploadFailed.sent, false);
+  assert.match(uploadFailed.error, /Image upload failed: append broke/);
+  assert.equal(failed.calls.post, null);
+
+  const authed = session();
+  authed.uploadImages = async () => {
+    const error = new Error("card.png: INIT failed (HTTP 401): X login required in Ego Lite");
+    error.loginRequired = true;
+    throw error;
+  };
+  const relogin = await performPost({ yes: true, text: "hi", images: [file], keep: true }, authed);
+  assert.equal(relogin.exitCode, 2);
+  assert.equal(authed.calls.hand, 1);
+  const handFails = session({ handError: true });
+  handFails.uploadImages = authed.uploadImages;
+  assert.equal((await performPost({ yes: true, text: "hi", images: [file], keep: true }, handFails)).exitCode, 2);
+
+  const opened = session();
+  opened.uploadImages = async () => { throw new Error("append broke"); };
+  const closed = await executePost({ yes: true, text: "hi", images: [file] }, {
+    browser: { async open() { return opened; } },
+  });
+  assert.equal(closed.exitCode, 1);
+  assert.equal(opened.calls.finish, 1);
+  assert.equal(opened.calls.post, null);
 });

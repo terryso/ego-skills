@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { describeImages } from "./media.mjs";
 import {
   RESULT_TAG,
   USAGE,
@@ -79,14 +80,29 @@ export async function runCli(kind, argv, deps = {}) {
     io.stdout.write(USAGE);
     return 0;
   }
+
+  let described = [];
+  if (parsed.command === "post" && args.images && args.images.length) {
+    try {
+      described = await describeImages(args.images);
+    } catch (error) {
+      io.stderr.write(`${error.message}\n${USAGE}`);
+      return 1;
+    }
+  }
+  const draftInput = {
+    ...args,
+    images: described.map((image) => ({ path: image.path, bytes: image.bytes, md5: image.md5 })),
+  };
+
   if (!io.whichEgo(io.spawnSync)) {
     const summary = egoMissingSummary(parsed.command);
-    if (parsed.command === "post" && args.text) summary.draft = draftOf(args);
+    if (parsed.command === "post" && args.text) summary.draft = draftOf(draftInput);
     io.stdout.write(formatResult(summary, { asJson: true }));
     return 2;
   }
   if (parsed.command === "post" && !args.yes) {
-    io.stdout.write(formatResult(confirmationSummary(args), { asJson: Boolean(args.json) }));
+    io.stdout.write(formatResult(confirmationSummary(draftInput), { asJson: Boolean(args.json) }));
     return 3;
   }
 
@@ -100,6 +116,7 @@ export async function runCli(kind, argv, deps = {}) {
     long: Boolean(args.long),
     queryId: args.queryId,
     transactionId: args.transactionId,
+    images: described.map((image) => image.path),
   };
   const dir = await io.mkdtemp(path.join(io.tmp, "ego-x-post-"));
   const entry = path.join(dir, "entry.mjs");

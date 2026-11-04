@@ -377,3 +377,35 @@ test("fetch, navigation, and finish", async () => {
   await session.handOff();
   assert.equal(harness.calls.hand, 1);
 });
+
+test("uploadImages runs INIT APPEND FINALIZE inside page.evaluate", async () => {
+  const calls = [];
+  const page = {
+    async evaluate(_fn, step) {
+      calls.push(step);
+      if (step.command === "INIT") return { status: 202, body: "{\"media_id_string\":\"2117874109082427392\"}" };
+      if (step.command === "APPEND") return { status: 204, body: "" };
+      if (step.command === "FINALIZE") return { status: 201, body: "{\"media_id_string\":\"2117874109082427392\"}" };
+      throw new Error(step.command);
+    },
+  };
+  const task = { spaceId: 3, async finish() {} };
+  const data = Buffer.from([1, 2, 3, 4]);
+  const uploaded = await createXSession({ task, page }).uploadImages({
+    bearer: "TOKEN",
+    csrfToken: "ct0",
+    images: [{
+      path: "/tmp/card.png",
+      bytes: data.length,
+      md5: "81dc9bdb52d04dc20036dbd8313ed055",
+      mediaType: "image/png",
+      data,
+    }],
+  });
+  assert.deepEqual(uploaded, [{ path: "/tmp/card.png", media_id: "2117874109082427392", bytes: 4 }]);
+  assert.deepEqual(calls.map((step) => step.command), ["INIT", "APPEND", "FINALIZE"]);
+  assert.equal(calls[0]["x-client-transaction-id"], undefined);
+  assert.equal(calls[1].authorization, "Bearer TOKEN");
+  assert.match(calls[1].url, /command=APPEND&media_id=2117874109082427392&segment_index=0/);
+  assert.equal(calls.some((step) => step.command === "STATUS"), false);
+});

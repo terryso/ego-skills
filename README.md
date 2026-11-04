@@ -65,7 +65,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`youtube-video`](./skills/youtube-video/) | Publish a local video to YouTube Studio. Login-check first. Default visibility is private and Made for kids is No. Success is a video URL plus a processing status. |
 | [`douyin-video`](./skills/douyin-video/) | Publish a local video to the Douyin creator center. Login-check first. Title is at most 30 characters. Defaults stay public, allow save, and publish immediately. Success is content management or a publish-success message. |
 | [`teambition-ego`](./skills/teambition-ego/) | Read Teambition test plans and test cases through the Ego session. Login-check first. Phase 2a also creates, updates, sets status, and archives one case (`delete --yes`). Browser session only, not an Open API token. |
-| [`x-post`](./skills/x-post/) | Post on X from the logged-in Ego session with `page.fetch` CreateTweet. Login-check first. Nothing is sent without `--yes`. Success is `https://x.com/<screen_name>/status/<id>`. |
+| [`x-post`](./skills/x-post/) | Post on X from the logged-in Ego session with `page.fetch` CreateTweet. Login-check first. Nothing is sent without `--yes`. Optional `--image` (up to 4 png/jpeg/webp, each ≤ 5 MiB) uploads only with `--yes`. Success is `https://x.com/<screen_name>/status/<id>`. |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | Publish one Xiaohongshu video note on the creator site. Login-check first. Nothing uploads without `--yes`. Notes must not contain links: remove them from the copy or pass `--strip-links`. Pass `--cover` (for example `cover-3x4.png`) through 选择图片上传 so it becomes the main cover. PK slots alone leave the thumbnail as the first frame for about 72 hours. Without `--cover` the platform keeps the first frame. Success is `https://www.xiaohongshu.com/explore/<noteId>`. |
 
 ```bash
@@ -105,6 +105,7 @@ node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambi
 ```bash
 node skills/x-post/scripts/check-login.mjs
 node skills/x-post/scripts/post.mjs --text "Draft only until you pass --yes"
+node skills/x-post/scripts/post.mjs --text "Draft only until you pass --yes" --image /absolute/path/to/image.png
 ```
 
 ```bash
@@ -114,7 +115,7 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must replace the first frame before 发布). See each skill's `references/login.md`.
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布). See each skill's `references/login.md`.
 
 ## Why ego
 
