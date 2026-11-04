@@ -2,7 +2,7 @@
   "name": "ego-skills",
   "version": "0.6.0",
   "private": true,
-  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video, teambition-ego. Not published to npm.",
+  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video, teambition-ego, x-post. Not published to npm.",
   "license": "MIT",
   "keywords": [
     "ego-browser",
@@ -15,7 +15,8 @@
     "kuaishou",
     "youtube",
     "douyin",
-    "teambition"
+    "teambition",
+    "x"
   ],
   "scripts": {
     "test": "c8 node --test skills/*/scripts/test/*.test.mjs scripts/test/*.test.mjs",
