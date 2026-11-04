@@ -1,8 +1,8 @@
 # Teambition 登录（Ego Lite）
 
-本技能**每次读取测试计划之前**必须先跑 `scripts/check-login.mjs`。技能自己检查登录，不要另搞 cookie-healthcheck。
+本技能**每次读取或写入测试计划之前**必须先跑 `scripts/check-login.mjs`。技能自己检查登录，不要另搞 cookie-healthcheck。
 
-在 Ego 里登录 teambition.com 之后才能读用例。Agent 要把 `login_tip` 告诉用户。
+在 Ego 里登录 teambition.com 之后才能读或改用例。Agent 要把 `login_tip` 告诉用户。写操作同样不接受 Open API token。
 
 ## soft-fail
 
@@ -20,7 +20,7 @@
 
 1. 打开 **Ego Lite**（`ego-browser` 用的同一个配置档）。
 2. 打开 https://www.teambition.com/ ，登录能看到该测试计划的账号。
-3. 确认组织无误后，让 Agent **重新**跑 `check-login`；exit 0 再继续 `tb.mjs testcase`。
+3. 确认组织无误后，让 Agent **重新**跑 `check-login`；exit 0 再继续 `tb.mjs testcase`（含创建、更新、改状态、移到回收站）。
 
 可选：`--keep` 把标签留在登录页并 `handOff()`，方便人当面登录。默认 `finish({ keep: [] })`。
 

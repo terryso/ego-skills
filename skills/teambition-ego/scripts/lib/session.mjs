@@ -1,4 +1,4 @@
-// Browser page.fetch facade. Open API transport is a Phase 2 hook only.
+// Browser page.fetch facade. Open API transport stays unimplemented for testcase.
 
 import { BASE, parseLooseJson } from "./pure.mjs";
 
@@ -23,7 +23,7 @@ export function createTransport(kind, session) {
       phase: 2,
       async request() {
         const error = new Error(
-          "Open API transport is not implemented in Phase 1. Test plans and test cases use the browser session at https://www.teambition.com/testcase/api/ , not a teambition_cli or MCP token.",
+          "Open API transport is not implemented in Phase 1. Test plans and test cases, including Phase 2a writes, use the browser session on https://www.teambition.com (testcase/api and /api/testcases/{id}/archive), not a teambition_cli or MCP token.",
         );
         error.code = "TRANSPORT_NOT_IMPLEMENTED";
         throw error;
@@ -52,7 +52,20 @@ export function createPageSession({ task, page, base = BASE, pageName = "p1" } =
     },
     async fetch(url, opts = {}) {
       const timeout = opts.timeout ?? 30_000;
-      const response = await page.fetch(url, { timeout });
+      const method = opts.method ? String(opts.method).toUpperCase() : "";
+      const init = { timeout };
+      if (method && method !== "GET") {
+        init.method = method;
+        init.credentials = "include";
+        if (opts.body !== undefined && opts.body !== null) {
+          init.headers = {
+            "content-type": "application/json",
+            ...(opts.headers || {}),
+          };
+          init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+        }
+      }
+      const response = await page.fetch(url, init);
       const raw = response ? response.body : undefined;
       const body = typeof raw === "string" || raw == null ? parseLooseJson(raw) : raw;
       return { status: response ? response.status : 0, body };

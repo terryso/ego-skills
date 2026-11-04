@@ -21,7 +21,7 @@ export const HOW_TO_LOGIN = [
   "Install Ego Lite and put ego-browser on PATH (often ~/.local/bin). Open the Ego Lite app.",
   "Visit https://www.teambition.com/ and sign in to the Teambition account that can open the test plan.",
   "Leave that teambition.com session signed in inside Ego. Do not paste cookies or an Open API token.",
-  "Re-run this skill’s login-check. Read test cases only after exit 0.",
+  "Re-run this skill’s login-check. Read or change test cases only after exit 0.",
   "Sessions expire. Login-check before reading. Never type a password.",
 ];
 
@@ -29,21 +29,22 @@ export const HOW_TO_LOGIN_ZH = [
   "先安装 Ego Lite，并把 ego-browser 放进 PATH（常见 ~/.local/bin）。打开 Ego Lite。",
   "访问 https://www.teambition.com/ ，登录能打开该测试计划的 Teambition 账号。",
   "保持 Ego 里的 teambition.com 为登录状态。不要粘贴 Cookie，也不要填 Open API token。",
-  "重新跑 login-check。只有退出码 0 之后才读取用例。",
+  "重新跑 login-check。只有退出码 0 之后才读取或修改用例。",
   "登录态会过期。每次读取前都要先检查。不要代填密码。",
 ];
 
 export const LOGIN_TIP =
-  "Tell the user: sign in to teambition.com inside Ego Lite before reading test plans. Testcase reads use the browser session at www.teambition.com/testcase/api/, not a teambition_cli or MCP token. If login-check exits 2, ask them to open Ego Lite, sign in, then re-run. Never type a password or paste cookies.";
+  "Tell the user: sign in to teambition.com inside Ego Lite before reading or changing test plans. Testcase reads and Phase 2a writes use the browser session at www.teambition.com, not a teambition_cli or MCP token. If login-check exits 2, ask them to open Ego Lite, sign in, then re-run. Never type a password or paste cookies.";
 
 export const LOGIN_TIP_ZH =
-  "请告诉用户：在 Ego Lite 里登录 teambition.com 之后才能读测试计划。用例走浏览器会话 www.teambition.com/testcase/api/，不要用 teambition_cli 或 MCP token。若 login-check 退出码是 2，请人在 Ego Lite 打开 teambition.com 登录后再跑。不要代填密码，不要粘贴 Cookie。";
+  "请告诉用户：在 Ego Lite 里登录 teambition.com 之后才能读或改测试计划。用例的读和 Phase 2a 写都走浏览器会话 www.teambition.com，不要用 teambition_cli 或 MCP token。若 login-check 退出码是 2，请人在 Ego Lite 打开 teambition.com 登录后再跑。不要代填密码，不要粘贴 Cookie。";
 
-export const USAGE = `teambition-ego — read Teambition test plans and test cases via Ego Lite (Phase 1)
+export const USAGE = `teambition-ego — Teambition test plans and test cases via Ego Lite
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
 Test plans use the browser session at https://www.teambition.com/testcase/api/ .
-Do not use teambition_cli or an Open API / MCP token for this module. Read-only.
+Archive uses https://www.teambition.com/api/testcases/{id}/archive (not under /testcase/api/).
+Do not use teambition_cli or an Open API / MCP token for this module.
 
   node scripts/check-login.mjs
   node scripts/check-login.mjs --keep
@@ -52,14 +53,21 @@ Do not use teambition_cli or an Open API / MCP token for this module. Read-only.
   node scripts/tb.mjs testcase groups <projectId> <planId> [--json]
   node scripts/tb.mjs testcase cases <projectId> <planId> [--group <groupId>] [--json]
   node scripts/tb.mjs testcase get <projectId> <planId> <uniqueId> [--json]
+  node scripts/tb.mjs testcase flow-statuses <projectId> [--json]
+  node scripts/tb.mjs testcase create <projectId> <planId> --title <title> [--group <groupId>] [--precondition <text>] [--steps-json <json>] [--priority <n>] [--executor-id <id>] [--case-type <type>] [--scenario-field-config-id <id>] [--json]
+  node scripts/tb.mjs testcase update <projectId> <planId> <caseId|uniqueId> [--title <title>] [--precondition <text>] [--steps-json <json>] [--json]
+  node scripts/tb.mjs testcase set-status <projectId> <planId> <caseId|uniqueId> --flow-status-id <id> [--json]
+  node scripts/tb.mjs testcase delete <projectId> <planId> <caseId|uniqueId> --yes [--json]
   node scripts/tb.mjs testcase cleanup
 
 Phase 1 domain: testcase.
-Not in this phase: task, project.
+Phase 2a writes on that domain: create, update, set-status, delete (archive).
+Not in this phase: task, project. Not in this build: group-create, move, bulk.
 
 check-login exits 0 when teambition.com is signed in, 2 when login is required or ego-browser is missing.
 Default finish({ keep: [] }). --keep leaves the page and calls handOff().
-plan, groups, cases, and get keep the named browser space open for reuse. cleanup closes it.
+Reads and Phase 2a writes keep the named browser space open for reuse. cleanup closes it.
+delete moves one execution case to the recycle bin and requires --yes. The agent confirms uniqueId and title with the user first.
 `;
 
 export const FUTURE_DOMAINS = ["task", "project"];
@@ -190,40 +198,50 @@ export function parsePlanUrl(url) {
   return { projectId: match[1], planId: match[2], groupId: match[3] || "" };
 }
 
+const VALUE_FLAGS = {
+  "--group": ["groupId", "--group 需要分组 ID"],
+  "--title": ["title", "--title 需要标题"],
+  "--precondition": ["precondition", "--precondition 需要文本"],
+  "--steps-json": ["stepsJson", "--steps-json 需要 JSON 文本"],
+  "--priority": ["priority", "--priority 需要整数"],
+  "--executor-id": ["executorId", "--executor-id 需要成员 ID"],
+  "--case-type": ["caseType", "--case-type 需要类型"],
+  "--scenario-field-config-id": ["scenarioFieldConfigId", "--scenario-field-config-id 需要 ID"],
+  "--flow-status-id": ["flowStatusId", "--flow-status-id 需要状态 ID"],
+};
+
 export function parseTestcaseArgs(argv) {
   const args = argv || [];
-  let groupId;
   const positional = [];
-  let asJson = false;
-  let help = false;
+  const out = { positional, asJson: false, help: false, yes: false };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--json") {
-      asJson = true;
+      out.asJson = true;
       continue;
     }
     if (arg === "--help" || arg === "-h") {
-      help = true;
+      out.help = true;
       continue;
     }
-    if (arg === "--group") {
+    if (arg === "--yes") {
+      out.yes = true;
+      continue;
+    }
+    const spec = VALUE_FLAGS[arg];
+    if (spec) {
       const value = args[i + 1];
-      if (value == null || value === "" || String(value).startsWith("--")) {
-        return { error: "--group 需要分组 ID" };
+      const allowEmpty = arg === "--precondition";
+      if (value == null || (!allowEmpty && value === "") || String(value).startsWith("--")) {
+        return { error: spec[1] };
       }
-      groupId = String(value);
+      out[spec[0]] = String(value);
       i += 1;
       continue;
     }
     positional.push(arg);
   }
-  return {
-    cmd: positional[0],
-    positional,
-    asJson,
-    groupId,
-    help,
-  };
+  return { cmd: positional[0], ...out };
 }
 
 export function buildTql(planId, groupId) {
@@ -346,11 +364,22 @@ export function mapBrowserError(message) {
   return text;
 }
 
+function httpErrorDetail(body) {
+  if (!body || typeof body !== "object") return "";
+  const msg = body.message || body.error || body.msg;
+  if (typeof msg !== "string") return "";
+  const text = msg.trim();
+  return text ? text.slice(0, 200) : "";
+}
+
 export function interpretFetch(payload) {
   if (!payload || typeof payload !== "object") return { error: "浏览器返回了意外结构" };
   if (payload.error) return { error: mapBrowserError(payload.error) };
   if (payload.status === 401) return { error: mapBrowserError("401 未登录") };
-  if (typeof payload.status === "number" && payload.status !== 200) return { error: `HTTP ${payload.status}` };
+  if (typeof payload.status === "number" && (payload.status < 200 || payload.status >= 300)) {
+    const detail = httpErrorDetail(payload.body);
+    return { error: detail ? `HTTP ${payload.status}: ${detail}` : `HTTP ${payload.status}` };
+  }
   return { body: payload.body };
 }
 
@@ -379,9 +408,13 @@ export function resolveProcessExit(combined, code) {
 export function missingIds(cmd, positional) {
   const ids = (positional || []).slice(1);
   if (cmd === "parse-url") return ids[0] ? null : "缺少 URL";
-  if (cmd === "plan" || cmd === "groups" || cmd === "cases") {
+  if (cmd === "flow-statuses") return ids[0] ? null : "缺少 projectId";
+  if (cmd === "plan" || cmd === "groups" || cmd === "cases" || cmd === "create") {
     if (!ids[0] || !ids[1]) return "缺少 projectId 或 planId";
   }
   if (cmd === "get" && (!ids[0] || !ids[1] || ids[2] == null || ids[2] === "")) return "缺少 projectId、planId 或 uniqueId";
+  if ((cmd === "update" || cmd === "set-status" || cmd === "delete") && (!ids[0] || !ids[1] || ids[2] == null || ids[2] === "")) {
+    return "缺少 projectId、planId 或用例 id";
+  }
   return null;
 }

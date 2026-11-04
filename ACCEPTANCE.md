@@ -166,13 +166,13 @@ bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" 
 
 ## teambition-ego
 
-Phase 1 reads Teambition test plans and test cases. No download step and no writes. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip` (sign in to teambition.com inside Ego before reading). check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+Reads Teambition test plans and test cases, and Phase 2a writes one case at a time (`create`, `update`, `set-status`, `delete` as archive with `--yes`). No download step. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip` (sign in to teambition.com inside Ego before reading or changing cases). check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
 
-Reads use `page.fetch` against `https://www.teambition.com/testcase/api/`. They do not use `teambition_cli` or an Open API token. `plan`, `groups`, `cases`, and `get` leave the `tb-testcase api` space open for reuse. `cleanup` closes it with `finish({ keep: [] })`. `parse-url` does not open a browser.
+Reads and Phase 2a writes use `page.fetch` against `https://www.teambition.com`. Archive is `POST /api/testcases/{id}/archive`, not under `/testcase/api/`. They do not use `teambition_cli` or an Open API token. `plan`, `groups`, `cases`, `get`, `flow-statuses`, and the write commands leave the `tb-testcase api` space open for reuse. `cleanup` closes it with `finish({ keep: [] })`. `parse-url` does not open a browser. Unit tests mock the session and do not call Teambition.
 
 Login-check on this machine (ego-browser 0.6.0.12) exited 2. The tab stayed on the public homepage (`https://www.teambition.com/`, title `钉钉 Teambition · 阿里巴巴旗下团队协作工具`). `platformChrome` and `loggedInCookie` were false, so this was not treated as the signed-in app. `how_to_login` length 5 and `login_tip` were present. The task space closed (no `--keep`). No testcase read was started.
 
-Included line coverage under the c8 glob (everything in `scripts/lib/` except `ego-deps.mjs`): `session.mjs` 100%, `domains/testcase.mjs` 100%, `run-check.mjs` 100%, `pure.mjs` 100%, `launch-check.mjs` 100%. `tb.mjs` and `ego-deps.mjs` stay outside the include, same as the other skills' entry files and `ego-deps.mjs`.
+Included line coverage under the c8 glob (everything in `scripts/lib/` except `ego-deps.mjs`): `session.mjs` 100%, `domains/testcase.mjs` 100%, `write.mjs` 100%, `run-check.mjs` 100%, `pure.mjs` 100%, `launch-check.mjs` 100%. `tb.mjs` and `ego-deps.mjs` stay outside the include, same as the other skills' entry files and `ego-deps.mjs`.
 
 ```bash
 node skills/teambition-ego/scripts/check-login.mjs

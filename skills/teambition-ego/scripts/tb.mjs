@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CLI router. Phase 2 adds task and project on DOMAIN_REGISTRY; the dispatch loop stays.
+// CLI router. task and project stay on FUTURE_DOMAINS until a later milestone.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { runTestcaseCli } from "./lib/domains/testcase.mjs";
@@ -7,8 +7,8 @@ import { FUTURE_DOMAINS, USAGE } from "./lib/pure.mjs";
 
 export const DOMAIN_REGISTRY = {
   testcase: {
-    phase: 1,
-    summary: "Read test plans and test cases through the browser session",
+    phase: "2a",
+    summary: "Read test plans and write one test case at a time through the browser session",
     run: runTestcaseCli,
   },
 };
@@ -25,7 +25,7 @@ export async function dispatch(argv, deps = {}) {
     return {
       exitCode: 1,
       stdout: "",
-      stderr: `错误: domain ${domain} 尚未实现（Phase 1 只有 testcase）。\n`,
+      stderr: `错误: domain ${domain} 尚未实现（已实现的 domain 只有 testcase）。\n`,
     };
   }
   const entry = registry[domain];

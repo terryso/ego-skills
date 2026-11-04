@@ -151,6 +151,29 @@ test("parseTestcaseArgs pulls flags out of the positional list", () => {
   assert.equal(parseTestcaseArgs(["plan", "--group"]).error, "--group 需要分组 ID");
   assert.equal(parseTestcaseArgs(["plan", "--group", "--json"]).error, "--group 需要分组 ID");
   assert.equal(parseTestcaseArgs([]).cmd, undefined);
+  const write = parseTestcaseArgs([
+    "create", PROJECT, PLAN,
+    "--title", "标题",
+    "--precondition", "",
+    "--steps-json", "[]",
+    "--priority", "-1",
+    "--executor-id", "member",
+    "--case-type", "function",
+    "--scenario-field-config-id", GROUP,
+    "--yes",
+  ]);
+  assert.equal(write.title, "标题");
+  assert.equal(write.precondition, "");
+  assert.equal(write.stepsJson, "[]");
+  assert.equal(write.priority, "-1");
+  assert.equal(write.executorId, "member");
+  assert.equal(write.caseType, "function");
+  assert.equal(write.scenarioFieldConfigId, GROUP);
+  assert.equal(write.yes, true);
+  assert.equal(parseTestcaseArgs(["update", "--title"]).error, "--title 需要标题");
+  assert.equal(parseTestcaseArgs(["update", "--precondition"]).error, "--precondition 需要文本");
+  assert.equal(parseTestcaseArgs(["set-status", "--flow-status-id"]).error, "--flow-status-id 需要状态 ID");
+  assert.equal(parseTestcaseArgs(["create", "--steps-json", "--json"]).error, "--steps-json 需要 JSON 文本");
 });
 
 test("query URLs encode TQL and page tokens", () => {
@@ -267,6 +290,12 @@ test("errors, tagged JSON, and process exit", () => {
   assert.match(interpretFetch({ error: "401 未登录" }).error, /未登录：/);
   assert.match(interpretFetch({ status: 401, body: {} }).error, /未登录：/);
   assert.equal(interpretFetch({ status: 500 }).error, "HTTP 500");
+  assert.equal(interpretFetch({ status: 400, body: { message: "标题重复" } }).error, "HTTP 400: 标题重复");
+  assert.equal(interpretFetch({ status: 400, body: { message: "   " } }).error, "HTTP 400");
+  assert.equal(interpretFetch({ status: 400, body: { error: { code: 1 } } }).error, "HTTP 400");
+  assert.equal(interpretFetch({ status: 400, body: "nope" }).error, "HTTP 400");
+  assert.equal(interpretFetch({ status: 400, body: { msg: "x".repeat(250) } }).error.length, "HTTP 400: ".length + 200);
+  assert.deepEqual(interpretFetch({ status: 201, body: { ok: 1 } }), { body: { ok: 1 } });
   assert.deepEqual(interpretFetch({ status: 200, body: { ok: 1 } }), { body: { ok: 1 } });
   assert.deepEqual(interpretFetch({ body: { ok: 1 } }), { body: { ok: 1 } });
 
@@ -290,6 +319,13 @@ test("missingIds and the phase-1 usage text", () => {
   assert.equal(missingIds("get", ["get", PROJECT, PLAN, ""]), "缺少 projectId、planId 或 uniqueId");
   assert.equal(missingIds("get", ["get", PROJECT, PLAN, "12"]), null);
   assert.equal(missingIds("cleanup", ["cleanup"]), null);
+  assert.equal(missingIds("flow-statuses", ["flow-statuses"]), "缺少 projectId");
+  assert.equal(missingIds("flow-statuses", ["flow-statuses", PROJECT]), null);
+  assert.equal(missingIds("create", ["create", PROJECT]), "缺少 projectId 或 planId");
+  assert.equal(missingIds("create", ["create", PROJECT, PLAN]), null);
+  assert.equal(missingIds("update", ["update", PROJECT, PLAN, ""]), "缺少 projectId、planId 或用例 id");
+  assert.equal(missingIds("delete", ["delete", PROJECT, PLAN, "12"]), null);
+  assert.equal(missingIds("set-status", ["set-status", PROJECT, PLAN, "12"]), null);
   assert.deepEqual(FUTURE_DOMAINS, ["task", "project"]);
   assert.match(USAGE, /testcase/);
   assert.match(USAGE, /teambition_cli/);
