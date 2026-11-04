@@ -26,6 +26,14 @@ export async function readCookieJar(page) {
   return { cookies: [], read: false };
 }
 
+export function bodyText(raw) {
+  if (typeof raw === "string") return raw;
+  if (raw == null) return "";
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(raw)) return raw.toString("utf8");
+  if (raw instanceof Uint8Array) return new TextDecoder().decode(raw);
+  return JSON.stringify(raw);
+}
+
 function cookieNames(jar, header) {
   return [
     ...cookieHeaderNames(header),
@@ -110,12 +118,13 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       const html = await page.evaluate(() => (document.documentElement && document.documentElement.outerHTML) || "");
       return String(html || "");
     },
-    async fetchText(url) {
-      const response = await page.fetch(url, { method: "GET", credentials: "include", timeout: 30_000 });
-      const raw = response ? response.body : "";
-      if (typeof raw === "string") return raw;
-      if (raw == null) return "";
-      return JSON.stringify(raw);
+    async fetchText(url, timeout = 30_000) {
+      const response = await page.fetch(url, {
+        method: "GET",
+        credentials: "include",
+        timeout: /\.js(\?|$)/.test(String(url || "")) ? Math.max(timeout, 60_000) : timeout,
+      });
+      return bodyText(response ? response.body : "");
     },
     async csrfToken() {
       let fromDoc = "";
@@ -182,6 +191,73 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       this._shell = best;
       return best;
     },
+    async scriptUrls() {
+      try {
+        const urls = await page.evaluate(() => Array.from(document.scripts || []).map((script) => script.src).filter(Boolean));
+        return Array.isArray(urls) ? urls.map((url) => String(url)) : [];
+      } catch {
+        return [];
+      }
+    },
+    async sniffTransactionId() {
+      const hook = `(() => {
+        if (window.__egoXTidHook) return;
+        window.__egoXTidHook = true;
+        window.__egoXTid = "";
+        const take = (value) => {
+          if (typeof value === "string" && value.length > 8) window.__egoXTid = value;
+        };
+        const scan = (headers) => {
+          if (!headers) return;
+          if (typeof headers.get === "function") { take(headers.get("x-client-transaction-id")); return; }
+          if (Array.isArray(headers)) {
+            for (const pair of headers) {
+              if (pair && String(pair[0]).toLowerCase() === "x-client-transaction-id") take(pair[1]);
+            }
+            return;
+          }
+          for (const key of Object.keys(headers)) {
+            if (String(key).toLowerCase() === "x-client-transaction-id") take(headers[key]);
+          }
+        };
+        if (typeof window.fetch === "function") {
+          const orig = window.fetch;
+          window.fetch = function(input, init) {
+            try { scan(init && init.headers); } catch (e) {}
+            return orig.apply(this, arguments);
+          };
+        }
+        const proto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+        if (proto && typeof proto.setRequestHeader === "function") {
+          const setHeader = proto.setRequestHeader;
+          proto.setRequestHeader = function(name, value) {
+            try { if (String(name).toLowerCase() === "x-client-transaction-id") take(value); } catch (e) {}
+            return setHeader.apply(this, arguments);
+          };
+        }
+      })();`;
+      try {
+        if (typeof page.cdp === "function") {
+          await page.cdp("Page.addScriptToEvaluateOnNewDocument", { source: hook });
+        }
+      } catch {
+        // Ego can expose Network cookies without the Page domain.
+      }
+      try {
+        await this.goto(HOME_URL);
+      } catch {
+        // A reload is how the logged-in client emits a fresh GraphQL transaction id.
+      }
+      if (typeof page.waitForTimeout === "function") {
+        try { await page.waitForTimeout(1500); } catch { /* timeline sockets stay open */ }
+      }
+      try {
+        const id = await page.evaluate(() => (typeof window !== "undefined" && window.__egoXTid) || "");
+        return String(id || "");
+      } catch {
+        return "";
+      }
+    },
     async clientTransaction({ method, path } = {}) {
       const html = await this.shellHtml();
       let paths = animationPathsFromHtml(html);
@@ -194,17 +270,26 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       }
       const chunkUrl = onDemandFileUrl(html);
       let chunk = "";
+      let fetchError = "";
       if (chunkUrl) {
         try {
           chunk = await this.fetchText(chunkUrl);
-        } catch {
+        } catch (error) {
+          fetchError = error && error.message ? error.message : "fetch failed";
           chunk = "";
         }
       }
       const id = await buildTransactionId({ method, path, html, ondemandSource: chunk, paths });
-      if (id) return id;
+      if (id) return { id, source: "generated" };
+      const sniffed = await this.sniffTransactionId();
+      if (sniffed) return { id: sniffed, source: "session" };
       const missing = describeMissingMaterials({ html, ondemandSource: chunk, paths });
-      const error = new Error(`x.com document is missing ${missing.join(", ") || "transaction materials"}`);
+      const detail = [
+        missing.join(", ") || "transaction materials",
+        chunkUrl ? `ondemand bytes ${chunk.length}` : "no ondemand url",
+        fetchError,
+      ].filter(Boolean).join("; ");
+      const error = new Error(`x.com document is missing ${detail}`);
       error.code = "TRANSACTION_MATERIALS";
       throw error;
     },

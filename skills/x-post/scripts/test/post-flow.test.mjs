@@ -332,6 +332,26 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
   assert.equal(fromShell.operation, "CreateNoteTweet");
   assert.equal(shell.calls.post.headers["x-client-transaction-id"], "tid-shell");
 
+  const fromDom = session({ html: "<html>no scripts</html>" });
+  fromDom.scriptUrls = async () => ["https://abs.twimg.com/responsive-web/client-web/main.fromdom.js"];
+  fromDom.fetchText = async (url) => {
+    fromDom.calls.fetched.push(url);
+    if (String(url).includes("main.fromdom")) return `queryId:"DomNoteQueryId12345",operationName:"CreateNoteTweet"`;
+    return "";
+  };
+  fromDom.clientTransaction = async () => "tid-dom";
+  const domId = await performPost({ yes: true, text: "x".repeat(300) }, fromDom);
+  assert.equal(domId.query_id, "DomNoteQueryId12345");
+  assert.equal(domId.query_id_source, "bundle");
+
+  const sniffed = session({ html: "<html></html>" });
+  sniffed.clientTransaction = async () => ({ id: "sniffed-live-header", source: "session" });
+  const sniffedPost = await performPost({ yes: true, text: "x".repeat(300) }, sniffed);
+  assert.equal(sniffedPost.transaction_id_source, "session");
+  assert.equal(sniffedPost.sent, true);
+  assert.equal(sniffed.calls.post.headers["x-client-transaction-id"], "sniffed-live-header");
+  assert.equal(JSON.stringify(sniffedPost).includes("sniffed-live-header"), false);
+
   const htmlId = session({ html: `queryId:"FromHtmlBundle1234",operationName:"CreateTweet" ${PUBLIC_WEB_BEARER}` });
   const fromHtml = await resolveCreateTweetQuery(htmlId, "");
   assert.equal(fromHtml.queryId, "FromHtmlBundle1234");

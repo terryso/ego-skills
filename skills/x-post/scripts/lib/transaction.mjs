@@ -22,10 +22,15 @@ export function onDemandFileUrl(html) {
   const source = String(html || "");
   const direct = source.match(/https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/ondemand\.s\.[A-Za-z0-9_-]+\.js/);
   if (direct) return direct[0];
+  const indexed = source.match(/(\d+):\s*["']ondemand\.s["']/);
+  if (indexed) {
+    const hash = source.match(new RegExp(`,${indexed[1]}:"([0-9a-fA-F]+)"`));
+    if (hash) return `https://abs.twimg.com/responsive-web/client-web/ondemand.s.${hash[1]}a.js`;
+  }
   const re = /(\d+):\s*["']ondemand\.s["'][\s\S]*?\}\)\[e\]\s*\|\|\s*e\)\s*\+\s*["']\.["']\s*\+\s*\(\{[\s\S]*?\b\1:\s*["']([a-zA-Z0-9_-]+)["']/;
-  const hash = re.exec(source)?.[2];
-  if (!hash) return "";
-  return `https://abs.twimg.com/responsive-web/client-web/ondemand.s.${hash}a.js`;
+  const legacy = re.exec(source)?.[2];
+  if (!legacy) return "";
+  return `https://abs.twimg.com/responsive-web/client-web/ondemand.s.${legacy}a.js`;
 }
 
 export function keyByteIndices(source) {
@@ -34,8 +39,13 @@ export function keyByteIndices(source) {
   if (!indices.length) {
     indices = Array.from(text.matchAll(/\(\s*\w+\s*\[\s*(\d{1,2})\s*\]\s*,\s*16\s*\)/g), (match) => Number(match[1]));
   }
+  // X's ondemand.s after 2026-03 uses `[12], 16` without the `(name[12], 16)` wrapper.
+  if (!indices.length) {
+    indices = Array.from(text.matchAll(/\[(\d{1,3})\],\s*16/g), (match) => Number(match[1]));
+  }
   if (!indices.length) return null;
-  const [rowIndex, ...keyBytesIndices] = indices;
+  const limited = indices.length > 8 ? indices.slice(0, 4) : indices;
+  const [rowIndex, ...keyBytesIndices] = limited;
   return { rowIndex, keyBytesIndices };
 }
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HOME_URL } from "../lib/pure.mjs";
-import { createXSession, readCookieJar } from "../lib/session.mjs";
+import { bodyText, createXSession, readCookieJar } from "../lib/session.mjs";
 
 function installDocument(partial = {}) {
   const links = partial.links || [];
@@ -179,12 +179,40 @@ test("animation paths and a client transaction id come from the live document", 
   assert.equal(paths[0], pathD);
   assert.equal(paths[1], "");
   const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
-  assert.equal(typeof id, "string");
-  assert.equal(id.includes("="), false);
+  assert.equal(id.source, "generated");
+  assert.equal(String(id.id).includes("="), false);
   assert.match(harness.calls.fetch.at(-1).url, /ondemand\.s\.h4sha\.js/);
 
   const empty = createXSession(fakePage({ evaluateNull: true }));
   assert.deepEqual(await empty.animationPaths(), []);
+});
+
+test("js bytes decode, and a live header is reused when indices are missing", () => {
+  assert.equal(bodyText(Buffer.from("[38], 16")), "[38], 16");
+  assert.equal(bodyText(new Uint8Array(Buffer.from("abc"))), "abc");
+  assert.equal(bodyText({ a: 1 }), '{"a":1}');
+  assert.equal(bodyText(null), "");
+});
+
+test("a sniffed GraphQL header is used when ondemand indices cannot be parsed", async () => {
+  installDocument({ html: "<html>logged-in home without shell</html>" });
+  const harness = fakePage();
+  harness.page.evaluate = async (fn) => {
+    const source = Function.prototype.toString.call(fn);
+    if (source.includes("__egoXTid")) return "sniffed-live-tid";
+    return fn();
+  };
+  const seen = [];
+  harness.page.cdp = async (method) => {
+    seen.push(method);
+    return { cookies: [] };
+  };
+  const session = createXSession(harness);
+  const result = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
+  assert.equal(result.source, "session");
+  assert.equal(result.id, "sniffed-live-tid");
+  assert.ok(seen.includes("Page.addScriptToEvaluateOnNewDocument"));
+  assert.ok(harness.calls.goto.includes(HOME_URL));
 });
 
 test("fetch, navigation, and finish", async () => {

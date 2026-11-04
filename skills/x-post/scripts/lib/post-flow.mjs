@@ -65,7 +65,20 @@ export async function resolveOperationQuery(session, operationName, override) {
       html = "";
     }
   }
-  const urls = rankScriptUrls(extractScriptUrls(html));
+  let urls = extractScriptUrls(html);
+  if (typeof session.scriptUrls === "function") {
+    try {
+      const live = await session.scriptUrls();
+      for (const url of live || []) {
+        if (/https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/.+\.js/.test(String(url)) && !urls.includes(url)) {
+          urls.push(String(url));
+        }
+      }
+    } catch {
+      // The shell document is enough when its script tags are still there.
+    }
+  }
+  urls = rankScriptUrls(urls);
   let bearer = extractWebBearer(html);
   let queryId = extractOperationQueryId(html, operationName);
   for (const url of urls) {
@@ -94,7 +107,13 @@ async function requireTransaction(session, path, config) {
     return { id: "", source: "missing", error: refused };
   }
   try {
-    const id = String(await session.clientTransaction({ method: "POST", path }) || "");
+    const raw = await session.clientTransaction({ method: "POST", path });
+    if (raw && typeof raw === "object") {
+      const id = String(raw.id || "");
+      if (!id) return { id: "", source: "missing", error: refused };
+      return { id, source: raw.source === "session" ? "session" : "generated" };
+    }
+    const id = String(raw || "");
     if (!id) return { id: "", source: "missing", error: refused };
     return { id, source: "generated" };
   } catch (error) {
