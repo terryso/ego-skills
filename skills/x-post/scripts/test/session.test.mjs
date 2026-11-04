@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolveOperationQuery } from "../lib/post-flow.mjs";
 import { HOME_URL } from "../lib/pure.mjs";
 import { bodyText, createXSession, readCookieJar } from "../lib/session.mjs";
 
@@ -199,6 +200,70 @@ test("js bytes decode, and a live header is reused when indices are missing", ()
   assert.equal(bodyText(new Uint8Array(Buffer.from("abc"))), "abc");
   assert.equal(bodyText({ a: 1 }), '{"a":1}');
   assert.equal(bodyText(null), "");
+});
+
+test("Node ECONNRESET falls back to the script the Ego page already loaded", async () => {
+  const pathD = "M 10 20 C 1 2 3 4 5 6 7 8 9 10 11";
+  const ondemand = "https://abs.twimg.com/responsive-web/client-web/ondemand.s.h4sha.js";
+  const main = "https://abs.twimg.com/responsive-web/client-web/main.live.js";
+  const html = `<meta name="twitter-site-verification" content="AAAAAAAA"><svg id="loading-x-anim-0"><path d="M 0 0"/><path d="${pathD}"/></svg><script src="${ondemand}"></script><script src="${main}"></script>`;
+  installDocument({ html });
+  const harness = fakePage({ response: { status: 200, body: html } });
+  const cdpCalls = [];
+  harness.page.cdp = async (method, args) => {
+    cdpCalls.push(method);
+    if (method === "Page.getResourceTree") {
+      return {
+        frameTree: {
+          frame: { id: "main" },
+          resources: [
+            { url: ondemand, type: "Script" },
+            { url: main, type: "Script", requestId: "req-main" },
+          ],
+        },
+      };
+    }
+    if (method === "Page.getResourceContent") {
+      if (String(args.url).includes("ondemand")) return { content: "(a[0], 16)(a[1], 16)" };
+      return { content: "" };
+    }
+    if (method === "Network.getResponseBody") {
+      assert.equal(args.requestId, "req-main");
+      return {
+        body: Buffer.from('queryId:"LiveNoteQueryId123",operationName:"CreateNoteTweet"').toString("base64"),
+        base64Encoded: true,
+      };
+    }
+    return { cookies: [] };
+  };
+  const nodeCalls = [];
+  const session = createXSession({
+    ...harness,
+    fetchPublicJs: async (url) => {
+      nodeCalls.push(url);
+      throw new Error("read ECONNRESET");
+    },
+  });
+  const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
+  assert.equal(id.source, "generated");
+  assert.match(nodeCalls[0], /ondemand\.s\.h4sha\.js/);
+  assert.equal(harness.calls.fetch.some((call) => String(call.url).includes("abs.twimg.com")), false);
+  assert.equal(cdpCalls.includes("Page.getResourceContent"), true);
+  const discovered = await resolveOperationQuery(session, "CreateNoteTweet", "");
+  assert.equal(discovered.queryId, "LiveNoteQueryId123");
+  assert.equal(discovered.source, "bundle");
+  assert.equal(cdpCalls.includes("Network.getResponseBody"), true);
+
+  const bare = fakePage({ response: { status: 200, body: html } });
+  bare.page.cdp = async () => { throw new Error("cdp down"); };
+  const failed = createXSession({
+    ...bare,
+    fetchPublicJs: async () => { throw new Error("read ECONNRESET"); },
+  });
+  await assert.rejects(
+    () => failed.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" }),
+    /read ECONNRESET; browser cache empty/,
+  );
 });
 
 test("a header from another GraphQL call is not reused when indices are missing", async () => {

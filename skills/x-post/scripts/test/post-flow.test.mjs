@@ -294,6 +294,13 @@ test("text over the short limit uses CreateNoteTweet and a transaction id", asyn
   assert.equal(emptyPost.sent, false);
   assert.equal(emptyId.calls.post, null);
 
+  const sniffed = session();
+  sniffed.clientTransaction = async () => ({ id: "from-another-op", source: "session" });
+  const refusedSniff = await performPost({ yes: true, text: "hi" }, sniffed);
+  assert.equal(refusedSniff.sent, false);
+  assert.equal(refusedSniff.transaction_id_source, "missing");
+  assert.equal(sniffed.calls.post, null);
+
   const rejected = session();
   rejected.clientTransaction = async () => "still-secret";
   const again = await performPost({ yes: true, text: "x".repeat(281) }, {

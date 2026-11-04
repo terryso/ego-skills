@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
-import { fetchPublicJs, isPublicClientWeb } from "../lib/fetch-public.mjs";
+import { fetchPublicJs, isPublicClientWeb, isRetryablePublicJsError, publicJsBackoffMs } from "../lib/fetch-public.mjs";
 
 function response({ status = 200, body = "", headers = {} } = {}) {
   const res = new EventEmitter();
@@ -57,7 +57,7 @@ test("fetchPublicJs reports HTTP errors and timeouts", async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/ondemand.s.missing.js", { request }),
+    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/ondemand.s.missing.js", { request, attempts: 4, sleep: async () => { throw new Error("404 must not retry"); } }),
     /HTTP 404/,
   );
   const timingOut = (_url, _opts, cb) => {
@@ -68,7 +68,7 @@ test("fetchPublicJs reports HTTP errors and timeouts", async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/main.slow.js", { request: timingOut }),
+    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/main.slow.js", { request: timingOut, attempts: 1 }),
     /timeout/,
   );
   const failing = () => {
@@ -79,7 +79,51 @@ test("fetchPublicJs reports HTTP errors and timeouts", async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/main.down.js", { request: failing }),
+    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/main.down.js", { request: failing, attempts: 1 }),
     /socket down/,
+  );
+});
+
+test("fetchPublicJs retries a reset, then returns the body", async () => {
+  const sleeps = [];
+  let n = 0;
+  const request = (_url, _opts, cb) => {
+    n += 1;
+    const req = new EventEmitter();
+    req.end = () => {};
+    req.destroy = () => {};
+    queueMicrotask(() => {
+      if (n < 3) {
+        const error = new Error("read ECONNRESET");
+        error.code = "ECONNRESET";
+        req.emit("error", error);
+        return;
+      }
+      cb(response({ body: "[38], 16[39], 16" }));
+    });
+    return req;
+  };
+  const body = await fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/ondemand.s.retry.js", {
+    request,
+    sleep: async (ms) => { sleeps.push(ms); },
+  });
+  assert.equal(body, "[38], 16[39], 16");
+  assert.equal(n, 3);
+  assert.deepEqual(sleeps, [publicJsBackoffMs(0), publicJsBackoffMs(1)]);
+  assert.equal(isRetryablePublicJsError(new Error("public JS HTTP 502 for x")), true);
+  assert.equal(isRetryablePublicJsError(new Error("public JS HTTP 404 for x")), false);
+  await assert.rejects(
+    () => fetchPublicJs("https://abs.twimg.com/responsive-web/client-web/ondemand.s.reset.js", {
+      request: () => {
+        const req = new EventEmitter();
+        req.end = () => {};
+        req.destroy = () => {};
+        queueMicrotask(() => req.emit("error", new Error("read ECONNRESET")));
+        return req;
+      },
+      attempts: 2,
+      sleep: async () => {},
+    }),
+    /ECONNRESET/,
   );
 });

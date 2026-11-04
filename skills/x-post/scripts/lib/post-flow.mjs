@@ -113,8 +113,9 @@ async function requireTransaction(session, path, config) {
     const raw = await session.clientTransaction({ method: "POST", path });
     if (raw && typeof raw === "object") {
       const id = String(raw.id || "");
-      if (!id) return { id: "", source: "missing", error: refused };
-      return { id, source: raw.source === "session" ? "session" : "generated" };
+      // A sniffed header from another GraphQL op is not a transaction id for this POST.
+      if (!id || raw.source === "session") return { id: "", source: "missing", error: refused };
+      return { id, source: "generated" };
     }
     const id = String(raw || "");
     if (!id) return { id: "", source: "missing", error: refused };

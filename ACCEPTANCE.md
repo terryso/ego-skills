@@ -4,16 +4,16 @@
 
 | Metric | Result |
 |--------|--------|
-| Tests | 307 passed |
-| Line coverage | **98.32%** |
-| Statement coverage | 98.32% |
+| Tests | 313 passed |
+| Line coverage | **98.27%** |
+| Statement coverage | 98.27% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
-| `x-post` included lib lines | **95.78%** (`launch.mjs`, `run-check.mjs` 100%; `pure.mjs` 99.71%; `post-flow.mjs` 96.94%; `fetch-public.mjs` 91.42%; `session.mjs` 90.36%; `transaction.mjs` 88.62%) |
+| `x-post` included lib lines | **95.80%** (`launch.mjs`, `run-check.mjs` 100%; `pure.mjs` 99.71%; `post-flow.mjs` 97.56%; `loaded-script.mjs` 93.54%; `session.mjs` 91.64%; `fetch-public.mjs` 91.07%; `transaction.mjs` 88.96%) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -188,7 +188,7 @@ Posts to X through the logged-in Ego session. Login-check first. Logged out or m
 
 Unit tests mock the session and do not call x.com. No Ego smoke was run in this environment (no logged-in browser). Pro smoke: show the exact text in `skills/x-post/SKILL.md`, then re-run that command with `--yes`. Leave the announcement up.
 
-Included line coverage under the c8 glob: `launch.mjs` and `run-check.mjs` are 100% lines. `pure.mjs` is 99.71%. `post-flow.mjs` is 96.94%. `fetch-public.mjs` is 91.42%. `session.mjs` is 90.36%. `transaction.mjs` is 88.62%. `ondemand.s` and `main.*.js` are loaded with Node HTTPS, not `page.fetch`, because the browser CORS-blocks `abs.twimg.com` from x.com. Verification key and `loading-x-anim` still come from the Ego document. The transaction id is generated for the CreateNoteTweet POST. A header from another GraphQL call is not sent. Long posts open `https://x.com/compose/post` and wait two seconds after those files resolve, then `page.fetch` the mutation. `ego-deps.mjs` and the entry scripts stay outside the include.
+Included line coverage under the c8 glob: `launch.mjs` and `run-check.mjs` are 100% lines. `pure.mjs` is 99.71%. `post-flow.mjs` is 97.56%. `loaded-script.mjs` is 93.54%. `session.mjs` is 91.64%. `fetch-public.mjs` is 91.07%. `transaction.mjs` is 88.96%. `ondemand.s` and `main.*.js` are loaded with Node HTTPS, retried with backoff after `ECONNRESET`. If that GET still returns 0 bytes, the copy already in the Ego page is read from script text, the performance resource list, `Page.getResourceContent`, and `Network.getResponseBody`. Verification key and `loading-x-anim` still come from the Ego document. The transaction id is generated for the CreateNoteTweet POST. A header from another GraphQL call is not sent. Long posts open `https://x.com/compose/post` and wait two seconds after those files resolve, then `page.fetch` the mutation. `ego-deps.mjs` and the entry scripts stay outside the include.
 
 ```bash
 node skills/x-post/scripts/check-login.mjs

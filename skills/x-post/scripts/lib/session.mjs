@@ -1,6 +1,7 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
 import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
+import { readLoadedClientScript } from "./loaded-script.mjs";
 import { COMPOSE_URL, HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
 import {
   animationPathsFromHtml,
@@ -50,6 +51,27 @@ export function createXSession({ task, page, pageName = "p1", keep = false, fetc
     finished = true;
     await task.finish({ keep: names });
   };
+  async function loadClientWeb(url) {
+    let nodeError = "";
+    try {
+      const body = await loadPublic(url);
+      if (body && String(body).trim()) return String(body);
+      nodeError = "empty body";
+    } catch (error) {
+      nodeError = error && error.message ? error.message : "fetch failed";
+    }
+    let cached = "";
+    try {
+      cached = await readLoadedClientScript(page, url);
+    } catch (error) {
+      const extra = error && error.message ? error.message : "browser cache failed";
+      nodeError = [nodeError, extra].filter(Boolean).join("; ");
+    }
+    if (cached && String(cached).trim()) return String(cached);
+    const failure = new Error([nodeError, "browser cache empty"].filter(Boolean).join("; "));
+    failure.code = "PUBLIC_JS";
+    throw failure;
+  }
   return {
     spaceId: task.spaceId,
     async goto(url) {
@@ -119,7 +141,7 @@ export function createXSession({ task, page, pageName = "p1", keep = false, fetc
       const html = await page.evaluate(() => (document.documentElement && document.documentElement.outerHTML) || "");
       return String(html || "");
     },
-    fetchPublicJs: loadPublic,
+    fetchPublicJs: loadClientWeb,
     async fetchText(url, timeout = 30_000) {
       if (isPublicClientWeb(url)) {
         throw new Error("abs.twimg.com is fetched with Node, not page.fetch");
@@ -242,7 +264,7 @@ export function createXSession({ task, page, pageName = "p1", keep = false, fetc
       let fetchError = "";
       if (chunkUrl) {
         try {
-          chunk = await loadPublic(chunkUrl);
+          chunk = await loadClientWeb(chunkUrl);
         } catch (error) {
           fetchError = error && error.message ? error.message : "fetch failed";
           chunk = "";
