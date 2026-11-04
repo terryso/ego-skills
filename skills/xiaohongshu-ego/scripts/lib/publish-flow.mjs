@@ -137,7 +137,7 @@ export async function performPublish(config, session, checked) {
         exitCode: 1,
         cover_confirmed: false,
         replaced_first_frame: false,
-        error: cover.error || "PK cover was not confirmed. Refusing to publish with the video first frame.",
+        error: cover.error || "Main cover was not confirmed after 选择图片上传. Refusing to publish with the video first frame.",
       };
     }
     coverConfirmed = true;

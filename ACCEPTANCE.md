@@ -14,7 +14,7 @@
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
 | `x-post` included lib lines | **95.80%** (`launch.mjs`, `run-check.mjs` 100%; `pure.mjs` 99.71%; `post-flow.mjs` 97.56%; `loaded-script.mjs` 93.54%; `session.mjs` 91.64%; `fetch-public.mjs` 91.07%; `transaction.mjs` 88.96%) |
-| `xiaohongshu-ego` included lib lines | **100%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, `creator-dom.mjs`, `publish-flow.mjs`) |
+| `xiaohongshu-ego` included lib lines | **99.11%** (`creatorAct` is self-contained; `--cover` uses 选择图片上传 for the main cover) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 

@@ -4,8 +4,9 @@ description: >
   Publish one Xiaohongshu (小红书) video note through the creator web UI in Ego Lite.
   Login-check first. Soft-fail with exit 2 when ego-browser is missing, the creator
   site is logged out, or --expect-account does not match the header nickname.
-  Nothing is uploaded without --yes. With --cover, 发布 is clicked only after toast
-  「已添加 PK 封面」 and the cover counter advances (for example 0/3 to 1/3).
+  Nothing is uploaded without --yes: that run only inspects login and prints a plan.
+  With --yes and --cover, 发布 runs only after 选择图片上传 changes the main-cover
+  preview. If the preview does not change, the run refuses to publish.
   Without --cover the platform keeps the video first frame. Ego Lite only, not MCP.
   Use when the user asks to post a video note to 小红书 or creator.xiaohongshu.com.
 metadata:
@@ -77,9 +78,13 @@ node scripts/check-login.mjs --keep
 
 ## 确认规则
 
-没有 `--yes` 只检查登录并打印计划 JSON（里面有封面路径），退出码 `3`，**不上传**。等人确认后再加 `--yes`。
+没有 `--yes`：只检查登录并打印计划 JSON（`cover_mode` 为 `main-cover`，`cover_selector` 为「选择图片上传」，并带上封面路径），退出码 `3`。这一步不上传视频，也不点「发布」。
 
-Without `--yes` the command checks login, prints the plan JSON, and exits `3`. It does not upload. Add `--yes` only after the user confirms.
+有 `--yes`：才会上传。如果带了 `--cover`，必须走「选择图片上传」设置主封面，并且主封面预览发生变化，才点「发布」。预览没变就失败退出，不发布。PK 槽不算主封面。
+
+Without `--yes` the command only inspects login and prints the plan JSON (`cover_mode=main-cover`, `cover_selector=选择图片上传`, plus the cover path), then exits `3`. It does not upload and it does not click 发布.
+
+With `--yes` it uploads. When `--cover` is set, it must set the main cover through 选择图片上传 and click 发布 only after the main-cover preview changes. If the preview does not change, the run fails and does not publish. PK slots do not count as the main cover.
 
 ## 命令
 

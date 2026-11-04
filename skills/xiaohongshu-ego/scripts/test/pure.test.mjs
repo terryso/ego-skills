@@ -250,6 +250,7 @@ test("cover confirmation requires the toast and a counter advance", () => {
   assert.equal(coverReplacedFirstFrame({}, { pkApplied: true, text: "已添加 PK 封面 1/3" }), true);
   const guard = assertCoverBeforePublish({ cover: "/tmp/cover-3x4.png", coverConfirmed: false });
   assert.equal(guard.ok, false);
+  assert.match(guard.error, /选择图片上传/);
   assert.match(guard.error, /first frame/);
   assert.equal(assertCoverBeforePublish({ cover: "", coverConfirmed: false }).ok, true);
   assert.equal(assertCoverBeforePublish({ cover: "/tmp/a.png", coverConfirmed: true }).ok, true);

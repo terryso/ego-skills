@@ -31,7 +31,7 @@ export const HOW_TO_LOGIN = [
   "Visit https://creator.xiaohongshu.com/ and sign in to the creator account that should publish. www.xiaohongshu.com can show a different account than the creator site.",
   "Leave that creator session signed in inside Ego. Do not paste cookies or type a password into the skill.",
   "Re-run check-login. When --expect-account is set, the creator header nickname must match before any upload.",
-  "One video note per run. Nothing is uploaded without --yes. If --cover is set, 发布 is clicked only after the PK cover replaces the first frame.",
+  "One video note per run. Nothing is uploaded without --yes. If --cover is set, 发布 is clicked only after 选择图片上传 changes the main-cover preview.",
 ];
 
 export const HOW_TO_LOGIN_ZH = [
@@ -39,7 +39,7 @@ export const HOW_TO_LOGIN_ZH = [
   "访问 https://creator.xiaohongshu.com/ ，登录要发布的创作者账号。www.xiaohongshu.com 上的登录账号可能和创作者平台不是同一个。",
   "保持 Ego 里的创作者平台为登录状态。不要粘贴 Cookie，也不要让技能代填密码。",
   "重新跑 check-login。传了 --expect-account 时，必须是创作者页眉上的昵称一致，才能上传。",
-  "每次只发一条视频笔记。没有 --yes 不会上传。传了 --cover 时，必须确认 PK 封面已换掉视频首帧，才会点「发布」。",
+  "每次只发一条视频笔记。没有 --yes 不会上传。传了 --cover 时，必须用「选择图片上传」换上主封面，并且预览已变化，才会点「发布」。",
 ];
 
 export const LOGIN_TIP =
@@ -51,8 +51,9 @@ export const LOGIN_TIP_ZH =
 export const USAGE = `xiaohongshu-ego — publish one Xiaohongshu video note via Ego Lite (creator web UI)
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
-Nothing is uploaded without --yes. With --cover, 发布 is clicked only after the PK cover
-replaces the video first frame. If that confirmation fails, the run fails and does not publish.
+Nothing is uploaded without --yes: that run only checks login and prints a plan (exit 3).
+With --yes and --cover, 发布 is clicked only after 选择图片上传 changes the main-cover preview.
+If that preview does not change, the run fails and does not publish. PK slots are not used.
 Without --cover, the platform keeps the first frame. This skill does not invent a cover.
 
   node scripts/check-login.mjs [--expect-account <nickname>] [--keep]
@@ -62,10 +63,10 @@ Without --cover, the platform keeps the first frame. This skill does not invent 
   node scripts/cleanup.mjs [--task-name <prefix>]
 
 check-login exits 0 when the creator site is signed in, 2 when login is required, the nickname mismatches, or ego-browser is missing.
-post-video without --yes checks login, prints a plan JSON (including the cover path), and exits 3. It does not upload.
+post-video without --yes checks login, prints a plan JSON (cover_mode=main-cover, cover_selector=选择图片上传), and exits 3. It does not upload.
 Notes cannot contain links. http(s), www, bare domains, and t.co in --title, --desc, or --topics exit 4 unless --strip-links is set.
-post-video --yes prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
-With --cover, 发布 waits for toast 「已添加 PK 封面」 and the counter advancing (for example 0/3 → 1/3). No crop dialog is clicked.
+post-video --yes sets the main cover via 选择图片上传 when --cover is passed, then prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
+If the main-cover preview does not change, --yes exits 1 and does not click 发布.
 edit-cover.mjs is best-effort for a note that already published. Prefer --cover on post-video.
 Default finish({ keep: [] }). --keep leaves the page.
 cleanup closes spaces whose names start with xiaohongshu-ego. It does not delete notes.
@@ -552,7 +553,7 @@ export function assertCoverBeforePublish({ cover = "", coverConfirmed = false } 
   if (String(cover || "").trim() && !coverConfirmed) {
     return {
       ok: false,
-      error: "Refusing to click 发布 because the PK cover was not confirmed. The video first frame would be used.",
+      error: "Refusing to click 发布 because the main cover was not confirmed after 选择图片上传. The video first frame would stay the thumbnail.",
     };
   }
   return { ok: true };

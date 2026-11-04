@@ -33,7 +33,7 @@ Use `page.setInputFiles`. Do not open an OS file dialog. There is **no crop or c
 
 Wait until the body no longer matches `/上传中\s*\d+%/` and shows 重新上传 or 设置封面.
 
-The platform then uses the **video first frame** as the cover unless a PK cover is confirmed.
+The platform then uses the **video first frame** as the main cover until 「选择图片上传」 replaces it. A PK-slot upload does not do that.
 
 ## Cover, required when `--cover` is set
 
@@ -75,8 +75,8 @@ Verified path for note `6aeae281000000000e00cb56`:
 
 1. Note manager → 编辑
 2. `https://creator.xiaohongshu.com/publish/update?id=<noteId>&noteType=video`
-3. The same `input.pk-cover-list-file-input`
-4. The same toast and counter check
+3. The same 「选择图片上传」 main-cover input, not `input.pk-cover-list-file-input`
+4. The main-cover preview must change before 发布
 5. Footer button whose text is exactly `发布`
 
 Caveats from the same session:
