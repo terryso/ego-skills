@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Link skills/* into agent skill directories.
-# Skills shipped: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video.
+# Skills shipped: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video, teambition-ego.
 # Directories whose names start with "_" (skills/_template) are scaffolds and are not linked.
 # Prerequisite: ego lite installed, `ego-browser` on PATH.
 #

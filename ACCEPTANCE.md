@@ -1,17 +1,18 @@
 # Acceptance
 
-`npm test` on 2026-11-04 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
+`npm test` on 2026-11-04 (Node v24.22.1, c8). The test script and c8 include are globs (`skills/*/scripts/test/*.test.mjs`, `scripts/test/*.test.mjs`, `skills/*/scripts/lib/**/*.mjs`). `ego-deps.mjs` and entry files such as `tb.mjs` stay outside the include. Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `teambition-ego` covers `pure.mjs`, `launch-check.mjs`, `run-check.mjs`, `session.mjs`, and `domains/testcase.mjs`. `skills/_template/scripts/lib/pure.mjs` is included and is 100% lines.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 186 passed |
-| Line coverage | **98.73%** |
-| Statement coverage | 98.73% |
+| Tests | 246 passed |
+| Line coverage | **98.92%** |
+| Statement coverage | 98.92% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
+| `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -161,4 +162,19 @@ Included lib line coverage: `pure.mjs` 100%, `douyin-dom.mjs` 100%, `run-check.m
 ```bash
 node skills/douyin-video/scripts/check-login.mjs
 bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" "Description #topic"
+```
+
+## teambition-ego
+
+Phase 1 reads Teambition test plans and test cases. No download step and no writes. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip` (sign in to teambition.com inside Ego before reading). check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+Reads use `page.fetch` against `https://www.teambition.com/testcase/api/`. They do not use `teambition_cli` or an Open API token. `plan`, `groups`, `cases`, and `get` leave the `tb-testcase api` space open for reuse. `cleanup` closes it with `finish({ keep: [] })`. `parse-url` does not open a browser.
+
+Login-check on this machine (ego-browser 0.6.0.12) exited 2. The tab stayed on the public homepage (`https://www.teambition.com/`, title `钉钉 Teambition · 阿里巴巴旗下团队协作工具`). `platformChrome` and `loggedInCookie` were false, so this was not treated as the signed-in app. `how_to_login` length 5 and `login_tip` were present. The task space closed (no `--keep`). No testcase read was started.
+
+Included line coverage under the c8 glob (everything in `scripts/lib/` except `ego-deps.mjs`): `session.mjs` 100%, `domains/testcase.mjs` 100%, `run-check.mjs` 100%, `pure.mjs` 100%, `launch-check.mjs` 100%. `tb.mjs` and `ego-deps.mjs` stay outside the include, same as the other skills' entry files and `ego-deps.mjs`.
+
+```bash
+node skills/teambition-ego/scripts/check-login.mjs
+node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambition.com/project/PROJECT/testplan/PLAN/group/GROUP"
 ```

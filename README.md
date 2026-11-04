@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [Chinese](README_CN.md)
 
-> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`kuaishou-video`](./skills/kuaishou-video/), [`youtube-video`](./skills/youtube-video/), and [`douyin-video`](./skills/douyin-video/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`kuaishou-video`](./skills/kuaishou-video/), [`youtube-video`](./skills/youtube-video/), [`douyin-video`](./skills/douyin-video/), and [`teambition-ego`](./skills/teambition-ego/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -64,6 +64,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`kuaishou-video`](./skills/kuaishou-video/) | Publish a local video to the Kuaishou creator platform. Login-check first. Success means the work shows as under review. |
 | [`youtube-video`](./skills/youtube-video/) | Publish a local video to YouTube Studio. Login-check first. Default visibility is private and Made for kids is No. Success is a video URL plus a processing status. |
 | [`douyin-video`](./skills/douyin-video/) | Publish a local video to the Douyin creator center. Login-check first. Title is at most 30 characters. Defaults stay public, allow save, and publish immediately. Success is content management or a publish-success message. |
+| [`teambition-ego`](./skills/teambition-ego/) | Read Teambition test plans and test cases through the Ego session. Login-check first. Read-only. Phase 1 uses the browser session, not an Open API token. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -94,7 +95,12 @@ node skills/douyin-video/scripts/check-login.mjs
 bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" "Description #topic"
 ```
 
-If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego). See each skill's `references/login.md`.
+```bash
+node skills/teambition-ego/scripts/check-login.mjs
+node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambition.com/project/PROJECT/testplan/PLAN/group/GROUP"
+```
+
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable after signing in to teambition.com inside Ego). See each skill's `references/login.md`.
 
 ## Why ego
 

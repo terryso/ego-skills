@@ -4,7 +4,7 @@
 
 ego-skills is a **runnable Agent Skills monorepo for Ego Lite**. External pull requests are welcome. This is not an awesome-list of links, and it is not a central registry. The path in is: issue → scaffold → one-skill pull request → `npm test` → maintainer review of login behavior and terms of service.
 
-Shipped skills today: `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, and `douyin-video`. Each one needs [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`.
+Shipped skills today: `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, and `teambition-ego`. Each one needs [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`.
 
 ## What we accept
 
