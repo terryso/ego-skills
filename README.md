@@ -66,7 +66,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`douyin-video`](./skills/douyin-video/) | Publish a local video to the Douyin creator center. Login-check first. Title is at most 30 characters. Defaults stay public, allow save, and publish immediately. Success is content management or a publish-success message. |
 | [`teambition-ego`](./skills/teambition-ego/) | Read Teambition test plans and test cases through the Ego session. Login-check first. Phase 2a also creates, updates, sets status, and archives one case (`delete --yes`). Browser session only, not an Open API token. |
 | [`x-post`](./skills/x-post/) | Post on X from the logged-in Ego session with `page.fetch` CreateTweet. Login-check first. Nothing is sent without `--yes`. Success is `https://x.com/<screen_name>/status/<id>`. |
-| [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | Publish one Xiaohongshu video note on the creator site. Login-check first. Nothing uploads without `--yes`. Pass `--cover` (for example `cover-3x4.png`) to replace the first frame; otherwise the platform keeps the first frame. Success is `https://www.xiaohongshu.com/explore/<noteId>`. |
+| [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | Publish one Xiaohongshu video note on the creator site. Login-check first. Nothing uploads without `--yes`. Notes must not contain links: remove them from the copy or pass `--strip-links`. Pass `--cover` (for example `cover-3x4.png`) through 选择图片上传 so it becomes the main cover. PK slots alone leave the thumbnail as the first frame for about 72 hours. Without `--cover` the platform keeps the first frame. Success is `https://www.xiaohongshu.com/explore/<noteId>`. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \

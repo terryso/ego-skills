@@ -96,8 +96,10 @@ test("reveal clicks 换封面 and publish clicks only 发布", () => {
   assert.equal(creatorAct({ op: "reveal-cover" }).ok, true);
   assert.equal(swap.clicked, 1);
   assert.equal(stash.clicked, 0);
-  assert.equal(creatorAct({ op: "click-publish" }).ok, true);
-  assert.equal(publish.clicked, 1);
+  const found = creatorAct({ op: "click-publish" });
+  assert.equal(found.ok, true);
+  assert.equal(found.tag, "BUTTON");
+  assert.equal(publish.clicked, 0);
   assert.equal(publishNotes.clicked, 0);
   assert.equal(stash.clicked, 0);
   createDocument(h("body", {}, [stash]));
@@ -107,34 +109,80 @@ test("reveal clicks 换封面 and publish clicks only 发布", () => {
 
 test("title, body, and note cards", () => {
   const title = h("input", { placeholder: "填写标题" });
-  const body = h("div", { editable: true });
+  const body = h("div", { className: "ProseMirror", editable: true });
   const card = h("div", {
     className: "note-card",
     text: "看条广告手机就中招？",
     attrs: { "data-impression": JSON.stringify({ noteTarget: { value: { noteId: "6aeae281000000000e00cb56" } } }) },
   });
   createDocument(h("body", {}, [title, body, card]));
-  const filled = creatorAct({ op: "fill-title", title: "看条广告" });
-  assert.equal(filled.ok, true);
-  assert.equal(title.value, "看条广告");
-  assert.equal(title.events.length, 2);
-  const written = creatorAct({ op: "fill-body", body: "正文\n\n#话题" });
-  assert.equal(written.ok, true);
-  assert.equal(body.innerText, "正文\n\n#话题");
+  const target = creatorAct({ op: "title-target" });
+  assert.equal(target.ok, true);
+  assert.equal(target.selector, "[data-xhs-title='1']");
+  title.value = "看条广告";
+  assert.equal(creatorAct({ op: "title-value" }).value, "看条广告");
+  const prose = creatorAct({ op: "body-target" });
+  assert.equal(prose.proseMirror, true);
+  body.innerText = "正文";
+  assert.equal(creatorAct({ op: "body-value" }).value, "正文");
   const notes = creatorAct({ op: "note-cards" });
   assert.equal(notes.cards[0].impression.includes("6aeae281"), true);
   createDocument(h("body"));
-  assert.match(creatorAct({ op: "fill-title", title: "x" }).error, /title field/);
-  assert.match(creatorAct({ op: "fill-body", body: "x" }).error, /description field/);
-  const sticky = h("textarea", { placeholder: "填写描述" });
-  Object.defineProperty(sticky, "value", { get() { return "nope"; }, set() {} });
-  createDocument(h("body", {}, [sticky]));
-  assert.equal(creatorAct({ op: "fill-body", body: "正文" }).ok, false);
+  assert.match(creatorAct({ op: "title-target" }).error, /title field/);
+  assert.match(creatorAct({ op: "body-target" }).error, /ProseMirror/);
   const aria = h("input", { attrs: { "aria-label": "标题" } });
   createDocument(h("body", {}, [aria]));
-  assert.equal(creatorAct({ op: "fill-title", title: "甲" }).ok, true);
-  const broken = h("input", { placeholder: "填写标题" });
-  Object.defineProperty(broken, "value", { get() { return ""; }, set() {} });
-  createDocument(h("body", {}, [broken]));
-  assert.equal(creatorAct({ op: "fill-title", title: "甲" }).ok, false);
+  assert.equal(creatorAct({ op: "title-target" }).ok, true);
+});
+
+test("选择图片上传 is the main cover input, not the PK input", () => {
+  const video = h("input", { className: "upload-input", type: "file", accept: ".mp4" });
+  const pk = h("input", { className: "pk-cover-list-file-input", type: "file", accept: ".png" });
+  const main = h("input", { type: "file", accept: ".jpg,.jpeg,.png" });
+  const preview = h("img", { attrs: { src: "first-frame.jpg" } });
+  const chooser = h("button", {}, ["选择图片上传"]);
+  const pkImg = h("img", { className: "pk-cover-list-card-img", attrs: { src: "pk-cover-list-blob" } });
+  const group = h("div", {}, [chooser, main, preview]);
+  createDocument(h("body", {}, [video, pk, pkImg, group]));
+  const found = creatorAct({ op: "main-cover-input" });
+  assert.equal(found.ok, true);
+  assert.equal(found.scope, "main");
+  assert.equal(found.via, "选择图片上传");
+  assert.equal(main.getAttribute("data-xhs-main-cover"), "1");
+  assert.equal(pk.getAttribute("data-xhs-main-cover"), null);
+  const before = creatorAct({ op: "main-cover-state" });
+  assert.equal(before.signature, "first-frame.jpg");
+  assert.doesNotMatch(before.signature, /pk-cover-list/);
+  preview.setAttribute("src", "custom-cover.jpg");
+  const after = creatorAct({ op: "main-cover-state" });
+  assert.equal(after.signature, "custom-cover.jpg");
+  createDocument(h("body", {}, [video, pk, h("button", {}, ["发布"])]));
+  assert.match(creatorAct({ op: "main-cover-input" }).error, /选择图片上传/);
+});
+
+test("creatorAct has no module closure after serialization", () => {
+  const isolated = new Function(`return (${creatorAct.toString()})`)();
+  const publish = h("div", {}, ["发布"]);
+  const main = h("input", { type: "file", accept: ".png" });
+  const chooser = h("button", {}, ["选择图片上传"]);
+  publish.getBoundingClientRect = () => ({ x: 0, y: 10, width: 20, height: 10 });
+  createDocument(h("body", { text: "发布笔记" }, [
+    h("div", { className: "user-name", text: "听懂AI" }),
+    h("input", { className: "upload-input", type: "file" }),
+    h("div", {}, [chooser, main, h("img", { attrs: { src: "first-frame.jpg" } })]),
+    h("input", { placeholder: "填写标题" }),
+    h("div", { className: "ProseMirror", editable: true }),
+    publish,
+  ]), { href: "https://creator.xiaohongshu.com/publish/publish" });
+  assert.equal(isolated({ op: "probe" }).nickname, "听懂AI");
+  assert.equal(isolated({ op: "main-cover-input" }).scope, "main");
+  assert.equal(isolated({ op: "main-cover-state" }).signature, "first-frame.jpg");
+  assert.equal(isolated({ op: "title-target" }).ok, true);
+  assert.equal(isolated({ op: "body-target" }).proseMirror, true);
+  const clicked = isolated({ op: "click-publish" });
+  assert.equal(clicked.ok, true);
+  assert.equal(clicked.tag, "DIV");
+  assert.equal(clicked.x, 10);
+  assert.equal(clicked.y, 15);
+  assert.equal(publish.clicked, 0);
 });

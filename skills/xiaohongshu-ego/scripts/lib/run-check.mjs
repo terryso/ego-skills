@@ -100,8 +100,9 @@ export async function executeCheck(config = {}, { browser } = {}) {
     const gate = await readGate(session, config.expectAccount);
     summary.page = strip({ url: gate.url, title: gate.title });
     summary.nickname = gate.nickname || undefined;
-    if (gate.evaluateError && !gate.logged_in && !gate.text) {
+    if (gate.evaluateError) {
       summary.ok = false;
+      summary.logged_in = false;
       summary.exitCode = 1;
       summary.error = gate.evaluateError;
     } else if (!gate.logged_in) {

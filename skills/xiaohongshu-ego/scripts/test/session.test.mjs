@@ -17,9 +17,11 @@ function task() {
 function page(extra = {}) {
   const files = [];
   const waits = [];
+  const clicks = [];
   return {
     files,
     waits,
+    clicks,
     async url() { return extra.url || "https://creator.xiaohongshu.com/publish/publish"; },
     async title() { return extra.title || "发布笔记"; },
     async goto() {},
@@ -31,6 +33,22 @@ function page(extra = {}) {
       return fn(payload);
     },
     async setInputFiles(selector, file) { files.push({ selector, file }); },
+    async fill(selector, value) {
+      const el = globalThis.document.querySelector(selector);
+      if (el) el.value = value;
+    },
+    async click(selector) {
+      clicks.push(selector);
+      const el = globalThis.document.querySelector(selector);
+      if (el) el.clicked = (el.clicked || 0) + 1;
+    },
+    keyboard: {
+      async insertText(value) {
+        const el = globalThis.document.querySelector("[data-xhs-body='1']");
+        if (el) el.innerText = value;
+      },
+    },
+    mouse: extra.mouse || null,
   };
 }
 
@@ -78,10 +96,19 @@ test("setVideo and setCover use the captured file inputs", async () => {
   const session = createCreatorSession({ task: task(), page: tab });
   await session.setVideo("/absolute/path/to/video.mp4");
   await session.setCover("/absolute/path/to/cover-3x4.png");
-  assert.deepEqual(tab.files, [
-    { selector: VIDEO_INPUT_SELECTOR, file: "/absolute/path/to/video.mp4" },
-    { selector: COVER_INPUT_SELECTOR, file: "/absolute/path/to/cover-3x4.png" },
-  ]);
+  const preview = h("img", { attrs: { src: "first-frame.jpg" } });
+  const main = h("input", { type: "file", accept: ".jpg,.jpeg,.png" });
+  const group = h("div", {}, [h("button", {}, ["选择图片上传"]), main, preview]);
+  createDocument(h("body", {}, [video, cover, group]));
+  await session.setMainCover("/absolute/path/to/cover-3x4.png");
+  preview.setAttribute("src", "custom-cover.jpg");
+  const applied = await session.waitMainCover(await session.mainCoverState().then(() => ({ signature: "first-frame.jpg" })));
+  assert.equal(applied.state.signature, "custom-cover.jpg");
+  assert.deepEqual(tab.files[0], { selector: VIDEO_INPUT_SELECTOR, file: "/absolute/path/to/video.mp4" });
+  assert.deepEqual(tab.files[1], { selector: COVER_INPUT_SELECTOR, file: "/absolute/path/to/cover-3x4.png" });
+  assert.equal(tab.files[2].file, "/absolute/path/to/cover-3x4.png");
+  assert.equal(tab.files[2].selector, "[data-xhs-main-cover='1']");
+  assert.notEqual(tab.files[2].selector, COVER_INPUT_SELECTOR);
 });
 
 test("setCover reveals 换封面 once when the PK input is missing", async () => {
@@ -131,10 +158,37 @@ test("upload and cover waits honor toast plus counter", async () => {
   assert.ok(tab.waits.includes(1));
 });
 
+test("clearAutoCovers removes auto-filled PK slots down to 0/3", async () => {
+  const body = h("body", { text: "PK封面 3/3 已自动填充推荐封面" });
+  let count = 3;
+  for (let i = 0; i < 3; i += 1) {
+    const button = h("button", { className: "pk-cover-list-slide-close" });
+    button.click = () => {
+      button.clicked += 1;
+      count -= 1;
+      body.text = count === 0 ? "封面 0/3" : `PK封面 ${count}/3 已自动填充推荐封面`;
+      body.childNodes = body.childNodes.filter((node) => node !== button);
+    };
+    body.childNodes.push(button);
+  }
+  createDocument(body);
+  const session = createCreatorSession({
+    task: task(),
+    page: page(),
+    timings: { uploadAttempts: 2, coverAttempts: 2, waitMs: 0 },
+  });
+  const cleared = await session.clearAutoCovers();
+  assert.equal(cleared.coverCount, 0);
+  assert.equal(cleared.autoFilled, false);
+  createDocument(h("body", { text: "PK封面 3/3 已自动填充推荐封面" }));
+  await assert.rejects(() => session.clearAutoCovers(), /close control/);
+});
+
 test("form actions, success, edit settle, and handoff", async () => {
   const title = h("input", { placeholder: "填写标题" });
   const body = h("div", { editable: true });
   const publish = h("button", {}, ["发布"]);
+  publish.getBoundingClientRect = () => ({ x: 10, y: 20, width: 40, height: 16 });
   const card = h("div", {
     className: "note-card",
     text: "标题甲",
@@ -144,7 +198,11 @@ test("form actions, success, edit settle, and handoff", async () => {
   createDocument(shell, {
     href: "https://creator.xiaohongshu.com/publish/success?from=test",
   });
-  const tab = page({ url: "https://creator.xiaohongshu.com/publish/success?from=test" });
+  const mouse = [];
+  const tab = page({
+    url: "https://creator.xiaohongshu.com/publish/success?from=test",
+    mouse: { async click(x, y) { mouse.push([x, y]); } },
+  });
   const host = task();
   delete host.handOff;
   const session = createCreatorSession({
@@ -153,9 +211,12 @@ test("form actions, success, edit settle, and handoff", async () => {
     timings: { uploadAttempts: 2, coverAttempts: 2, waitMs: 0 },
   });
   await session.fillTitle("标题甲");
+  assert.equal(title.value, "标题甲");
   await session.fillBody("正文");
+  assert.equal(body.innerText, "正文");
   await session.clickPublish();
-  assert.equal(publish.clicked, 1);
+  assert.deepEqual(mouse, [[30, 28]]);
+  assert.equal(publish.clicked, 0);
   assert.match((await session.waitSuccess()).url, /success/);
   assert.equal((await session.readNote("标题甲")).noteId, "6aeae169000000000e00c4ad");
   shell.text = "封面PK中";

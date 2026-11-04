@@ -15,7 +15,9 @@ export const EDIT_TASK = "xiaohongshu-ego-edit";
 export const RESULT_TAG = "XHSEGO";
 export const VIDEO_INPUT_SELECTOR = "input.upload-input";
 export const COVER_INPUT_SELECTOR = "input.pk-cover-list-file-input";
+export const MAIN_COVER_LABEL = "选择图片上传";
 export const TITLE_RECOMMENDED_CHARS = 20;
+export const LINKS_EXIT = 4;
 
 const VIDEO_EXT = new Set([".mp4", ".mov", ".flv", ".f4v", ".mkv", ".rm", ".rmvb", ".m4v", ".mpg", ".mpeg", ".ts"]);
 const COVER_EXT = new Set([".jpg", ".jpeg", ".png"]);
@@ -61,6 +63,7 @@ Without --cover, the platform keeps the first frame. This skill does not invent 
 
 check-login exits 0 when the creator site is signed in, 2 when login is required, the nickname mismatches, or ego-browser is missing.
 post-video without --yes checks login, prints a plan JSON (including the cover path), and exits 3. It does not upload.
+Notes cannot contain links. http(s), www, bare domains, and t.co in --title, --desc, or --topics exit 4 unless --strip-links is set.
 post-video --yes prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
 With --cover, 发布 waits for toast 「已添加 PK 封面」 and the counter advancing (for example 0/3 → 1/3). No crop dialog is clicked.
 edit-cover.mjs is best-effort for a note that already published. Prefer --cover on post-video.
@@ -79,12 +82,123 @@ export function charCount(text) {
   return Array.from(String(text || "")).length;
 }
 
+// The creator title counter weighs ASCII (letters, digits, spaces, punctuation)
+// as half a unit and every other code point as one. The 2026-11-04 page showed
+// 「两台Mac跑816B大模型｜听懂AI #053」 as 16/20.
+export function titleUnits(text) {
+  let units = 0;
+  for (const char of String(text || "")) {
+    const code = char.codePointAt(0);
+    units += code <= 0x7f ? 0.5 : 1;
+  }
+  return units;
+}
+
 export function composeBody(desc, topics) {
   const body = String(desc || "").trim();
   const tags = String(topics || "").trim();
   if (!tags) return body;
   if (!body) return tags;
   return `${body}\n\n${tags}`;
+}
+
+const LINK_SOURCE = "(?:https?:\\/\\/|www\\.)[^\\s<>\"'，。；、）)]+|(?<![A-Za-z0-9@._/-])(?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\\.)+(?:com|cn|net|org|io|app|dev|ai|co|me|tv|cc|xyz|top|shop|link|ly|so|be|gg|gl)(?:\\/[^\\s<>\"'，。；、）)]*)?";
+const DANGLING_LABEL = /(?:项目地址|链接|网址)\s*[:：]\s*$/;
+
+function linkPattern() {
+  return new RegExp(LINK_SOURCE, "gi");
+}
+
+function cleanFragment(value) {
+  return String(value || "").replace(/[),.;:!?，。；：、）\]]+$/g, "");
+}
+
+export function findLinks(text) {
+  const found = [];
+  for (const match of String(text || "").matchAll(linkPattern())) {
+    const fragment = cleanFragment(match[0]);
+    if (fragment && !found.includes(fragment)) found.push(fragment);
+  }
+  return found;
+}
+
+export function stripLinks(text) {
+  const removed = [];
+  const lines = String(text || "").split("\n");
+  const kept = [];
+  for (const line of lines) {
+    let rest = line;
+    if (!findLinks(rest).length) {
+      kept.push(line);
+      continue;
+    }
+    while (findLinks(rest).length) {
+      const link = findLinks(rest)[0];
+      const at = rest.indexOf(link);
+      if (at === -1) break;
+      const before = rest.slice(0, at).replace(DANGLING_LABEL, "");
+      rest = `${before}${rest.slice(at + link.length)}`;
+      removed.push(link);
+    }
+    rest = rest.replace(/[ \t]{2,}/g, " ").trim();
+    if (!rest) continue;
+    kept.push(rest);
+  }
+  return {
+    text: kept.join("\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
+    removed,
+  };
+}
+
+export function collectLinks({ title = "", desc = "", topics = "" } = {}) {
+  const links = [];
+  for (const field of ["title", "desc", "topics"]) {
+    const source = field === "title" ? title : field === "desc" ? desc : topics;
+    for (const fragment of findLinks(source)) links.push({ field, fragment });
+  }
+  return links;
+}
+
+export function preparePostCopy({ title = "", desc = "", topics = "", stripLinks: shouldStrip = false } = {}) {
+  const links = collectLinks({ title, desc, topics });
+  if (!links.length) {
+    return { ok: true, links: [], links_removed: [], title: String(title || "").trim(), desc: String(desc || "").trim(), topics: String(topics || "").trim() };
+  }
+  if (!shouldStrip) {
+    const listed = links.map((item) => `${item.field}: ${item.fragment}`).join("; ");
+    return {
+      ok: false,
+      exitCode: LINKS_EXIT,
+      links,
+      links_removed: [],
+      error: `Xiaohongshu notes cannot contain links (${listed}). Remove them from the copy or pass --strip-links.`,
+      title: String(title || "").trim(),
+      desc: String(desc || "").trim(),
+      topics: String(topics || "").trim(),
+    };
+  }
+  const nextTitle = stripLinks(title);
+  const nextDesc = stripLinks(desc);
+  const nextTopics = stripLinks(topics);
+  const linksRemoved = [
+    ...nextTitle.removed.map((fragment) => ({ field: "title", fragment })),
+    ...nextDesc.removed.map((fragment) => ({ field: "desc", fragment })),
+    ...nextTopics.removed.map((fragment) => ({ field: "topics", fragment })),
+  ];
+  if (!nextTitle.text) {
+    return { ok: false, exitCode: 1, links, links_removed: linksRemoved, error: "--title is empty after --strip-links", title: "", desc: nextDesc.text, topics: nextTopics.text };
+  }
+  if (!nextDesc.text) {
+    return { ok: false, exitCode: 1, links, links_removed: linksRemoved, error: "--desc is empty after --strip-links", title: nextTitle.text, desc: "", topics: nextTopics.text };
+  }
+  return {
+    ok: true,
+    links,
+    links_removed: linksRemoved,
+    title: nextTitle.text,
+    desc: nextDesc.text,
+    topics: nextTopics.text,
+  };
 }
 
 export function isAbsolutePath(value) {
@@ -143,6 +257,7 @@ export function parsePostArgs(argv) {
     yes: false,
     json: false,
     keep: false,
+    stripLinks: false,
     video: "",
     title: "",
     desc: "",
@@ -161,6 +276,7 @@ export function parsePostArgs(argv) {
     "--yes": () => { out.yes = true; },
     "--json": () => { out.json = true; },
     "--keep": () => { out.keep = true; },
+    "--strip-links": () => { out.stripLinks = true; },
     "--task-name": (value) => { out.taskName = String(value || "").trim() || out.taskName; },
   });
   if (parsed.help) return parsed;
@@ -231,10 +347,22 @@ export function validatePostInput(args = {}, { exists, stat } = {}) {
     const coverError = fileProblem(cover, "cover", exists, stat);
     if (coverError) return { ok: false, error: coverError, ...fields };
   }
-  const titleWarning = charCount(title) > TITLE_RECOMMENDED_CHARS
-    ? `title is longer than ${TITLE_RECOMMENDED_CHARS} characters; the creator UI recommends about that many`
+  const copy = preparePostCopy({ title, desc, topics, stripLinks: Boolean(args.stripLinks) });
+  const copied = {
+    ...fields,
+    title: copy.title,
+    desc: copy.desc,
+    topics: copy.topics,
+    body: composeBody(copy.desc, copy.topics),
+    links: copy.links,
+    links_removed: copy.links_removed,
+  };
+  if (!copy.ok) return { ok: false, exitCode: copy.exitCode || LINKS_EXIT, error: copy.error, ...copied };
+  const units = titleUnits(copy.title);
+  const titleWarning = units > TITLE_RECOMMENDED_CHARS
+    ? `title weighs ${units}/20 on the creator counter (ASCII counts as half). The page recommends about 20.`
     : "";
-  return { ok: true, ...fields, titleWarning };
+  return { ok: true, ...copied, titleWarning };
 }
 
 export function isNoteId(value) {
@@ -269,13 +397,19 @@ export function planOf(config = {}, checked = {}, gate = {}) {
     topics: String((checked && checked.topics) || config.topics || ""),
     body: (checked && checked.body) || composeBody(config.desc, config.topics),
     cover: cover || null,
-    cover_mode: cover ? "replace-first-frame" : "platform-default-first-frame",
-    cover_selector: cover ? COVER_INPUT_SELECTOR : null,
+    cover_mode: cover ? "main-cover" : "platform-default-first-frame",
+    cover_selector: cover ? MAIN_COVER_LABEL : null,
     expect_account: config.expectAccount || null,
     nickname: (gate && gate.nickname) || null,
     task_name: config.taskName || PUBLISH_TASK,
   };
   if (checked && checked.titleWarning) plan.title_warning = checked.titleWarning;
+  if (checked && Array.isArray(checked.links_removed) && checked.links_removed.length) {
+    plan.links_removed = checked.links_removed;
+  }
+  if (checked && Array.isArray(checked.links) && checked.links.length && !(checked.links_removed && checked.links_removed.length)) {
+    plan.links = checked.links;
+  }
   const noteId = String((checked && checked.noteId) || config.noteId || "").trim();
   if (noteId) {
     plan.note_id = noteId;
@@ -285,9 +419,9 @@ export function planOf(config = {}, checked = {}, gate = {}) {
   if (!cover) {
     plan.cover_note = "No --cover. Xiaohongshu keeps the video first frame. This skill does not invent a cover.";
   } else if (noteId) {
-    plan.cover_note = "Best-effort edit. Set input.pk-cover-list-file-input, then confirm toast 「已添加 PK 封面」 and the counter advancing (for example 0/3 → 1/3) before the footer 发布. No crop dialog. Save may return the note to 审核中. If the page says 加载失败, 发布 is not clicked.";
+    plan.cover_note = "Best-effort edit. Use 选择图片上传 for the main cover, then confirm the main-cover preview changed before 发布. PK slots are not used. Save may return the note to 审核中. If the page says 加载失败, 发布 is not clicked.";
   } else {
-    plan.cover_note = "Replace the default first-frame cover via input.pk-cover-list-file-input. Confirm toast 「已添加 PK 封面」 and the counter advancing (for example 0/3 → 1/3) before 发布. No crop dialog is clicked. If confirmation fails, the run fails and 发布 is not clicked.";
+    plan.cover_note = "Set the main cover with 选择图片上传. Confirm the main-cover preview changed before 发布. PK slots stay unused: they leave the thumbnail as the first frame until PK ends. If confirmation fails, 发布 is not clicked.";
   }
   return plan;
 }
@@ -379,6 +513,16 @@ export function cropDialogOpen(state) {
   if (!state || typeof state !== "object") return false;
   if (state.cropDialog) return true;
   return /裁剪封面|裁剪图片|完成裁剪|确认裁剪/.test(String(state.text || ""));
+}
+
+export function mainCoverApplied(before, after) {
+  if (!after || typeof after !== "object") return false;
+  if (after.scope === "pk") return false;
+  const beforeSig = before && before.signature ? String(before.signature) : "";
+  const afterSig = after.signature ? String(after.signature) : "";
+  if (!afterSig || !beforeSig || afterSig === beforeSig) return false;
+  if (/pk-cover-list/.test(afterSig)) return false;
+  return true;
 }
 
 export function coverReplacedFirstFrame(before, after) {
@@ -504,6 +648,7 @@ export function confirmationSummary(config = {}, checked = {}, gate = {}) {
     logged_in: true,
     nickname: gate.nickname || undefined,
     plan: planOf(config, checked, gate),
+    links_removed: checked.links_removed && checked.links_removed.length ? checked.links_removed : undefined,
     login_tip: LOGIN_TIP,
     login_tip_zh: LOGIN_TIP_ZH,
     error,
@@ -518,8 +663,10 @@ export function inputErrorSummary(config = {}, checked = {}) {
     published: false,
     uploaded: false,
     clicked_publish: false,
-    exitCode: 1,
+    exitCode: checked.exitCode || 1,
     error: checked.error || "invalid input",
+    links: checked.links && checked.links.length ? checked.links : undefined,
+    links_removed: checked.links_removed && checked.links_removed.length ? checked.links_removed : undefined,
     plan: planOf(config, checked),
   });
 }
@@ -547,9 +694,17 @@ export function egoMissingSummary(command = "check-login") {
   });
 }
 
+export function formatRemovedLinks(removed) {
+  if (!Array.isArray(removed) || !removed.length) return "";
+  const lines = removed.map((item) => `- ${item.field}: ${item.fragment}`);
+  return `removed links:\n${lines.join("\n")}\n`;
+}
+
 export function formatResult(summary, { asJson = false } = {}) {
   if (!summary || typeof summary !== "object") return "";
-  if (!asJson && summary.exitCode === 0 && summary.published && summary.url) return `${summary.url}\n`;
+  if (!asJson && summary.exitCode === 0 && summary.published && summary.url) {
+    return `${formatRemovedLinks(summary.links_removed)}${summary.url}\n`;
+  }
   return `${JSON.stringify(summary, null, 2)}\n`;
 }
 

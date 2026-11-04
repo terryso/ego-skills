@@ -43,10 +43,14 @@ const io = (extra = {}) => ({
 
 const postArgs = ["--video", "/absolute/path/to/video.mp4", "--title", "标题", "--desc", "正文"];
 
-test("whichEgo maps the probe", () => {
-  assert.equal(whichEgo(() => ({ error: new Error("missing") })), null);
+test("whichEgo maps the probe and the home-bin fallback", () => {
+  assert.equal(whichEgo(() => ({ error: new Error("missing") }), {}), null);
   assert.equal(whichEgo(() => ({ status: 0 })), "ego-browser");
   assert.equal(whichEgo(() => null), "ego-browser");
+  const fallback = whichEgo((cmd) => (
+    cmd === "ego-browser" ? { error: new Error("no path") } : { status: 0 }
+  ), { HOME: "/home/tester" });
+  assert.equal(fallback, "/home/tester/.local/bin/ego-browser");
   const live = whichEgo();
   assert.ok(live === null || live === "ego-browser");
 });
@@ -88,6 +92,12 @@ test("help, unknown args, and a missing cover do not spawn", async () => {
   ], missing);
   assert.equal(code, 1);
   assert.match(missing.stdout.text(), /--cover not found/);
+  assert.equal(spawned, 0);
+  const linked = io({ spawn() { spawned += 1; } });
+  const linkedCode = await runCli("post", [...postArgs, "--desc", "见 github.com/octo/hello"], linked);
+  assert.equal(linkedCode, 4);
+  assert.match(linked.stdout.text(), /github.com\/octo\/hello/);
+  assert.match(linked.stdout.text(), /strip-links/);
   assert.equal(spawned, 0);
   fs.rmSync(dir, { recursive: true, force: true });
 });

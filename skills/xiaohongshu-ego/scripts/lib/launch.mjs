@@ -29,9 +29,15 @@ const RUNNERS = {
   edit: { exportName: "executeEdit", runModule: "publish-flow.mjs", command: "edit-cover" },
 };
 
-export function whichEgo(spawnSyncImpl = spawnSync) {
+export function whichEgo(spawnSyncImpl = spawnSync, env = process.env) {
   const probe = spawnSyncImpl("ego-browser", ["--help"], { encoding: "utf8" });
-  return probe && probe.error ? null : "ego-browser";
+  if (!(probe && probe.error)) return "ego-browser";
+  const home = env && (env.HOME || env.USERPROFILE);
+  if (!home) return null;
+  const fallback = path.join(home, ".local", "bin", "ego-browser");
+  const again = spawnSyncImpl(fallback, ["--help"], { encoding: "utf8" });
+  if (again && again.error) return null;
+  return fallback;
 }
 
 export function renderEntry({ config, runHref, depsHref, exportName }) {
@@ -93,11 +99,12 @@ export async function runCli(kind, argv, deps = {}) {
       : validatePostInput(args, { exists: io.existsSync, stat: io.statSync });
     if (!checked.ok) {
       io.stdout.write(formatResult(inputErrorSummary({ ...args, command: runner.command }, checked), { asJson: true }));
-      return 1;
+      return checked.exitCode || 1;
     }
   }
 
-  if (!io.whichEgo(io.spawnSync)) {
+  const egoBin = io.whichEgo(io.spawnSync);
+  if (!egoBin) {
     const summary = egoMissingSummary(runner.command);
     if (checked) summary.plan = planOf({ ...args, command: runner.command }, checked);
     io.stdout.write(formatResult(summary, { asJson: true }));
@@ -113,6 +120,7 @@ export async function runCli(kind, argv, deps = {}) {
     title: args.title,
     desc: args.desc,
     topics: args.topics,
+    stripLinks: Boolean(args.stripLinks),
     cover: args.cover,
     expectAccount: args.expectAccount,
     noteId: args.noteId,
@@ -136,7 +144,7 @@ export async function runCli(kind, argv, deps = {}) {
       exportName: runner.exportName,
     }));
     const href = pathToFileURL(entry).href;
-    const child = io.spawn("ego-browser", ["nodejs", "-e", `await import(${JSON.stringify(href)})`], {
+    const child = io.spawn(egoBin, ["nodejs", "-e", `await import(${JSON.stringify(href)})`], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout.on("data", (chunk) => { stdoutBuf += chunk; });

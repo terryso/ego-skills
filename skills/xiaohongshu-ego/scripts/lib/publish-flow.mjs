@@ -14,8 +14,8 @@ import {
   assertCoverBeforePublish,
   cleanupTargets,
   confirmationSummary,
-  coverReplacedFirstFrame,
   editPageFailed,
+  mainCoverApplied,
   exploreUrl,
   inputErrorSummary,
   planOf,
@@ -35,17 +35,24 @@ async function safeHandOff(session) {
 }
 
 export async function applyCover(session, file) {
-  let lastError = "PK cover was not confirmed";
+  let lastError = "main cover was not confirmed";
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      const before = await session.coverState();
-      await session.setCover(file);
-      const waited = await session.waitCoverApplied(before);
+      const before = await session.mainCoverState();
+      await session.setMainCover(file);
+      const waited = await session.waitMainCover(before);
       const state = waited && waited.state ? waited.state : waited;
-      if (coverReplacedFirstFrame(before, state)) {
-        return { ok: true, attempts: attempt, state, replaced_first_frame: true };
+      if (mainCoverApplied(before, state)) {
+        return {
+          ok: true,
+          attempts: attempt,
+          state,
+          replaced_first_frame: true,
+          cover_scope: "main",
+          via: "选择图片上传",
+        };
       }
-      lastError = "toast or cover counter was not confirmed";
+      lastError = "main cover preview did not change";
     } catch (error) {
       lastError = String(error && error.message ? error.message : error);
     }
@@ -54,7 +61,8 @@ export async function applyCover(session, file) {
     ok: false,
     attempts: 2,
     replaced_first_frame: false,
-    error: "PK cover was not confirmed (missing toast 「已添加 PK 封面」 or the counter did not advance, for example 0/3 → 1/3). Refusing to publish with the video first frame. No crop dialog is clicked.",
+    cover_scope: "main",
+    error: "Main cover was not confirmed after 选择图片上传. Refusing to publish with the video first frame. PK slots are not used; they leave the thumbnail as the first frame until PK ends.",
     detail: lastError,
   };
 }
@@ -83,7 +91,7 @@ export async function performPublish(config, session, checked) {
   const gate = await readGate(session, config.expectAccount);
   base.nickname = gate.nickname || undefined;
   base.plan = planOf(config, checked, gate);
-  if (gate.evaluateError && !gate.logged_in && !gate.text) {
+  if (gate.evaluateError) {
     return { ...base, exitCode: 1, error: gate.evaluateError };
   }
   if (!gate.logged_in) {
@@ -135,6 +143,8 @@ export async function performPublish(config, session, checked) {
     coverConfirmed = true;
     base.cover_confirmed = true;
     base.replaced_first_frame = true;
+    base.cover_scope = cover.cover_scope || "main";
+    base.cover_via = cover.via || "选择图片上传";
   }
 
   try {
@@ -146,7 +156,7 @@ export async function performPublish(config, session, checked) {
 
   const again = await readGate(session, config.expectAccount);
   base.nickname = again.nickname || base.nickname;
-  if (again.evaluateError && !again.logged_in && !again.text) {
+  if (again.evaluateError) {
     return { ...base, exitCode: 1, error: again.evaluateError };
   }
   if (!again.logged_in || !again.ok) {
@@ -236,7 +246,7 @@ export async function performEdit(config, session, checked) {
   const gate = await readGate(session, config.expectAccount);
   base.nickname = gate.nickname || undefined;
   base.plan = planOf(config, checked, gate);
-  if (gate.evaluateError && !gate.logged_in && !gate.text) {
+  if (gate.evaluateError) {
     return { ...base, exitCode: 1, error: gate.evaluateError };
   }
   if (!gate.logged_in) {
@@ -281,11 +291,13 @@ export async function performEdit(config, session, checked) {
       ...base,
       exitCode: 1,
       cover_confirmed: false,
-      error: cover.error || "PK cover was not confirmed. Refusing to click 发布.",
+      error: cover.error || "Main cover was not confirmed after 选择图片上传. Refusing to click 发布.",
     };
   }
   base.cover_confirmed = true;
   base.replaced_first_frame = true;
+  base.cover_scope = cover.cover_scope || "main";
+  base.cover_via = cover.via || "选择图片上传";
   const again = await readGate(session, config.expectAccount);
   base.nickname = again.nickname || base.nickname;
   if (!again.logged_in || !again.ok) {
@@ -331,9 +343,9 @@ export async function performEdit(config, session, checked) {
 export async function inspectOnly(config, session, checked) {
   const command = config.command || "post-video";
   const gate = await readGate(session, config.expectAccount);
-  if (gate.evaluateError && !gate.logged_in && !gate.text) {
+  if (gate.evaluateError) {
     return strip({
-      ...inputErrorSummary({ ...config, command }, { ...checked, error: gate.evaluateError }),
+      ...inputErrorSummary({ ...config, command }, { ...checked, error: gate.evaluateError, exitCode: 1 }),
       logged_in: false,
       plan: planOf(config, checked, gate),
     });
@@ -397,6 +409,7 @@ export async function executePost(config = {}, deps = {}) {
     exitCode: 1,
     login_tip: LOGIN_TIP,
     login_tip_zh: LOGIN_TIP_ZH,
+    links_removed: checked.links_removed && checked.links_removed.length ? checked.links_removed : undefined,
     plan: planOf(config, checked),
   };
   let session;

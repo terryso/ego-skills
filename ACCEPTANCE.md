@@ -4,9 +4,9 @@
 
 | Metric | Result |
 |--------|--------|
-| Tests | 362 passed |
-| Line coverage | **98.46%** |
-| Statement coverage | 98.46% |
+| Tests | 368 passed |
+| Line coverage | **98.35%** |
+| Statement coverage | 98.35% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |

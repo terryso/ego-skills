@@ -66,7 +66,7 @@ cd ego-skills
 | [`douyin-video`](./skills/douyin-video/) | 把本地视频发到抖音创作者中心。先检查登录。标题最多 30 字。默认公开、允许保存、立即发布。成功标准是进入内容管理或出现「发布成功」。 |
 | [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。Phase 2a 还能新建、改标题/前置/步骤、改状态，以及把一条用例移到回收站（`delete --yes`）。只走浏览器会话，不用 Open API token。 |
 | [`x-post`](./skills/x-post/) | 用已登录的 Ego 会话，通过 `page.fetch` CreateTweet 往 X 发帖。先检查登录。没有 `--yes` 不发送。成功标准是 `https://x.com/<screen_name>/status/<id>`。 |
-| [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | 在小红书创作者平台发一条视频笔记。先检查登录。没有 `--yes` 不上传。传 `--cover`（例如 `cover-3x4.png`）才会换掉视频首帧，否则平台用首帧。成功标准是 `https://www.xiaohongshu.com/explore/<noteId>`。 |
+| [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | 在小红书创作者平台发一条视频笔记。先检查登录。没有 `--yes` 不上传。笔记不能带链接，先从文案里删掉，或加 `--strip-links`。传 `--cover`（例如 `cover-3x4.png`）走「选择图片上传」，换成主封面。只传 PK 槽时缩略图会在大约 72 小时内一直是首帧。不传则平台用首帧。成功标准是 `https://www.xiaohongshu.com/explore/<noteId>`。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \

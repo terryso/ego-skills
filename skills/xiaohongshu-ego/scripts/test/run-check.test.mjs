@@ -101,9 +101,10 @@ test("blank pages repaint, evaluate errors exit 1, and finish errors are kept", 
       evaluateError: "partial",
     }),
   }));
-  const partial = await executeCheck({}, { browser: noisy.browser });
-  assert.equal(partial.exitCode, 2);
+  const partial = await executeCheck({ expectAccount: "听懂AI" }, { browser: noisy.browser });
+  assert.equal(partial.exitCode, 1);
   assert.match(partial.error, /partial/);
+  assert.equal(partial.account_mismatch, undefined);
   const closing = harness(() => ({ detect: async () => signedIn, finishError: "finish broke" }));
   const closed = await executeCheck({}, { browser: closing.browser });
   assert.equal(closed.exitCode, 0);

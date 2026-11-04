@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   COVER_INPUT_SELECTOR,
+  LINKS_EXIT,
   RESULT_TAG,
   VIDEO_INPUT_SELECTOR,
   accountGate,
@@ -23,9 +24,12 @@ import {
   egoMissingSummary,
   exploreUrl,
   extractTaggedJson,
+  findLinks,
+  formatRemovedLinks,
   formatResult,
   inputErrorSummary,
   isNoteId,
+  mainCoverApplied,
   needsRepaint,
   onCreator,
   parseCheckArgs,
@@ -36,7 +40,10 @@ import {
   pickNote,
   pkToastSeen,
   planOf,
+  preparePostCopy,
   publishSucceeded,
+  stripLinks,
+  titleUnits,
   resolveProcessExit,
   updateUrl,
   uploadReady,
@@ -54,6 +61,8 @@ test("selectors and body composition", () => {
   assert.equal(composeBody("", "#a"), "#a");
   assert.equal(composeBody("正文", "  "), "正文");
   assert.equal(charCount("听懂AI"), 4);
+  assert.equal(titleUnits("两台Mac跑816B大模型｜听懂AI #053"), 16);
+  assert.equal(titleUnits("甲".repeat(21)), 21);
   assert.equal(videoExtensionOk("/tmp/a.MP4"), true);
   assert.equal(videoExtensionOk("/tmp/a.txt"), false);
   assert.equal(coverExtensionOk("/tmp/cover-3x4.PNG"), true);
@@ -141,9 +150,10 @@ test("file validation includes a missing cover and does not invent one", () => {
   assert.equal(planOf({ title: "标题", desc: "正文" }, omitted).cover_mode, "platform-default-first-frame");
   const planned = planOf({ expectAccount: "听懂AI", cover }, ok, { nickname: "听懂AI" });
   assert.equal(planned.cover, cover);
-  assert.equal(planned.cover_selector, COVER_INPUT_SELECTOR);
-  assert.match(planned.cover_note, /0\/3/);
-  assert.match(planned.cover_note, /已添加 PK 封面/);
+  assert.equal(planned.cover_selector, "选择图片上传");
+  assert.equal(planned.cover_mode, "main-cover");
+  assert.match(planned.cover_note, /选择图片上传/);
+  assert.match(planned.cover_note, /PK slots/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -225,6 +235,9 @@ test("cover confirmation requires the toast and a counter advance", () => {
   assert.equal(coverCount({ text: "no counter" }), null);
   assert.equal(coverCount(null), null);
   assert.equal(coverCount({ coverCount: Number.NaN, text: "1/3" }), 1);
+  assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "custom-cover.jpg", scope: "main" }), true);
+  assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "pk-cover-list-blob", scope: "pk" }), false);
+  assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "first-frame.jpg" }), false);
   assert.equal(coverReplacedFirstFrame(before, applied), true);
   assert.equal(coverReplacedFirstFrame(before, { pkApplied: true, coverCount: 0, text: "已添加 PK 封面 封面 0/3" }), false);
   assert.equal(coverReplacedFirstFrame(before, { pkApplied: false, coverCount: 1, text: "封面 1/3" }), false);
@@ -240,6 +253,75 @@ test("cover confirmation requires the toast and a counter advance", () => {
   assert.match(guard.error, /first frame/);
   assert.equal(assertCoverBeforePublish({ cover: "", coverConfirmed: false }).ok, true);
   assert.equal(assertCoverBeforePublish({ cover: "/tmp/a.png", coverConfirmed: true }).ok, true);
+});
+
+test("notes cannot contain links", () => {
+  assert.deepEqual(findLinks("普通正文 封面 cover-3x4.png 第1.2节"), []);
+  assert.deepEqual(findLinks("写信 hi@github.com"), []);
+  const samples = [
+    "看 https://github.com/octo/hello",
+    "看 http://example.com/a",
+    "看 www.example.com/docs",
+    "仓库 github.com/octo/hello",
+    "主页 x.com/someone",
+    "短链 t.co/abc",
+    "短链 t.co",
+  ];
+  for (const sample of samples) assert.ok(findLinks(sample).length >= 1, sample);
+  const stripped = stripLinks("正文\n\n项目地址：https://github.com/octo/hello\n\n链接： x.com/someone\n下一句");
+  assert.deepEqual(stripped.removed, ["https://github.com/octo/hello", "x.com/someone"]);
+  assert.equal(stripped.text, "正文\n\n下一句");
+  assert.equal(stripLinks("看这里 链接：www.example.com/a 完").text, "看这里 完");
+  assert.equal(stripLinks("重复 https://t.co/aa 和 https://t.co/aa").removed.length, 2);
+  const blocked = preparePostCopy({
+    title: "标题 x.com/a",
+    desc: "正文 https://github.com/octo/hello",
+    topics: "#a t.co/zz",
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.exitCode, LINKS_EXIT);
+  assert.deepEqual(blocked.links.map((item) => item.field), ["title", "desc", "topics"]);
+  const cleaned = preparePostCopy({
+    title: "标题",
+    desc: "正文\n项目地址：github.com/octo/hello",
+    topics: "#话题",
+    stripLinks: true,
+  });
+  assert.equal(cleaned.ok, true);
+  assert.equal(cleaned.desc, "正文");
+  assert.equal(cleaned.links_removed[0].fragment, "github.com/octo/hello");
+  assert.match(preparePostCopy({ title: "https://x.com/a", desc: "正文", stripLinks: true }).error, /title is empty/);
+  assert.match(preparePostCopy({ title: "标题", desc: "https://x.com/a", stripLinks: true }).error, /desc is empty/);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "xhs-links-"));
+  const video = path.join(dir, "clip.mp4");
+  fs.writeFileSync(video, "mp4");
+  const rejected = validatePostInput({
+    video, title: "标题", desc: "见 github.com/octo/hello", topics: "#a",
+  }, { exists: fs.existsSync, stat: fs.statSync });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.exitCode, LINKS_EXIT);
+  assert.match(rejected.error, /github.com\/octo\/hello/);
+  const summary = inputErrorSummary({ title: "标题", desc: rejected.desc }, rejected);
+  assert.equal(summary.exitCode, LINKS_EXIT);
+  assert.equal(summary.links[0].fragment, "github.com/octo/hello");
+  assert.equal(summary.plan.links[0].field, "desc");
+  const allowed = validatePostInput({
+    video, title: "标题", desc: "正文\n链接：https://x.com/a", topics: "www.example.com/b", stripLinks: true,
+  }, { exists: fs.existsSync, stat: fs.statSync });
+  assert.equal(allowed.ok, true);
+  assert.equal(allowed.desc, "正文");
+  assert.equal(allowed.topics, "");
+  assert.equal(allowed.body, "正文");
+  assert.equal(allowed.links_removed.length, 2);
+  const dry = confirmationSummary({ title: "标题", desc: "正文" }, allowed);
+  assert.equal(dry.links_removed.length, 2);
+  assert.equal(dry.plan.links_removed.length, 2);
+  assert.match(formatRemovedLinks(allowed.links_removed), /removed links:/);
+  assert.match(formatResult({
+    exitCode: 0, published: true, url: exploreUrl(NOTE), links_removed: allowed.links_removed,
+  }), /removed links:/);
+  assert.equal(parsePostArgs(["--video", video, "--title", "标题", "--desc", "正文", "--strip-links"]).stripLinks, true);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("note id, edit settlement, and result formatting", () => {

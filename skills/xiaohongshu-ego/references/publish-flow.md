@@ -25,7 +25,7 @@ Also reachable from creator home → 发布笔记 → 上传视频.
 ## File inputs
 
 1. Video: `input.upload-input[type=file]` accept `.mp4,.mov,.flv,.f4v,.mkv,.rm,.rmvb,.m4v,.mpg,.mpeg,.ts`
-2. Cover (PK): `input.pk-cover-list-file-input[type=file]` accept `.jpg,.jpeg,.png`
+2. Main cover: the file input next to the control labeled `选择图片上传`. Do not use `input.pk-cover-list-file-input` for `--cover`.
 
 Use `page.setInputFiles`. Do not open an OS file dialog. There is **no crop or confirm dialog** after the cover file is set. Do not click 确定, 完成, or a crop control.
 
@@ -37,21 +37,25 @@ The platform then uses the **video first frame** as the cover unless a PK cover 
 
 ## Cover, required when `--cover` is set
 
-Live check on 2026-11-04:
+Verified on 2026-11-04 with note 053: 「选择图片上传」 sets the **main** cover. After that control was used, the published note's cover was the custom image.
 
-- The input is `input.pk-cover-list-file-input`
-- After `setInputFiles`, the toast is 「已添加 PK 封面」
-- The counter moves, for example `0/3` → `1/3`
-- No crop dialog appears
+PK slots are a different control (`input.pk-cover-list-file-input`). Filling only those leaves the main cover and the note-manager thumbnail as the video first frame, badged 封面待PK, until the 72-hour PK ends. `--cover` does not upload a PK slot.
 
-The script must see **both** the toast and a higher counter before it clicks 发布. It retries the file input once. If the second try still lacks the toast or the counter did not advance, the run exits `1` and does **not** click 发布. Publishing the first frame is worse than failing.
+The script:
+
+1. Finds the element whose text is exactly `选择图片上传`.
+2. Uses the `input[type=file]` next to that control. It refuses `input.upload-input` and `input.pk-cover-list-file-input`. No other class name is assumed.
+3. Calls `setInputFiles` on that input.
+4. Waits until the main-cover preview `img` (not an image inside a `pk-cover` node) changes.
+5. Retries the file input once. If the preview does not change, exits `1` and does not click 发布.
 
 Without `--cover`, do not invent an image. Leave the first frame and say so in the plan.
 
 ## Form fields
 
-- Title: the title box whose placeholder is 「填写标题」, or the first single-line text box labeled 标题. About 20 Chinese characters is what the UI recommends. Longer titles are sent with a warning, not blocked here.
-- Body: the contenteditable or multiline field. Description, a blank line, then topics (`#a #b`).
+- Title: `page.fill` on the input whose placeholder is 「填写标题」. The page counter weighs ASCII as half a unit: `两台Mac跑816B大模型｜听懂AI #053` is 16/20. Do not use `element.value` plus a synthetic event.
+- Body: click the ProseMirror editor (`.ProseMirror`) and `keyboard.insertText`. Description, a blank line, then topics (`#a #b`).
+- 发布 is not always a `<button>`. Use the element whose text is exactly `发布` (a div on the 2026-11-04 page) and click its center. Do not use `button:text-is("发布")` alone.
 - Account gate: the creator nickname must match `--expect-account` before upload and again before 发布. A header nickname wins over other text on the page.
 
 ## Publish
@@ -86,6 +90,7 @@ If the update page says 加载失败, do not click 发布. Do not treat a failed
 ## Hard rules
 
 - `--yes` is required to upload or to click 发布. Without it: validate, check login, print the plan JSON (including the cover path), exit `3`
+- Title, description, and topics cannot contain links (`http(s)://`, `www.`, bare domains such as `github.com/xxx` or `x.com/xxx`, `t.co`). The same check runs on a dry run. Without `--strip-links` the command exits `4` and lists the fragments. `--strip-links` removes the links, a dangling `项目地址：` or `链接：` on that line, and leftover blank lines, then prints what was removed.
 - `finish({ keep: [] })` unless `--keep`
 - Exit `2` when ego-browser is missing, the creator site is logged out, or `--expect-account` does not match
 - No MCP. No batch loop. No image-only notes. No scheduled publish. No delete

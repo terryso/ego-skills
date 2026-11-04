@@ -16,8 +16,8 @@ node skills/xiaohongshu-ego/scripts/edit-cover.mjs \
 1. 打开 `https://creator.xiaohongshu.com/publish/update?id=<noteId>&noteType=video`（笔记管理 → 编辑 会到这个地址）。
 2. 核对 `--expect-account`。
 3. 页面如果是「加载失败」，退出码 `1`，不点发布。
-4. `setInputFiles` 到 `input.pk-cover-list-file-input`。
-5. 确认 toast「已添加 PK 封面」且计数前进（例如 `0/3` → `1/3`）。否则不点发布。
+4. `setInputFiles` 到「选择图片上传」旁边的主封面文件框，不用 PK 槽。
+5. 主封面预览发生变化才点发布。否则不点。
 6. 点页脚上文本正好是「发布」的按钮。
 
 2026-11-04 在笔记 `6aeae281000000000e00cb56` 上核对过这条路径。保存后笔记可能重新「审核中」，角标可能是「封面PK中」。另一条笔记曾从笔记管理消失，更新页显示「加载失败」。所以这不是主路径，失败了不要再发一条新笔记。

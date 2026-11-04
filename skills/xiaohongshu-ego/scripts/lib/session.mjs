@@ -3,6 +3,7 @@ import {
   coverReplacedFirstFrame,
   editPageFailed,
   editSettled,
+  mainCoverApplied,
   pickNote,
   publishSucceeded,
   uploadReady,
@@ -79,6 +80,7 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
       const count = state && typeof state.coverCount === "number" ? state.coverCount : null;
       return {
         pkApplied: Boolean(state && state.pkApplied),
+        autoFilled: Boolean(state && state.autoFilled),
         coverCount: count,
         counterText: state && state.counterText ? String(state.counterText) : "",
         cropDialog: Boolean(state && state.cropDialog),
@@ -96,6 +98,50 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
       if (!found.ok) throw new Error(found.error || "video file input not found");
       await this.setInputFiles(VIDEO_INPUT_SELECTOR, file);
       return found;
+    },
+    async clearAutoCovers() {
+      let last = await this.coverState();
+      for (let i = 0; i < 3; i += 1) {
+        const count = typeof last.coverCount === "number" ? last.coverCount : 0;
+        if (count <= 0 && !last.autoFilled) return last;
+        const closed = await evalAct({ op: "close-pk-cover" });
+        if (!closed.ok) {
+          if (count <= 0) return last;
+          throw new Error(closed.error || "PK cover close control not found");
+        }
+        await pause(waitMs);
+        last = await this.coverState();
+      }
+      return last;
+    },
+    async mainCoverState() {
+      const state = await evalAct({ op: "main-cover-state" });
+      if (!state.ok && state.error) {
+        return { signature: "", label: "", error: state.error, scope: "main" };
+      }
+      return {
+        signature: state && state.signature ? String(state.signature) : "",
+        label: state && state.label ? String(state.label) : "",
+        scope: "main",
+      };
+    },
+    async setMainCover(file) {
+      const found = await evalAct({ op: "main-cover-input" });
+      if (!found.ok) throw new Error(found.error || "选择图片上传 control not found");
+      if (found.scope === "pk") throw new Error("refusing the PK cover input for the main cover");
+      await this.setInputFiles(found.selector, file);
+      return found;
+    },
+    async waitMainCover(before) {
+      let last = null;
+      for (let i = 0; i < coverAttempts; i += 1) {
+        last = await this.mainCoverState();
+        if (mainCoverApplied(before, last)) return { ok: true, state: last };
+        await pause(waitMs);
+      }
+      const error = new Error("Main cover preview did not change after 选择图片上传");
+      error.state = last;
+      throw error;
     },
     async setCover(file) {
       let found = await evalAct({ op: "cover-input" });
@@ -129,19 +175,42 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
       throw error;
     },
     async fillTitle(title) {
-      const result = await evalAct({ op: "fill-title", title });
-      if (!result.ok) throw new Error(result.error || "title field not found");
-      return result;
+      const target = await evalAct({ op: "title-target" });
+      if (!target.ok) throw new Error(target.error || "title field not found");
+      if (typeof page.fill !== "function") throw new Error("page.fill is required for the title input");
+      await page.fill(target.selector, title);
+      const read = await evalAct({ op: "title-value" });
+      if (!read.ok || read.value !== title) {
+        throw new Error(`title readback mismatch: ${read && read.value != null ? read.value : read && read.error}`);
+      }
+      return read;
     },
     async fillBody(body) {
-      const result = await evalAct({ op: "fill-body", body });
-      if (!result.ok) throw new Error(result.error || "description field not found");
-      return result;
+      const target = await evalAct({ op: "body-target" });
+      if (!target.ok) throw new Error(target.error || "ProseMirror body not found");
+      if (typeof page.click !== "function" || !page.keyboard || typeof page.keyboard.insertText !== "function") {
+        throw new Error("page.keyboard.insertText is required for the ProseMirror body");
+      }
+      await page.click(target.selector);
+      await page.keyboard.insertText(body);
+      const read = await evalAct({ op: "body-value" });
+      if (!read.ok || String(read.value || "") !== String(body || "")) {
+        throw new Error(`description readback mismatch: ${read && read.value != null ? read.value : read && read.error}`);
+      }
+      return read;
     },
     async clickPublish() {
       const result = await evalAct({ op: "click-publish" });
       if (!result.ok) throw new Error(result.error || "发布 button not found");
-      return result;
+      if (typeof result.x === "number" && page.mouse && typeof page.mouse.click === "function") {
+        await page.mouse.click(result.x, result.y);
+        return result;
+      }
+      if (typeof page.click === "function" && result.selector) {
+        await page.click(result.selector);
+        return result;
+      }
+      throw new Error("发布 button was found but the page has no click API");
     },
     async waitEditSettled() {
       let last = { url: "", text: "" };

@@ -1,4 +1,5 @@
 function matches(el, part) {
+  if (part === "*") return true;
   let rest = String(part || "");
   let tag = "";
   if (/^[a-zA-Z]/.test(rest)) {
@@ -91,6 +92,7 @@ export function h(tag, props = {}, children = []) {
       if (!props.text) node.text += child;
     } else {
       node.childNodes.push(child);
+      child.parentElement = node;
     }
   }
   return node;
