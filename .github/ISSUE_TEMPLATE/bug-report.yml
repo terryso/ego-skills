@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a broken shipped skill or install path.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bugs in shipped ego-browser skills. 请不要粘贴 Cookie、session 或密码。
+
+        A maintainer may add the `bug` label by hand. For a new skill, use the skill-request form instead.
+  - type: input
+    id: skill
+    attributes:
+      label: Skill id
+      description: Directory under skills/. Use repo if the bug is install, docs, or the scaffold.
+      placeholder: youtube-video
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Exit code, JSON error, and what you expected. Do not paste cookies or passwords.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands
+      description: The exact command. Use /absolute/path/to/video.mp4 or /tmp/..., not your home directory.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: ego
+    attributes:
+      label: Was ego-browser on PATH?
+      options:
+        - "Yes"
+        - "No — exit 2 soft-fail"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redact cookies, tokens, and account ids before pasting.
+    validations:
+      required: false

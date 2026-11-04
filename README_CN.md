@@ -102,6 +102,15 @@ bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "标题"
 
 这个仓库只为 Star 和给 Agent 复用。没有 SaaS，没有付费档。路线图见 [PLAN.md](./PLAN.md)。测试：`npm test`（覆盖率写在 [ACCEPTANCE.md](./ACCEPTANCE.md)）。
 
+## 贡献
+
+欢迎为**可运行的 ego-browser 技能**提 PR。不用 `ego-browser` 的 CLI / MCP 包装请放到 [claw-skills](https://github.com/terryso/claw-skills)，或自建仓库后用 `npx skills add` 安装。完整规则（英文）在 [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)。
+
+- 先开 skill-request issue，再 `npm run new-skill -- <id>`（从 `skills/_template/` 复制骨架）。
+- 一个 PR 一个技能。frontmatter 的 bins 含 `ego-browser`。未登录或缺少二进制时 soft-fail，退出码 `2`。不代填密码，不写个人绝对路径，不以 Playwright 作为主路径。
+- 视频发布类技能必须在 `SKILL.md` 写明成功态。视频文件由调用方提供本地绝对路径。需要人扫码的「发表」不要自动点。视频号只存草稿。
+- 贡献即 MIT（PR 模板勾选，没有 DCO/CLA）。`npm test` 必须通过（c8 行覆盖 ≥ 80%）。本地 Ego smoke 鼓励去做，但不是合并前提；维护者可以打 `needs-ego-smoke` 标签。
+
 ## 许可证
 
 [MIT](./LICENSE)

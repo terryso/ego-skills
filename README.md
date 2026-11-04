@@ -102,6 +102,17 @@ Scripts run in **your** Ego profile. Sites you already use do not get a fresh lo
 
 This repo is for GitHub stars and agent reuse. No SaaS, no paid tier. Roadmap: [PLAN.md](./PLAN.md). Tests: `npm test` (coverage in [ACCEPTANCE.md](./ACCEPTANCE.md)).
 
+## Contributing
+
+External pull requests are welcome for **runnable ego-browser skills**. A CLI or MCP wrapper that does not use `ego-browser` belongs in [claw-skills](https://github.com/terryso/claw-skills) or your own repo (`npx skills add`).
+
+The guide is [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md). Short version:
+
+- Open a skill-request issue, then `npm run new-skill -- <id>` (copies `skills/_template/`).
+- One skill per PR. Frontmatter bins include `ego-browser`. Login soft-fails with exit `2`. No passwords, no personal absolute paths, no Playwright as the primary path.
+- Video publish skills name the success state in `SKILL.md`. The caller supplies the local file. Do not auto-click a Publish control that needs a human QR scan. WeChat Channels stays draft-only.
+- MIT (checkbox on the PR; no DCO or CLA). `npm test` must pass (c8 lines ≥ 80%). A local Ego smoke is encouraged and is not required to merge; maintainers may add the `needs-ego-smoke` label.
+
 ## License
 
 [MIT](./LICENSE)

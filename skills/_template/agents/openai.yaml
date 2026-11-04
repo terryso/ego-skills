@@ -1,0 +1,4 @@
+interface:
+  display_name: "__SKILL_ID__"
+  short_description: "TEMPLATE — replace. Ego Lite login-check for __SKILL_ID__."
+  default_prompt: "Use __SKILL_ID__: run check-login first (exit 2 means stop and ask the human to sign in inside Ego). Replace this prompt with the real task. Never type a password."
