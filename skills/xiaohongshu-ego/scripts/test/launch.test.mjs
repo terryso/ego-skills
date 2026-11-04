@@ -52,7 +52,12 @@ test("whichEgo maps the probe and the home-bin fallback", () => {
   ), { HOME: "/home/tester" });
   assert.equal(fallback, "/home/tester/.local/bin/ego-browser");
   const live = whichEgo();
-  assert.ok(live === null || live === "ego-browser");
+  // The live probe depends on the host: null when ego is not installed,
+  // "ego-browser" when it is on PATH, and the absolute ~/.local/bin path when
+  // it is installed but that directory is missing from PATH (non-interactive
+  // shells). All three are valid results.
+  const homeBin = path.join(process.env.HOME || process.env.USERPROFILE || "", ".local", "bin", "ego-browser");
+  assert.ok(live === null || live === "ego-browser" || live === homeBin);
 });
 
 test("renderEntry inlines the publish config", () => {
