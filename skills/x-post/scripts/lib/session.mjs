@@ -1,6 +1,6 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
-import { HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
+import { COMPOSE_URL, HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
 import {
   animationPathsFromHtml,
   buildTransactionId,
@@ -193,70 +193,28 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
     },
     async scriptUrls() {
       try {
-        const urls = await page.evaluate(() => Array.from(document.scripts || []).map((script) => script.src).filter(Boolean));
-        return Array.isArray(urls) ? urls.map((url) => String(url)) : [];
+        const urls = await page.evaluate(() => {
+          const out = [];
+          const push = (value) => {
+            if (typeof value !== "string" || !value.includes("abs.twimg.com/responsive-web/client-web/")) return;
+            out.push(value.split("?")[0]);
+          };
+          for (const script of Array.from(document.scripts || [])) push(script.src);
+          try {
+            for (const entry of performance.getEntriesByType("resource")) push(entry.name);
+          } catch {
+            // performance is optional in older documents
+          }
+          return out;
+        });
+        return Array.isArray(urls) ? [...new Set(urls.map((url) => String(url)))] : [];
       } catch {
         return [];
       }
     },
-    async sniffTransactionId() {
-      const hook = `(() => {
-        if (window.__egoXTidHook) return;
-        window.__egoXTidHook = true;
-        window.__egoXTid = "";
-        const take = (value) => {
-          if (typeof value === "string" && value.length > 8) window.__egoXTid = value;
-        };
-        const scan = (headers) => {
-          if (!headers) return;
-          if (typeof headers.get === "function") { take(headers.get("x-client-transaction-id")); return; }
-          if (Array.isArray(headers)) {
-            for (const pair of headers) {
-              if (pair && String(pair[0]).toLowerCase() === "x-client-transaction-id") take(pair[1]);
-            }
-            return;
-          }
-          for (const key of Object.keys(headers)) {
-            if (String(key).toLowerCase() === "x-client-transaction-id") take(headers[key]);
-          }
-        };
-        if (typeof window.fetch === "function") {
-          const orig = window.fetch;
-          window.fetch = function(input, init) {
-            try { scan(init && init.headers); } catch (e) {}
-            return orig.apply(this, arguments);
-          };
-        }
-        const proto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
-        if (proto && typeof proto.setRequestHeader === "function") {
-          const setHeader = proto.setRequestHeader;
-          proto.setRequestHeader = function(name, value) {
-            try { if (String(name).toLowerCase() === "x-client-transaction-id") take(value); } catch (e) {}
-            return setHeader.apply(this, arguments);
-          };
-        }
-      })();`;
-      try {
-        if (typeof page.cdp === "function") {
-          await page.cdp("Page.addScriptToEvaluateOnNewDocument", { source: hook });
-        }
-      } catch {
-        // Ego can expose Network cookies without the Page domain.
-      }
-      try {
-        await this.goto(HOME_URL);
-      } catch {
-        // A reload is how the logged-in client emits a fresh GraphQL transaction id.
-      }
-      if (typeof page.waitForTimeout === "function") {
-        try { await page.waitForTimeout(1500); } catch { /* timeline sockets stay open */ }
-      }
-      try {
-        const id = await page.evaluate(() => (typeof window !== "undefined" && window.__egoXTid) || "");
-        return String(id || "");
-      } catch {
-        return "";
-      }
+    async paceCompose() {
+      await this.goto(COMPOSE_URL);
+      if (typeof page.waitForTimeout === "function") await page.waitForTimeout(2000);
     },
     async clientTransaction({ method, path } = {}) {
       const html = await this.shellHtml();
@@ -268,7 +226,13 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
           paths = [];
         }
       }
-      const chunkUrl = onDemandFileUrl(html);
+      let liveOndemand = "";
+      try {
+        liveOndemand = (await this.scriptUrls()).find((url) => /\/ondemand\.s\.[A-Za-z0-9_-]+\.js$/.test(url)) || "";
+      } catch {
+        liveOndemand = "";
+      }
+      const chunkUrl = liveOndemand || onDemandFileUrl(html);
       let chunk = "";
       let fetchError = "";
       if (chunkUrl) {
@@ -281,8 +245,8 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       }
       const id = await buildTransactionId({ method, path, html, ondemandSource: chunk, paths });
       if (id) return { id, source: "generated" };
-      const sniffed = await this.sniffTransactionId();
-      if (sniffed) return { id: sniffed, source: "session" };
+      // A header sniffed from a different GraphQL call is bound to that path.
+      // Pro accept2 reused one and CreateNoteTweet returned GraphQL 226.
       const missing = describeMissingMaterials({ html, ondemandSource: chunk, paths });
       const detail = [
         missing.join(", ") || "transaction materials",

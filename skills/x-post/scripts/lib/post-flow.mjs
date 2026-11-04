@@ -19,12 +19,12 @@ import {
   extractScriptUrls,
   extractWebBearer,
   graphqlUrl,
+  orderScriptUrls,
   interpretCreateTweetResponse,
   isScreenName,
   needsNoteTweet,
   needsRepaint,
   normalizeLanguage,
-  rankScriptUrls,
   screenNameFromPath,
   statusUrl,
 } from "./pure.mjs";
@@ -78,7 +78,7 @@ export async function resolveOperationQuery(session, operationName, override) {
       // The shell document is enough when its script tags are still there.
     }
   }
-  urls = rankScriptUrls(urls);
+  urls = orderScriptUrls(urls);
   let bearer = extractWebBearer(html);
   let queryId = extractOperationQueryId(html, operationName);
   for (const url of urls) {
@@ -184,7 +184,14 @@ export async function performPost(config, session) {
       page,
     };
   }
-  const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language });
+  if (note && typeof session.paceCompose === "function") {
+    try {
+      await session.paceCompose();
+    } catch {
+      // Opening the composer is pacing, not the post itself.
+    }
+  }
+  const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language, note });
   headers["x-client-transaction-id"] = transaction.id;
   const request = {
     url,

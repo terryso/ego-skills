@@ -5,15 +5,15 @@
 | Metric | Result |
 |--------|--------|
 | Tests | 304 passed |
-| Line coverage | **98.42%** |
-| Statement coverage | 98.42% |
+| Line coverage | **98.38%** |
+| Statement coverage | 98.38% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
-| `x-post` included lib lines | **96.13%** (`pure.mjs`, `launch.mjs`, `run-check.mjs` 100%; `post-flow.mjs` 98.73%; `session.mjs` 90.06%; `transaction.mjs` 87.72%) |
+| `x-post` included lib lines | **95.93%** (`launch.mjs`, `run-check.mjs` 100%; `pure.mjs` 99.71%; `post-flow.mjs` 96.91%; `session.mjs` 90.2%; `transaction.mjs` 88.62%) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -188,7 +188,7 @@ Posts to X through the logged-in Ego session. Login-check first. Logged out or m
 
 Unit tests mock the session and do not call x.com. No Ego smoke was run in this environment (no logged-in browser). Pro smoke: show the exact text in `skills/x-post/SKILL.md`, then re-run that command with `--yes`. Leave the announcement up.
 
-Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, and `run-check.mjs` are 100% lines. `post-flow.mjs` is 98.73%. `session.mjs` is 90.06%. `transaction.mjs` is 87.72%. CreateTweet and CreateNoteTweet build `x-client-transaction-id` from the x.com shell, including the 2026 `[n], 16` ondemand index form. If that file still cannot be parsed, the session reloads home and reuses a real `x-client-transaction-id` sniffed from the logged-in client's own GraphQL calls (`transaction_id_source: session`). `ego-deps.mjs` and the entry scripts stay outside the include.
+Included line coverage under the c8 glob: `launch.mjs` and `run-check.mjs` are 100% lines. `pure.mjs` is 99.71%. `post-flow.mjs` is 96.91%. `session.mjs` is 90.2%. `transaction.mjs` is 88.62%. CreateNoteTweet builds `x-client-transaction-id` for that POST path from the shell (verification key, a tight cluster of ondemand `[n], 16` indices, and `loading-x-anim`). A header copied from a different GraphQL call is not sent: Pro accept2 did that and X returned 226. The CreateNoteTweet query id is taken from `main.*.js` already loaded on the page. Long posts open `https://x.com/compose/post` and wait two seconds before `page.fetch`. `ego-deps.mjs` and the entry scripts stay outside the include.
 
 ```bash
 node skills/x-post/scripts/check-login.mjs

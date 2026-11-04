@@ -194,25 +194,14 @@ test("js bytes decode, and a live header is reused when indices are missing", ()
   assert.equal(bodyText(null), "");
 });
 
-test("a sniffed GraphQL header is used when ondemand indices cannot be parsed", async () => {
+test("a header from another GraphQL call is not reused when indices are missing", async () => {
   installDocument({ html: "<html>logged-in home without shell</html>" });
   const harness = fakePage();
-  harness.page.evaluate = async (fn) => {
-    const source = Function.prototype.toString.call(fn);
-    if (source.includes("__egoXTid")) return "sniffed-live-tid";
-    return fn();
-  };
-  const seen = [];
-  harness.page.cdp = async (method) => {
-    seen.push(method);
-    return { cookies: [] };
-  };
   const session = createXSession(harness);
-  const result = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
-  assert.equal(result.source, "session");
-  assert.equal(result.id, "sniffed-live-tid");
-  assert.ok(seen.includes("Page.addScriptToEvaluateOnNewDocument"));
-  assert.ok(harness.calls.goto.includes(HOME_URL));
+  await assert.rejects(
+    () => session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" }),
+    /ondemand\.s|transaction materials/,
+  );
 });
 
 test("fetch, navigation, and finish", async () => {

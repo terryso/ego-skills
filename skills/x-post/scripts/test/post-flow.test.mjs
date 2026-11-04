@@ -344,13 +344,15 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
   assert.equal(domId.query_id, "DomNoteQueryId12345");
   assert.equal(domId.query_id_source, "bundle");
 
-  const sniffed = session({ html: "<html></html>" });
-  sniffed.clientTransaction = async () => ({ id: "sniffed-live-header", source: "session" });
-  const sniffedPost = await performPost({ yes: true, text: "x".repeat(300) }, sniffed);
-  assert.equal(sniffedPost.transaction_id_source, "session");
-  assert.equal(sniffedPost.sent, true);
-  assert.equal(sniffed.calls.post.headers["x-client-transaction-id"], "sniffed-live-header");
-  assert.equal(JSON.stringify(sniffedPost).includes("sniffed-live-header"), false);
+  const paced = session();
+  paced.paceCompose = async () => { paced.calls.goto.push("https://x.com/compose/post"); };
+  const pacedPost = await performPost({ yes: true, text: "x".repeat(300) }, paced);
+  assert.equal(pacedPost.operation, "CreateNoteTweet");
+  assert.deepEqual(paced.calls.goto, ["https://x.com/compose/post"]);
+  assert.equal(paced.calls.post.headers.origin, "https://x.com");
+  assert.equal(paced.calls.post.headers.referer, "https://x.com/compose/post");
+  assert.equal(paced.calls.post.headers["x-twitter-auth-type"], "OAuth2Session");
+  assert.equal(paced.calls.post.headers["x-twitter-active-user"], "yes");
 
   const htmlId = session({ html: `queryId:"FromHtmlBundle1234",operationName:"CreateTweet" ${PUBLIC_WEB_BEARER}` });
   const fromHtml = await resolveCreateTweetQuery(htmlId, "");

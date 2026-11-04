@@ -33,20 +33,42 @@ export function onDemandFileUrl(html) {
   return `https://abs.twimg.com/responsive-web/client-web/ondemand.s.${legacy}a.js`;
 }
 
+function tightIndexCluster(hits) {
+  if (!hits.length) return null;
+  let best = [];
+  let run = [hits[0]];
+  for (let i = 1; i < hits.length; i += 1) {
+    if (hits[i].at - hits[i - 1].at < 80) run.push(hits[i]);
+    else {
+      if (run.length > best.length) best = run;
+      run = [hits[i]];
+    }
+  }
+  if (run.length > best.length) best = run;
+  if (best.length < 2) return null;
+  return best.slice(0, 6).map((hit) => hit.index);
+}
+
 export function keyByteIndices(source) {
   const text = String(source || "");
-  let indices = Array.from(text.matchAll(/\(\w\[(\d{1,2})\],\s*16\)/g), (match) => Number(match[1]));
-  if (!indices.length) {
-    indices = Array.from(text.matchAll(/\(\s*\w+\s*\[\s*(\d{1,2})\s*\]\s*,\s*16\s*\)/g), (match) => Number(match[1]));
+  const patterns = [
+    /\(\w{1,2}\[(\d{1,2})\],\s*16\)/g,
+    /\(\s*\w+\s*\[\s*(\d{1,2})\s*\]\s*,\s*16\s*\)/g,
+    // X's ondemand.s after 2026-03 uses `[12], 16` without a `(name[12], 16)` wrapper.
+    /\[(\d{1,3})\],\s*16/g,
+  ];
+  for (const pattern of patterns) {
+    const hits = [];
+    for (const match of text.matchAll(pattern)) {
+      hits.push({ index: Number(match[1]), at: match.index });
+    }
+    const cluster = tightIndexCluster(hits);
+    if (cluster) {
+      const [rowIndex, ...keyBytesIndices] = cluster;
+      return { rowIndex, keyBytesIndices };
+    }
   }
-  // X's ondemand.s after 2026-03 uses `[12], 16` without the `(name[12], 16)` wrapper.
-  if (!indices.length) {
-    indices = Array.from(text.matchAll(/\[(\d{1,3})\],\s*16/g), (match) => Number(match[1]));
-  }
-  if (!indices.length) return null;
-  const limited = indices.length > 8 ? indices.slice(0, 4) : indices;
-  const [rowIndex, ...keyBytesIndices] = limited;
-  return { rowIndex, keyBytesIndices };
+  return null;
 }
 
 export function animationPathsFromHtml(html) {

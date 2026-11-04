@@ -469,7 +469,22 @@ export function extractOperationQueryId(source, operationName) {
   for (const match of text.matchAll(reverse)) {
     if (!/operationName/.test(match[1])) return match[2];
   }
+  const wide = new RegExp(`queryId:\\s*"([A-Za-z0-9_-]{8,80})"([\\s\\S]{0,800}?)operationName:\\s*"${name}"`, "g");
+  for (const match of text.matchAll(wide)) {
+    if (!/operationName:\s*"/.test(match[2])) return match[1];
+  }
   return "";
+}
+
+export function orderScriptUrls(urls) {
+  const unique = [];
+  for (const url of urls || []) {
+    const value = String(url || "").split("?")[0];
+    if (value && !unique.includes(value)) unique.push(value);
+  }
+  const mains = unique.filter((url) => /\/main\.[A-Za-z0-9_-]+\.js$/.test(url));
+  const rest = rankScriptUrls(unique.filter((url) => !mains.includes(url)));
+  return [...mains, ...rest].slice(0, 8);
 }
 
 export function extractCreateTweetQueryId(source) {
@@ -518,13 +533,14 @@ export function buildCreateNoteTweetBody(options = {}) {
   return buildStatusBody({ ...options, note: true });
 }
 
-export function buildHeaders({ bearer, csrfToken, language } = {}) {
+export function buildHeaders({ bearer, csrfToken, language, note = false } = {}) {
   const headers = {
     authorization: `Bearer ${bearer || PUBLIC_WEB_BEARER}`,
     "content-type": "application/json",
+    origin: "https://x.com",
+    referer: COMPOSE_URL,
     "x-twitter-auth-type": "OAuth2Session",
     "x-twitter-active-user": "yes",
-    referer: COMPOSE_URL,
   };
   if (csrfToken) headers["x-csrf-token"] = csrfToken;
   if (language) headers["x-twitter-client-language"] = language;
