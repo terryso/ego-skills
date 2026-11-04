@@ -1,16 +1,17 @@
 # Acceptance
 
-`npm test` on 2026-11-04 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
+`npm test` on 2026-11-04 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `douyin-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `douyin-dom.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 138 passed |
-| Line coverage | **98.69%** |
-| Statement coverage | 98.69% |
+| Tests | 186 passed |
+| Line coverage | **98.73%** |
+| Statement coverage | 98.73% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
+| `douyin-video` lib lines | **98.93%** |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -145,4 +146,19 @@ Included lib line coverage: `pure.mjs` 100%, `studio-dom.mjs` 100%, `run-check.m
 ```bash
 node skills/youtube-video/scripts/check-login.mjs
 bash skills/youtube-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" "Description"
+```
+
+## douyin-video
+
+Publish a caller-supplied local video to https://creator.douyin.com . No download step and no yt-dlp. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip` (being signed in to Douyin inside Ego works better). check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+Publish success is `{ "ok": true, "manageUrl": "https://creator.douyin.com/creator-micro/content/manage" }` when the URL contains `content/manage` or the page says 发布成功. The title is a separate field of at most 30 Unicode code points. The description is required. Defaults stay public, allow save, and publish immediately. A login wall inside `publish.js` calls `handOff()` and leaves the space open. A location-permission interrupt does the same, so the same `spaceId` can resume without uploading again. Other failures and a successful publish close the space unless keep is `1`. Comments are not scripted. Flow errors exit 1. No public upload was run here.
+
+Login-check on this machine (ego-browser 0.6.0.12) exited 2. The upload page was a QR wall (`on_login_page`, `has_qr_hint`, title `抖音创作者中心`, `uploadChrome` false). `how_to_login` length 5 and `login_tip` were present. The task space closed (no `--keep`). No upload was started.
+
+Included lib line coverage: `pure.mjs` 100%, `douyin-dom.mjs` 100%, `run-check.mjs` 100%, `config-file.mjs` 100%, `publish-flow.mjs` 100%, `launch-check.mjs` 94.87%, `run-ego.mjs` 92.98%.
+
+```bash
+node skills/douyin-video/scripts/check-login.mjs
+bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" "Description #topic"
 ```
