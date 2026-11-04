@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`youtube-video`](./skills/youtube-video/) 和 [`douyin-video`](./skills/douyin-video/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/) 和 [`teambition-ego`](./skills/teambition-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -64,6 +64,7 @@ cd ego-skills
 | [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。 |
 | [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
 | [`douyin-video`](./skills/douyin-video/) | 把本地视频发到抖音创作者中心。先检查登录。标题最多 30 字。默认公开、允许保存、立即发布。成功标准是进入内容管理或出现「发布成功」。 |
+| [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。只读。Phase 1 走浏览器会话，不用 Open API token。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -94,7 +95,12 @@ node skills/douyin-video/scripts/check-login.mjs
 bash skills/douyin-video/scripts/publish.sh /absolute/path/to/video.mp4 "标题" "简介 #话题"
 ```
 
-如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳）。说明见各技能的 `references/login.md`。
+```bash
+node skills/teambition-ego/scripts/check-login.mjs
+node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambition.com/project/PROJECT/testplan/PLAN/group/GROUP"
+```
+
+如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
 
