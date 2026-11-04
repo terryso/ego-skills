@@ -4,16 +4,16 @@
 
 | Metric | Result |
 |--------|--------|
-| Tests | 298 passed |
-| Line coverage | **99.14%** |
-| Statement coverage | 99.14% |
+| Tests | 302 passed |
+| Line coverage | **98.76%** |
+| Statement coverage | 98.76% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
 | `youtube-video` lib lines | **99.2%** |
 | `douyin-video` lib lines | **98.93%** |
 | `teambition-ego` included lib lines | **100%** (`session.mjs`, `domains/testcase.mjs`, `write.mjs`, `pure.mjs`, `launch-check.mjs`, `run-check.mjs`) |
-| `x-post` included lib lines | **100%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, `post-flow.mjs`) |
+| `x-post` included lib lines | **97.68%** (`pure.mjs`, `launch.mjs`, `run-check.mjs`, `post-flow.mjs` 100%; `session.mjs` 97.93%; `transaction.mjs` 85.71%) |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -184,11 +184,11 @@ node skills/teambition-ego/scripts/tb.mjs testcase parse-url "https://www.teambi
 
 Posts to X through the logged-in Ego session. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip`. check-login closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
 
-`post.mjs` without `--yes` prints the draft and exits 3. It does not call X. `post.mjs --yes` sends `page.fetch` CreateTweet (`credentials: "include"`). Success is `https://x.com/<screen_name>/status/<id>` from `data.create_tweet.tweet_results.result.rest_id` and `core.user_results.result.core.screen_name`. The query id is read from the loaded `main.*.js` (`operationName:"CreateTweet"`). If that read fails, the script uses the id captured on 2026-11-04: `l4hk8uVGvR-a8kzQ4nOhPA`. It does not ship any other mutation id. `--reply-to` adds `variables.reply` and is best-effort: a live `page.fetch` reply returned GraphQL 226 and was not verified. `cleanup` only closes the `x-post` task space. It does not call DeleteTweet.
+`post.mjs` without `--yes` prints the draft and exits 3. It does not call X. `post.mjs --yes` sends `page.fetch` CreateTweet when the weighted length is at most 280, and CreateNoteTweet when it is over 280 or `--long` is set. Success is `https://x.com/<screen_name>/status/<id>`. Short posts read `data.create_tweet…rest_id`. Notes read `data.notetweet_create…rest_id` and the full body from `note_tweet.note_tweet_results.result.text`. Query ids are read from the loaded `main.*.js`. Fallbacks captured on 2026-11-04: CreateTweet `l4hk8uVGvR-a8kzQ4nOhPA`, CreateNoteTweet `seOZkIS8AysCGfPo6yYPVA`. CreateNoteTweet sends `x-client-transaction-id` derived from the live page; without it the capture returned GraphQL 226. `--reply-to` is best-effort. `cleanup` only closes the `x-post` task space. It does not call DeleteTweet.
 
 Unit tests mock the session and do not call x.com. No Ego smoke was run in this environment (no logged-in browser). Pro smoke: show the exact text in `skills/x-post/SKILL.md`, then re-run that command with `--yes`. Leave the announcement up.
 
-Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, `run-check.mjs`, `session.mjs`, and `post-flow.mjs` are all 100% lines. `ego-deps.mjs` and the entry scripts stay outside the include.
+Included line coverage under the c8 glob: `pure.mjs`, `launch.mjs`, `run-check.mjs`, and `post-flow.mjs` are 100% lines. `session.mjs` is 97.93%. `transaction.mjs` is 85.71%. `ego-deps.mjs` and the entry scripts stay outside the include.
 
 ```bash
 node skills/x-post/scripts/check-login.mjs

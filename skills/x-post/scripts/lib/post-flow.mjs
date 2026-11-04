@@ -1,6 +1,8 @@
 import {
+  CAPTURED_CREATE_NOTE_TWEET_QUERY_ID,
   CAPTURED_CREATE_TWEET_QUERY_ID,
   CAPTURED_FEATURES,
+  CAPTURED_NOTE_QUERY_SOURCE,
   CAPTURED_QUERY_SOURCE,
   HOME_URL,
   HOW_TO_LOGIN,
@@ -9,16 +11,17 @@ import {
   LOGIN_TIP_ZH,
   SKILL,
   SPACE_NAME,
-  buildCreateTweetBody,
+  buildStatusBody,
   buildHeaders,
   classifyLogin,
   confirmationSummary,
-  createTweetUrl,
-  extractCreateTweetQueryId,
+  extractOperationQueryId,
   extractScriptUrls,
   extractWebBearer,
+  graphqlUrl,
   interpretCreateTweetResponse,
   isScreenName,
+  needsNoteTweet,
   needsRepaint,
   normalizeLanguage,
   rankScriptUrls,
@@ -41,8 +44,11 @@ function loginStop(message) {
   };
 }
 
-export async function resolveCreateTweetQuery(session, override) {
-  if (override) return { queryId: override, source: "flag", bearer: "" };
+export async function resolveOperationQuery(session, operationName, override) {
+  const note = operationName === "CreateNoteTweet";
+  const capturedId = note ? CAPTURED_CREATE_NOTE_TWEET_QUERY_ID : CAPTURED_CREATE_TWEET_QUERY_ID;
+  const capturedSource = note ? CAPTURED_NOTE_QUERY_SOURCE : CAPTURED_QUERY_SOURCE;
+  if (override) return { queryId: override, source: "flag", bearer: "", operation: operationName };
   let html = "";
   try {
     html = await session.pageSource();
@@ -51,7 +57,7 @@ export async function resolveCreateTweetQuery(session, override) {
   }
   const urls = rankScriptUrls(extractScriptUrls(html));
   let bearer = extractWebBearer(html);
-  let queryId = extractCreateTweetQueryId(html);
+  let queryId = extractOperationQueryId(html, operationName);
   for (const url of urls) {
     if (queryId && bearer) break;
     let source = "";
@@ -60,13 +66,26 @@ export async function resolveCreateTweetQuery(session, override) {
     } catch {
       continue;
     }
-    if (!queryId) queryId = extractCreateTweetQueryId(source);
+    if (!queryId) queryId = extractOperationQueryId(source, operationName);
     if (!bearer) bearer = extractWebBearer(source);
   }
-  if (!queryId) {
-    return { queryId: CAPTURED_CREATE_TWEET_QUERY_ID, source: CAPTURED_QUERY_SOURCE, bearer };
+  if (!queryId) return { queryId: capturedId, source: capturedSource, bearer, operation: operationName };
+  return { queryId, source: "bundle", bearer, operation: operationName };
+}
+
+export function resolveCreateTweetQuery(session, override) {
+  return resolveOperationQuery(session, "CreateTweet", override);
+}
+
+async function noteTransaction(session, path, config) {
+  if (config.transactionId) return { id: config.transactionId, source: "flag" };
+  if (typeof session.clientTransaction !== "function") return { id: "", source: "missing" };
+  try {
+    const id = String(await session.clientTransaction({ method: "POST", path }) || "");
+    return { id, source: id ? "generated" : "missing" };
+  } catch {
+    return { id: "", source: "missing" };
   }
-  return { queryId, source: "bundle", bearer };
 }
 
 export async function performPost(config, session) {
@@ -79,7 +98,7 @@ export async function performPost(config, session) {
   }
   const classified = classifyLogin(detected);
   const page = { url: detected.url, title: detected.title };
-    if (!classified.logged_in) {
+  if (!classified.logged_in) {
     if (config.keep) {
       try { await session.handOff(); } catch { /* handOff is optional */ }
     }
@@ -99,31 +118,43 @@ export async function performPost(config, session) {
     }
     return { ...loginStop("ct0 missing; sign in to x.com inside Ego Lite"), page };
   }
-  const discovered = await resolveCreateTweetQuery(session, config.queryId);
-  const url = createTweetUrl(discovered.queryId);
+  const note = needsNoteTweet(config.text, { long: Boolean(config.long) });
+  const operation = note ? "CreateNoteTweet" : "CreateTweet";
+  const discovered = await resolveOperationQuery(session, operation, config.queryId);
+  const url = graphqlUrl(discovered.queryId, operation);
   if (!url) {
     return {
       ok: false,
       sent: false,
       exitCode: 1,
-      error: "CreateTweet query id is not usable",
+      error: `${operation} query id is not usable`,
       query_id_source: discovered.source,
+      operation,
       page,
     };
   }
   const language = normalizeLanguage(detected.lang);
+  const pathname = new URL(url).pathname;
+  const transaction = note ? await noteTransaction(session, pathname, config) : { id: "", source: "not-used" };
+  const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language });
+  if (transaction.id) headers["x-client-transaction-id"] = transaction.id;
   const request = {
     url,
-    headers: buildHeaders({ bearer: discovered.bearer, csrfToken, language }),
-    body: buildCreateTweetBody({
+    headers,
+    body: buildStatusBody({
       text: config.text,
       replyTo: config.replyTo,
       queryId: discovered.queryId,
       features: CAPTURED_FEATURES,
+      note,
     }),
   };
   const response = await session.postJson(request);
-  const parsed = interpretCreateTweetResponse(response.status, response.body, { replyTo: config.replyTo });
+  const parsed = interpretCreateTweetResponse(response.status, response.body, {
+    replyTo: config.replyTo,
+    note,
+    hadTransactionId: Boolean(transaction.id),
+  });
   if (!parsed.ok) {
     if (parsed.loginRequired) return { ...loginStop(parsed.error), page, http_status: response.status };
     return {
@@ -132,6 +163,9 @@ export async function performPost(config, session) {
       exitCode: 1,
       error: parsed.error,
       http_status: response.status || undefined,
+      operation,
+      note,
+      transaction_id_source: transaction.source,
       query_id: discovered.queryId,
       query_id_source: discovered.source,
       reply_best_effort: Boolean(config.replyTo) || undefined,
@@ -156,6 +190,10 @@ export async function performPost(config, session) {
     url: status,
     status_id: parsed.id,
     screen_name: screen || undefined,
+    operation,
+    note: Boolean(parsed.note),
+    full_text: parsed.fullText || undefined,
+    transaction_id_source: transaction.source,
     query_id: discovered.queryId,
     query_id_source: discovered.source,
     reply_best_effort: Boolean(config.replyTo) || undefined,

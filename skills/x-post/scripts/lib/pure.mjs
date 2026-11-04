@@ -1,6 +1,6 @@
 // Pure helpers for x-post. No browser, no process.exit.
-// CreateTweet body matches the 2026-11-04 Ego capture (main.0a76dc3677efe2b2a.js).
-// Do not add other operation query ids here.
+// CreateTweet and CreateNoteTweet match the 2026-11-04 Ego captures
+// (main.0a76dc3677efe2b2a.js). Do not add other operation query ids here.
 
 export const SKILL = "x-post";
 export const HOME_URL = "https://x.com/home";
@@ -12,9 +12,11 @@ export const STANDARD_POST_CHARS = 280;
 export const MAX_TEXT_CHARS = 25000;
 
 // Captured 2026-11-04 from the live web client. Re-read the loaded bundle first.
-// This is the only CreateTweet query id shipped in this skill.
 export const CAPTURED_CREATE_TWEET_QUERY_ID = "l4hk8uVGvR-a8kzQ4nOhPA";
+export const CAPTURED_CREATE_NOTE_TWEET_QUERY_ID = "seOZkIS8AysCGfPo6yYPVA";
 export const CAPTURED_QUERY_SOURCE = "captured-2026-11-04";
+export const CAPTURED_NOTE_QUERY_SOURCE = "captured-note-2026-11-04";
+export const MAX_WEIGHTED_TWEET_LENGTH = 280;
 
 // Public web-client bearer (prefix AAAA…ANRILg…), not a user secret.
 // Prefer the value read from the loaded bundle. Never print it beside ct0.
@@ -94,7 +96,7 @@ export const LOGIN_TIP =
 export const LOGIN_TIP_ZH =
   "请告诉用户：在 Ego Lite 里登录 x.com 之后才能发帖。发帖走浏览器会话的 page.fetch CreateTweet，不用 X API key。若 login-check 退出码是 2，请人在 Ego Lite 打开 x.com 登录后再跑。先展示草稿，等人确认后再加 --yes。不要代填密码，不要粘贴 Cookie。";
 
-export const USAGE = `x-post — post on X via the logged-in Ego Lite session (page.fetch CreateTweet)
+export const USAGE = `x-post — post on X via the logged-in Ego Lite session (page.fetch CreateTweet, or CreateNoteTweet when the weighted length is over 280)
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
 Nothing is sent without --yes. Show the draft to the user first.
@@ -144,9 +146,11 @@ export function parsePostArgs(argv) {
     yes: false,
     json: false,
     keep: false,
+    long: false,
     text: "",
     replyTo: "",
     queryId: "",
+    transactionId: "",
     taskName: SPACE_NAME,
   };
   const parsed = parseFlags(argv, out, {
@@ -155,7 +159,9 @@ export function parsePostArgs(argv) {
     "--yes": () => { out.yes = true; },
     "--json": () => { out.json = true; },
     "--keep": () => { out.keep = true; },
+    "--long": () => { out.long = true; },
     "--query-id": (value) => { out.queryId = String(value || ""); },
+    "--transaction-id": (value) => { out.transactionId = String(value || ""); },
     "--task-name": (value) => { out.taskName = value || out.taskName; },
   });
   if (parsed.help) return parsed;
@@ -177,7 +183,7 @@ function parseFlags(argv, out, handlers) {
     const arg = args[i];
     const handler = handlers[arg];
     if (!handler) throw new Error(`Unknown arg: ${arg}`);
-    const takesValue = arg === "--text" || arg === "--reply-to" || arg === "--query-id" || arg === "--task-name";
+    const takesValue = arg === "--text" || arg === "--reply-to" || arg === "--query-id" || arg === "--task-name" || arg === "--transaction-id";
     if (takesValue) {
       const value = args[i + 1];
       if (value == null || String(value).startsWith("--")) throw new Error(`Missing value for ${arg}`);
@@ -190,13 +196,17 @@ function parseFlags(argv, out, handlers) {
   return out;
 }
 
-export function draftOf({ text = "", replyTo = "" } = {}) {
+export function draftOf({ text = "", replyTo = "", long = false } = {}) {
   const chars = charCount(text);
+  const weighted = weightedLength(text);
+  const note = needsNoteTweet(text, { long });
   return {
     text: String(text),
     reply_to: replyTo || null,
     chars,
-    long_text: chars > STANDARD_POST_CHARS,
+    weighted,
+    long_text: note,
+    operation: note ? "CreateNoteTweet" : "CreateTweet",
     reply_best_effort: Boolean(replyTo),
   };
 }
@@ -227,7 +237,7 @@ export function formatDraftText(summary) {
     lines.push("reply: best-effort; page.fetch reply was not verified (GraphQL 226 on the 2026-11-04 capture).");
   }
   if (draft.long_text) {
-    lines.push("note: longer than 280 characters. CreateNoteTweet is not used.");
+    lines.push(`note: weighted length ${draft.weighted ?? "?"} is over ${MAX_WEIGHTED_TWEET_LENGTH}, or --long was set. --yes sends CreateNoteTweet.`);
   }
   lines.push("---", draft.text, "---", summary.error || "");
   return `${lines.join("\n")}\n`;
@@ -371,9 +381,56 @@ export function isQueryId(value) {
   return /^[A-Za-z0-9_-]{8,80}$/.test(String(value || ""));
 }
 
-export function createTweetUrl(queryId) {
+export function graphqlUrl(queryId, operation) {
   if (!isQueryId(queryId)) return "";
-  return `https://x.com/i/api/graphql/${queryId}/CreateTweet`;
+  if (operation !== "CreateTweet" && operation !== "CreateNoteTweet") return "";
+  return `https://x.com/i/api/graphql/${queryId}/${operation}`;
+}
+
+export function createTweetUrl(queryId) {
+  return graphqlUrl(queryId, "CreateTweet");
+}
+
+const WEIGHT_RANGES = [
+  [0, 4351, 100],
+  [8192, 8205, 100],
+  [8208, 8223, 100],
+  [8242, 8247, 100],
+];
+
+function codePointWeight(codePoint) {
+  for (const [start, end, weight] of WEIGHT_RANGES) {
+    if (codePoint >= start && codePoint <= end) return weight;
+  }
+  return 200;
+}
+
+function weightSlice(slice) {
+  let sum = 0;
+  for (const char of String(slice || "")) {
+    sum += codePointWeight(char.codePointAt(0)) / 100;
+  }
+  return sum;
+}
+
+// twitter-text v3: maxWeightedTweetLength 280, scale 100, default weight 200,
+// transformed URL length 23. The X client uses this same limit in tC().
+export function weightedLength(text) {
+  const source = String(text || "");
+  const urlRe = /https?:\/\/[^\s]+/gi;
+  let total = 0;
+  let last = 0;
+  for (const match of source.matchAll(urlRe)) {
+    total += weightSlice(source.slice(last, match.index));
+    total += 23;
+    last = match.index + match[0].length;
+  }
+  return total + weightSlice(source.slice(last));
+}
+
+export function needsNoteTweet(text, { long = false } = {}) {
+  if (long) return true;
+  return weightedLength(text) > MAX_WEIGHTED_TWEET_LENGTH;
 }
 
 export function extractScriptUrls(html) {
@@ -396,17 +453,23 @@ function scriptScore(url) {
   return 1;
 }
 
-export function extractCreateTweetQueryId(source) {
+export function extractOperationQueryId(source, operationName) {
   const text = String(source || "");
-  const forward = /queryId:\s*"([A-Za-z0-9_-]{8,80})"([^}]{0,220})operationName:\s*"([^"]+)"/g;
+  const name = String(operationName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!name) return "";
+  const forward = new RegExp(`queryId:\\s*"([A-Za-z0-9_-]{8,80})"([^}]{0,220})operationName:\\s*"${name}"`, "g");
   for (const match of text.matchAll(forward)) {
-    if (match[3] === "CreateTweet" && !/operationName/.test(match[2])) return match[1];
+    if (!/operationName/.test(match[2])) return match[1];
   }
-  const reverse = /operationName:\s*"CreateTweet"([^}]{0,220})queryId:\s*"([A-Za-z0-9_-]{8,80})"/g;
+  const reverse = new RegExp(`operationName:\\s*"${name}"([^}]{0,220})queryId:\\s*"([A-Za-z0-9_-]{8,80})"`, "g");
   for (const match of text.matchAll(reverse)) {
     if (!/operationName/.test(match[1])) return match[2];
   }
   return "";
+}
+
+export function extractCreateTweetQueryId(source) {
+  return extractOperationQueryId(source, "CreateTweet");
 }
 
 export function extractWebBearer(source) {
@@ -420,13 +483,15 @@ export function normalizeLanguage(value) {
   return text;
 }
 
-export function buildCreateTweetBody({ text, replyTo = "", queryId, features = CAPTURED_FEATURES } = {}) {
+export function buildStatusBody({ text, replyTo = "", queryId, features = CAPTURED_FEATURES, note = false } = {}) {
   const variables = {
     tweet_text: String(text || ""),
     media: { media_entities: [], possibly_sensitive: false },
     semantic_annotation_ids: [],
     disallowed_reply_options: null,
-    semantic_annotation_options: { source: "UniversalLink" },
+    semantic_annotation_options: note
+      ? { composition_signal_1: true, source: "UniversalLink" }
+      : { source: "UniversalLink" },
   };
   if (replyTo) {
     variables.reply = {
@@ -439,6 +504,14 @@ export function buildCreateTweetBody({ text, replyTo = "", queryId, features = C
     features: { ...features },
     queryId,
   };
+}
+
+export function buildCreateTweetBody(options = {}) {
+  return buildStatusBody({ ...options, note: false });
+}
+
+export function buildCreateNoteTweetBody(options = {}) {
+  return buildStatusBody({ ...options, note: true });
 }
 
 export function buildHeaders({ bearer, csrfToken, language } = {}) {
@@ -479,25 +552,49 @@ export function isRateLimited(status, errors) {
   return (errors || []).some((error) => Number(error.code) === 88 || /rate limit/i.test(error.message || ""));
 }
 
-export function explainGraphqlFailure({ status, errors, replyTo } = {}) {
+export function isTooLong(errors) {
+  return (errors || []).filter(Boolean).some((error) => {
+    const code = error.code ?? error.extensions?.code;
+    return Number(code) === 186 || /too long/i.test(error.message || "");
+  });
+}
+
+export function explainGraphqlFailure({ status, errors, replyTo, note = false, hadTransactionId = false } = {}) {
   const text = errorText(errors);
   if (isRateLimited(status, errors)) return `Rate limited by X. Not retried. ${text}`.trim();
+  if (isTooLong(errors)) {
+    return `GraphQL 186: text is over the short-post limit. Long text must use CreateNoteTweet. ${text}`.trim();
+  }
   if (isAutomatedBlock(errors)) {
     if (replyTo) {
       return `GraphQL 226: X rejected this reply as automated. Reply via page.fetch is best-effort and was not verified (capture on 2026-11-04). This skill does not click the composer and does not retry. ${text}`.trim();
     }
-    return `GraphQL 226: X rejected CreateTweet as automated. This skill does not synthesize x-client-transaction-id and does not click the composer. ${text}`.trim();
+    if (note && !hadTransactionId) {
+      return `GraphQL 226: CreateNoteTweet page.fetch without x-client-transaction-id was rejected as automated (capture on 2026-11-04). Not retried. ${text}`.trim();
+    }
+    if (note) {
+      return `GraphQL 226: X rejected CreateNoteTweet as automated even with x-client-transaction-id. Not retried. ${text}`.trim();
+    }
+    return `GraphQL 226: X rejected CreateTweet as automated. A short post can succeed without x-client-transaction-id; this one did not. Not retried. ${text}`.trim();
   }
   if (Number(status) === 401) return "X login required in Ego Lite";
   return text || `HTTP ${status || 0}`;
 }
 
 export function tweetResult(payload) {
-  const result = payload?.data?.create_tweet?.tweet_results?.result;
+  const data = payload?.data;
+  const result = data?.notetweet_create?.tweet_results?.result || data?.create_tweet?.tweet_results?.result;
   if (!result || typeof result !== "object") return null;
   if (result.rest_id || result.legacy?.id_str) return result;
   if (result.tweet && typeof result.tweet === "object") return result.tweet;
   return result;
+}
+
+export function fullTextFromResult(result) {
+  const note = result?.note_tweet?.note_tweet_results?.result?.text;
+  if (typeof note === "string" && note) return note;
+  const legacy = result?.legacy?.full_text;
+  return typeof legacy === "string" ? legacy : "";
 }
 
 export function restIdFromResult(result) {
@@ -520,7 +617,7 @@ export function statusUrl(screenName, restId) {
   return `https://x.com/i/web/status/${restId}`;
 }
 
-export function interpretCreateTweetResponse(status, body, { replyTo = "" } = {}) {
+export function interpretCreateTweetResponse(status, body, { replyTo = "", note = false, hadTransactionId = false } = {}) {
   const payload = typeof body === "string" || body == null ? parseLooseJson(body) : body;
   if (!payload || typeof payload !== "object") {
     return { ok: false, error: `non-JSON response (HTTP ${status || 0})` };
@@ -531,15 +628,24 @@ export function interpretCreateTweetResponse(status, body, { replyTo = "" } = {}
       ok: false,
       loginRequired: Number(status) === 401,
       automated: isAutomatedBlock(errors),
-      error: explainGraphqlFailure({ status, errors, replyTo }),
+      tooLong: isTooLong(errors),
+      error: explainGraphqlFailure({ status, errors, replyTo, note, hadTransactionId }),
     };
   }
   if (status && Number(status) !== 200) return { ok: false, error: `HTTP ${status}` };
   const result = tweetResult(payload);
   const id = restIdFromResult(result);
-  if (!id) return { ok: false, error: `CreateTweet response had no rest_id (HTTP ${status || 0})` };
+  if (!id) return { ok: false, error: `response had no rest_id (HTTP ${status || 0})` };
   const screenName = screenNameFromResult(result);
-  return { ok: true, id, screenName, url: statusUrl(screenName, id) };
+  const fullText = fullTextFromResult(result);
+  return {
+    ok: true,
+    id,
+    screenName,
+    url: statusUrl(screenName, id),
+    note: Boolean(result?.note_tweet) || note,
+    fullText,
+  };
 }
 
 export function extractTaggedJson(combined, tag = RESULT_TAG) {

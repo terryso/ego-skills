@@ -13,7 +13,8 @@ function installDocument(partial = {}) {
       if (String(selector).includes("AppTabBar_Profile_Link")) return partial.profile ?? null;
       return null;
     },
-    querySelectorAll() {
+    querySelectorAll(selector) {
+      if (String(selector).includes("loading-x-anim")) return partial.frames || [];
       return links;
     },
   };
@@ -160,6 +161,30 @@ test("profile label fallback, empty document, and thrown probes", async () => {
   installDocument({ cookie: "" });
   const noCsrf = createXSession(fakePage({ evaluateThrows: true, cdp: { cookies: [{ name: "guest" }] } }));
   assert.equal(await noCsrf.csrfToken(), "");
+});
+
+test("animation paths and a client transaction id come from the live document", async () => {
+  const pathD = "M 10 20 C 1 2 3 4 5 6 7 8 9 10 11";
+  installDocument({
+    html: `<meta name="twitter-site-verification" content="AAAAAAAA"><script>12:"ondemand.s" })[e]||e)+"."+({12:"h4sh"</script>`,
+    frames: [
+      { children: [{ children: [{}, { getAttribute() { return pathD; } }] }] },
+      { children: [] },
+    ],
+  });
+  const harness = fakePage();
+  harness.state.response = { status: 200, body: "(a[0], 16)(a[1], 16)" };
+  const session = createXSession(harness);
+  const paths = await session.animationPaths();
+  assert.equal(paths[0], pathD);
+  assert.equal(paths[1], "");
+  const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
+  assert.equal(typeof id, "string");
+  assert.equal(id.includes("="), false);
+  assert.match(harness.calls.fetch.at(-1).url, /ondemand\.s\.h4sha\.js/);
+
+  const empty = createXSession(fakePage({ evaluateNull: true }));
+  assert.deepEqual(await empty.animationPaths(), []);
 });
 
 test("fetch, navigation, and finish", async () => {

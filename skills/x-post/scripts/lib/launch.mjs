@@ -97,7 +97,9 @@ export async function runCli(kind, argv, deps = {}) {
     text: args.text,
     replyTo: args.replyTo,
     yes: Boolean(args.yes),
+    long: Boolean(args.long),
     queryId: args.queryId,
+    transactionId: args.transactionId,
   };
   const dir = await io.mkdtemp(path.join(io.tmp, "ego-x-post-"));
   const entry = path.join(dir, "entry.mjs");

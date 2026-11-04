@@ -9,6 +9,7 @@ import {
   MAX_TEXT_CHARS,
   PUBLIC_WEB_BEARER,
   SMOKE_TEXT,
+  buildCreateNoteTweetBody,
   buildCreateTweetBody,
   buildHeaders,
   charCount,
@@ -26,12 +27,14 @@ import {
   extractTaggedJson,
   extractWebBearer,
   formatDraftText,
+  fullTextFromResult,
   formatResult,
   hasHomeTitle,
   interpretCreateTweetResponse,
   isLoginWall,
   isQueryId,
   isScreenName,
+  needsNoteTweet,
   needsRepaint,
   normalizeLanguage,
   onHome,
@@ -47,6 +50,7 @@ import {
   statusUrl,
   strip,
   tweetResult,
+  weightedLength,
 } from "../lib/pure.mjs";
 
 const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -249,7 +253,7 @@ test("CreateTweet query id is captured, and other operations are ignored", () =>
   }
   const source = files.join("\n");
   assert.equal(source.includes("nxpZCY2K-I6QoFHAHeojFQ"), false);
-  assert.equal(source.includes("seOZkIS8AysCGfPo6yYPVA"), false);
+  assert.equal(source.includes("seOZkIS8AysCGfPo6yYPVA"), true);
   assert.equal(source.includes(".click("), false);
   assert.equal(fs.readFileSync(path.join(skillRoot, "references/create-tweet.md"), "utf8").includes("nxpZCY2K-I6QoFHAHeojFQ"), true);
 });
@@ -261,6 +265,18 @@ test("request body matches the captured text-only contract", () => {
   assert.deepEqual(body.variables.media, { media_entities: [], possibly_sensitive: false });
   assert.deepEqual(body.variables.semantic_annotation_options, { source: "UniversalLink" });
   assert.equal("reply" in body.variables, false);
+  assert.equal("composition_signal_1" in body.variables.semantic_annotation_options, false);
+  const note = buildCreateNoteTweetBody({ text: "x".repeat(300), queryId: "seOZkIS8AysCGfPo6yYPVA" });
+  assert.equal(note.variables.semantic_annotation_options.composition_signal_1, true);
+  assert.equal(note.variables.semantic_annotation_options.source, "UniversalLink");
+  assert.equal(note.queryId, "seOZkIS8AysCGfPo6yYPVA");
+  assert.equal(needsNoteTweet("x".repeat(280)), false);
+  assert.equal(needsNoteTweet("x".repeat(281)), true);
+  assert.equal(needsNoteTweet("hi", { long: true }), true);
+  assert.equal(needsNoteTweet("中".repeat(140)), false);
+  assert.equal(needsNoteTweet("中".repeat(141)), true);
+  assert.equal(weightedLength("https://example.com/hello"), 23);
+  assert.equal(weightedLength(""), 0);
   assert.equal(body.queryId, CAPTURED_CREATE_TWEET_QUERY_ID);
   body.features.premium_content_api_read_enabled = true;
   assert.equal(CAPTURED_FEATURES.premium_content_api_read_enabled, false);
@@ -318,6 +334,36 @@ test("response parsing returns the status URL and surfaces 226", () => {
   assert.match(interpretCreateTweetResponse(200, { errors: [{ code: 88, message: "Rate limit" }] }).error, /Not retried/);
   assert.equal(interpretCreateTweetResponse(401, {}).loginRequired, true);
   assert.match(interpretCreateTweetResponse(401, { errors: [{ message: "bad auth" }] }).error, /login required/i);
+  const tooLong = interpretCreateTweetResponse(200, { errors: [{ code: 186, message: "Tweet needs to be a bit shorter." }] });
+  assert.equal(tooLong.tooLong, true);
+  assert.match(tooLong.error, /CreateNoteTweet/);
+  const noteBlocked = interpretCreateTweetResponse(200, { errors: [{ code: 226, message: "automated" }] }, { note: true });
+  assert.match(noteBlocked.error, /without x-client-transaction-id/);
+  const noteBlockedWithId = interpretCreateTweetResponse(200, { errors: [{ code: 226, message: "automated" }] }, { note: true, hadTransactionId: true });
+  assert.match(noteBlockedWithId.error, /even with x-client-transaction-id/);
+  const full = "N".repeat(332);
+  const noteBody = {
+    data: {
+      notetweet_create: {
+        tweet_results: {
+          result: {
+            rest_id: "2117842578016215436",
+            legacy: { id_str: "2117842578016215436", full_text: full.slice(0, 279) },
+            note_tweet: { is_expandable: true, note_tweet_results: { result: { text: full } } },
+            core: { user_results: { result: { core: { screen_name: "Suchuanyi" } } } },
+          },
+        },
+      },
+    },
+  };
+  const noted = interpretCreateTweetResponse(200, noteBody, { note: true });
+  assert.equal(noted.ok, true);
+  assert.equal(noted.note, true);
+  assert.equal(noted.fullText, full);
+  assert.equal(noted.url, "https://x.com/Suchuanyi/status/2117842578016215436");
+  assert.equal(fullTextFromResult(noteBody.data.notetweet_create.tweet_results.result), full);
+  assert.equal(fullTextFromResult({ legacy: { full_text: "short" } }), "short");
+  assert.equal(fullTextFromResult(null), "");
   assert.equal(errorText([{ message: "only" }]), "only");
   assert.equal(errorText([null, { code: "", message: "m" }]), "m");
   assert.match(explainGraphqlFailure({ status: 403, errors: [{ message: "nope" }] }), /nope/);

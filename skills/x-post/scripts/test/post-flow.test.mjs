@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CAPTURED_CREATE_NOTE_TWEET_QUERY_ID,
   CAPTURED_CREATE_TWEET_QUERY_ID,
   PUBLIC_WEB_BEARER,
 } from "../lib/pure.mjs";
@@ -231,6 +232,65 @@ test("without --yes nothing is fetched, and executePost closes the space", async
   });
   assert.equal(finished.exitCode, 0);
   assert.match(finished.finish_error, /finish/);
+});
+
+test("text over the short limit uses CreateNoteTweet and a transaction id", async () => {
+  const live = session();
+  live.clientTransaction = async ({ method, path }) => {
+    assert.equal(method, "POST");
+    assert.match(path, /\/CreateNoteTweet$/);
+    return "tid-secret-value";
+  };
+  const summary = await performPost({ yes: true, text: "x".repeat(332) }, live);
+  assert.equal(summary.exitCode, 0);
+  assert.equal(summary.operation, "CreateNoteTweet");
+  assert.equal(summary.note, true);
+  assert.equal(summary.query_id, CAPTURED_CREATE_NOTE_TWEET_QUERY_ID);
+  assert.equal(summary.query_id_source, "captured-note-2026-11-04");
+  assert.equal(summary.transaction_id_source, "generated");
+  assert.equal(live.calls.post.url, `https://x.com/i/api/graphql/${CAPTURED_CREATE_NOTE_TWEET_QUERY_ID}/CreateNoteTweet`);
+  assert.equal(live.calls.post.headers["x-client-transaction-id"], "tid-secret-value");
+  assert.equal(live.calls.post.body.variables.semantic_annotation_options.composition_signal_1, true);
+  assert.equal(JSON.stringify(summary).includes("tid-secret-value"), false);
+  assert.equal("x-client-transaction-id" in (await (async () => live.calls.post.headers)()), true);
+
+  const broken = session();
+  broken.clientTransaction = async () => { throw new Error("anim down"); };
+  const missed = await performPost({ yes: true, text: "x".repeat(281) }, broken);
+  assert.equal(missed.transaction_id_source, "missing");
+  assert.equal("x-client-transaction-id" in broken.calls.post.headers, false);
+
+  const forced = session();
+  forced.clientTransaction = async () => { throw new Error("anim down"); };
+  const flagged = await performPost({ yes: true, text: "hi", long: true, transactionId: "from-flag" }, forced);
+  assert.equal(flagged.operation, "CreateNoteTweet");
+  assert.equal(flagged.transaction_id_source, "flag");
+  assert.equal(forced.calls.post.headers["x-client-transaction-id"], "from-flag");
+  assert.equal(JSON.stringify(flagged).includes("from-flag"), false);
+
+  const bare = await performPost({ yes: true, text: "x".repeat(281) }, session({
+    response: { status: 200, body: { errors: [{ code: 226, message: "This request looks like it might be automated." }] } },
+  }));
+  assert.equal(bare.exitCode, 1);
+  assert.match(bare.error, /without x-client-transaction-id/);
+  assert.equal(bare.transaction_id_source, "missing");
+
+  const rejected = session();
+  rejected.clientTransaction = async () => "still-secret";
+  const again = await performPost({ yes: true, text: "x".repeat(281) }, {
+    ...rejected,
+    async postJson(request) {
+      rejected.calls.post = request;
+      return { status: 200, body: { errors: [{ code: 226, message: "automated" }] } };
+    },
+  });
+  assert.match(again.error, /even with x-client-transaction-id/);
+  assert.equal(JSON.stringify(again).includes("still-secret"), false);
+
+  const tooLong = await performPost({ yes: true, text: "hi" }, session({
+    response: { status: 200, body: { errors: [{ code: 186, message: "Tweet needs to be a bit shorter." }] } },
+  }));
+  assert.match(tooLong.error, /GraphQL 186/);
 });
 
 test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {

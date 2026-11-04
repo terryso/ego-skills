@@ -1,0 +1,69 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  animationKey,
+  buildTransactionId,
+  decodeKeyBytes,
+  encodeTransactionId,
+  frameRowsFromPath,
+  keyByteIndices,
+  onDemandFileUrl,
+  verificationKeyFromHtml,
+} from "../lib/transaction.mjs";
+
+const HTML = `<meta content="AAAAAAAA" name="twitter-site-verification"><script>12:"ondemand.s" })[e]||e)+"."+({12:"h4sh"</script>`;
+const PATH = "M 10 20 C 10 20 30 40 50 60 70 80 90 100 110 120 130";
+
+test("page inputs parse, and a missing page does not invent an id", async () => {
+  assert.equal(verificationKeyFromHtml(HTML), "AAAAAAAA");
+  assert.equal(verificationKeyFromHtml(`<meta name="twitter-site-verification" content="abc+/=def">`), "abc+/=def");
+  assert.equal(verificationKeyFromHtml("<html>"), "");
+  assert.match(onDemandFileUrl(HTML), /ondemand\.s\.h4sha\.js$/);
+  assert.equal(onDemandFileUrl("no chunk"), "");
+  assert.deepEqual(keyByteIndices("(a[0], 16)(b[3], 16)"), { rowIndex: 0, keyBytesIndices: [3] });
+  assert.equal(keyByteIndices("none"), null);
+  assert.deepEqual(decodeKeyBytes(""), []);
+  assert.equal(decodeKeyBytes("AAAAAAAA").length > 0, true);
+  assert.deepEqual(frameRowsFromPath(""), []);
+  assert.ok(frameRowsFromPath(PATH).length >= 1);
+  assert.equal(animationKey([0], { rowIndex: 0, keyBytesIndices: [] }, [[1, 2]]), "");
+  assert.equal(await buildTransactionId({ method: "POST", path: "/x", html: "", ondemandSource: "", paths: [] }), "");
+  assert.equal(await encodeTransactionId({}), "");
+});
+
+test("a fixed clock and salt produce a stable transaction id", async () => {
+  const keyBytes = decodeKeyBytes("AAAAAAAA");
+  const rows = frameRowsFromPath(PATH);
+  const key = animationKey(keyBytes, { rowIndex: 0, keyBytesIndices: [0, 0, 0, 0] }, rows);
+  assert.equal(typeof key, "string");
+  assert.ok(key.length > 4);
+  const first = await encodeTransactionId({
+    method: "POST",
+    path: "/i/api/graphql/abc/CreateNoteTweet",
+    keyBytes,
+    animationKey: key,
+    timeNow: 1000,
+    randomByte: 7,
+  });
+  const second = await encodeTransactionId({
+    method: "POST",
+    path: "/i/api/graphql/abc/CreateNoteTweet",
+    keyBytes,
+    animationKey: key,
+    timeNow: 1000,
+    randomByte: 7,
+  });
+  assert.equal(first, second);
+  assert.equal(first.includes("="), false);
+  const id = await buildTransactionId({
+    method: "POST",
+    path: "/i/api/graphql/abc/CreateNoteTweet",
+    html: HTML,
+    ondemandSource: "(a[0], 16)(a[1], 16)(a[2], 16)(a[3], 16)",
+    paths: [PATH, "", "", ""],
+    timeNow: 50,
+    randomByte: 9,
+  });
+  assert.equal(typeof id, "string");
+  assert.ok(id.length > 8);
+});

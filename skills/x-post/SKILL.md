@@ -83,13 +83,21 @@ node skills/x-post/scripts/cleanup.mjs
 
 ## 回复
 
-`--reply-to` 会在已捕获的 CreateTweet 变量上加 `variables.reply`。2026-11-04 的实页 `page.fetch` 回复返回 GraphQL **226**（看起来像自动化），**没有**验证成功。当尽力而为：失败就把错误给人，不要改去点回复框，不要重试，不要编造 transaction id。
+`--reply-to` 会在同一条 mutation 上加 `variables.reply`。2026-11-04 的实页 `page.fetch` 回复返回 GraphQL **226**，**没有**验证成功。当尽力而为：失败就把错误给人，不要改去点回复框，不要重试。
+
+## 短帖和长文
+
+加权长度用 twitter-text v3 的 `maxWeightedTweetLength`（280）。不超过就发 **CreateTweet**。超过，或显式 `--long`，就发 **CreateNoteTweet**（2026-11-04 捕获）。普通 `/compose/post` 的长文就会走这条，不必打开 Articles。
+
+CreateNoteTweet 的 `page.fetch` 不带 `x-client-transaction-id` 会返回 226。脚本用当前页面的 verification key、`ondemand.s` 和 `loading-x-anim` 现算一个。算不出来可以传 `--transaction-id`（从 UI 请求里抄来的值）。不要编一个假的。
+
+成功仍然是 `https://x.com/<screen_name>/status/<id>`。长文的完整正文在 `note_tweet.note_tweet_results.result.text`；`legacy.full_text` 会被截断，不当成全文。
 
 ## 接口
 
-只使用 2026-11-04 捕获并经 `page.fetch` 验证的 CreateTweet。`queryId` 会随 `main.*.js` 轮换：先从当前页面的客户端包里读 `operationName:"CreateTweet"`，读不到再用捕获值 `l4hk8uVGvR-a8kzQ4nOhPA`。不要发明其它 query id。字段、功能开关和 226 说明见 `references/create-tweet.md`。坑见 `references/pitfalls.md`。
+`queryId` 会随 `main.*.js` 轮换。先从当前包里读对应的 `operationName`，读不到再用 2026-11-04 的捕获值：CreateTweet `l4hk8uVGvR-a8kzQ4nOhPA`，CreateNoteTweet `seOZkIS8AysCGfPo6yYPVA`。不要发明其它 query id。字段见 `references/create-tweet.md`。坑见 `references/pitfalls.md`。
 
-媒体上传、私信、点赞、关注都不做。`media.media_entities` 保持 `[]`。
+媒体上传、私信、点赞、关注都不做。`media.media_entities` 保持 `[]`。GraphQL **186** 表示这条文本对短帖太长。
 
 ## Pro 冒烟（公告原文）
 

@@ -1,6 +1,7 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
 import { HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
+import { buildTransactionId, onDemandFileUrl } from "./transaction.mjs";
 
 export async function readCookieJar(page) {
   if (!page || typeof page.cdp !== "function") return { cookies: [], read: false };
@@ -124,6 +125,35 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       const jar = await readCookieJar(page);
       const ct0 = (jar.cookies || []).find((cookie) => cookie && cookie.name === "ct0" && cookie.value);
       return ct0 ? String(ct0.value) : "";
+    },
+    async animationPaths() {
+      const paths = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll("[id^='loading-x-anim']")).map((frame) => {
+          const group = frame.children && frame.children[0];
+          const node = group && group.children && group.children[1];
+          return node && node.getAttribute ? (node.getAttribute("d") || "") : "";
+        });
+      });
+      return Array.isArray(paths) ? paths.map((path) => String(path || "")) : [];
+    },
+    async clientTransaction({ method, path } = {}) {
+      const html = await this.pageSource();
+      let paths = [];
+      try {
+        paths = await this.animationPaths();
+      } catch {
+        paths = [];
+      }
+      const chunkUrl = onDemandFileUrl(html);
+      let chunk = "";
+      if (chunkUrl) {
+        try {
+          chunk = await this.fetchText(chunkUrl);
+        } catch {
+          chunk = "";
+        }
+      }
+      return buildTransactionId({ method, path, html, ondemandSource: chunk, paths });
     },
     async screenName() {
       const href = await page.evaluate(() => {

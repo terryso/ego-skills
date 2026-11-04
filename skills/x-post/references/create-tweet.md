@@ -49,7 +49,7 @@ Sent by `page.fetch` with `credentials: "include"` so the browser attaches `auth
 | `content-type` | `application/json` |
 | `referer` | `https://x.com/compose/post` |
 
-`x-client-transaction-id` is **not** synthesized. One captured `page.fetch` CreateTweet succeeded without it. Do not invent the value.
+`x-client-transaction-id` is not required for the captured short CreateTweet (one `page.fetch` succeeded without it). Do not invent a value for that call.
 
 Do not set a `Cookie` header. The jar rides along with `credentials: "include"`.
 
@@ -94,7 +94,32 @@ Captured and verified the same day, then left unwired. `cleanup` only closes the
 
 Success: HTTP 200 `{"data":{"delete_tweet":{"tweet_results":{}}}}`.
 
-`CreateNoteTweet` (`seOZkIS8AysCGfPo6yYPVA` in that bundle) was not exercised. This skill does not call it.
+## CreateNoteTweet — verified 2026-11-04
+
+Long plain text in `https://x.com/compose/post` uses a different mutation. Articles composer is not required. The client chooses it when the weighted length of `tweet_text` is greater than `maxWeightedTweetLength` (280 in twitter-text v3). Sending that text to CreateTweet returns GraphQL **186**.
+
+`POST https://x.com/i/api/graphql/seOZkIS8AysCGfPo6yYPVA/CreateNoteTweet`
+
+| Piece | Value |
+|-------|--------|
+| Captured `queryId` | `seOZkIS8AysCGfPo6yYPVA` |
+| Bundle marker | `operationName:"CreateNoteTweet"` |
+| features | the same 39 keys as CreateTweet in this capture |
+| Success envelope | `data.notetweet_create.tweet_results.result` |
+
+`variables` match CreateTweet except:
+
+```json
+"semantic_annotation_options": { "composition_signal_1": true, "source": "UniversalLink" }
+```
+
+`legacy.full_text` is a short preview (capture: 279). The full body is `note_tweet.note_tweet_results.result.text`.
+
+`page.fetch` without `x-client-transaction-id` returned GraphQL **226**. The same body with a transaction id the web client had just produced returned 200. This skill builds that header from the live page (`twitter-site-verification`, `ondemand.s`, `loading-x-anim`). `--transaction-id` passes a value copied from a real UI request. A missing page does not get a made-up id.
+
+Re-read the query id from the loaded `main.*.js`. The captured id is only the fallback.
+
+DeleteTweet (not called by this skill) also deletes notes. There is no separate DeleteNoteTweet in that bundle.
 
 ## Smoke
 
