@@ -4,10 +4,11 @@ description: >
   Post on X (x.com / twitter.com) through the logged-in Ego Lite session.
   Login-check first and soft-fail with exit 2 when ego-browser is missing or
   x.com is logged out. Sends only with --yes after the draft is shown.
-  Uses page.fetch CreateTweet, not the composer click path. Reply is best-effort.
-  Use when the user asks to tweet, post, or reply on X or Twitter from Ego.
+  Uses page.fetch CreateTweet, not the composer click path. Optional --image
+  uploads up to 4 png/jpeg/webp files only after --yes. Reply is best-effort.
+  Use when the user asks to tweet, post, reply, or attach images on X or Twitter from Ego.
 metadata:
-  version: "0.1.1"
+  version: "0.2.0"
   requires:
     bins:
       - ego-browser
@@ -65,6 +66,8 @@ node skills/x-post/scripts/post.mjs --text "..."
 node skills/x-post/scripts/post.mjs --text "..." --yes
 node skills/x-post/scripts/post.mjs --text "..." --reply-to <statusId> --yes
 node skills/x-post/scripts/post.mjs --text "..." --yes --json
+node skills/x-post/scripts/post.mjs --text "..." --image /absolute/path/to/image.png
+node skills/x-post/scripts/post.mjs --text "..." --image /absolute/path/to/image.png --image /absolute/path/to/other.webp --yes --json
 node skills/x-post/scripts/cleanup.mjs
 ```
 
@@ -97,7 +100,15 @@ CreateTweet 和 CreateNoteTweet 都带现算的 `x-client-transaction-id`。veri
 
 `queryId` 会随 `main.*.js` 轮换。先从当前包里读对应的 `operationName`，读不到再用 2026-11-04 的捕获值：CreateTweet `l4hk8uVGvR-a8kzQ4nOhPA`，CreateNoteTweet `seOZkIS8AysCGfPo6yYPVA`。不要发明其它 query id。字段见 `references/create-tweet.md`。坑见 `references/pitfalls.md`。
 
-媒体上传、私信、点赞、关注都不做。`media.media_entities` 保持 `[]`。GraphQL **186** 表示这条文本对短帖太长。
+没有 `--image` 时 `media.media_entities` 仍是 `[]`。私信、点赞、关注不做。GraphQL **186** 表示这条文本对短帖太长。
+
+## 图片
+
+`--image <路径>` 可重复，最多 4 张。只接受 png、jpeg、webp，每张不超过 5 MiB（5242880 字节）。GIF 不支持。文件是否存在、类型、大小和张数都在任何网络请求之前检查；不合格是退出码 `1`。没有 `--yes` 时草稿列出路径、字节数和 md5，不上传。加上 `--yes` 之后，在已登录的 x.com 页面里用 `page.evaluate` 走 upload.x.com 的 INIT → APPEND → FINALIZE，再把 `media_id_string` 放进 CreateTweet 或 CreateNoteTweet。不点「发帖」。细节见 `references/media-upload.md`。
+
+## Images
+
+`--image <path>` is repeatable, up to 4 files. png, jpeg, and webp only, each at most 5 MiB (5242880 bytes). GIF is rejected. Existence, type, size, and count are checked before any network call; a bad file exits `1`. Without `--yes` the draft lists path, bytes, and md5, and nothing is uploaded. With `--yes`, `page.evaluate` runs INIT → APPEND → FINALIZE on upload.x.com, then CreateTweet or CreateNoteTweet receives `media_id_string`. The script does not click Post. See `references/media-upload.md`.
 
 ## Pro 冒烟（公告原文）
 
@@ -119,3 +130,7 @@ npm test
 ```
 
 `npm test` 用 c8 统计 `scripts/lib/**/*.mjs`（不含 `ego-deps.mjs`），行覆盖率不低于 80%。单测不访问 x.com。
+
+## Changelog
+
+- **0.2.0** — `--image` 可附最多 4 张 png/jpeg/webp（每张 ≤ 5 MiB）。上传按 2026-11-04 捕获的 upload.x.com INIT → APPEND → FINALIZE，在 `page.evaluate` 里执行。没有 `--yes` 不上传。GIF 不支持。

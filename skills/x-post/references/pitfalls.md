@@ -14,7 +14,7 @@
 10. **成功只认状态链接。** `rest_id` 加上 `core.user_results.result.core.screen_name` 组成 `https://x.com/<screen_name>/status/<id>`。没有链接就不是成功。不要把页面上的 toast 当成唯一证据，也不要点掉无关确认框。
 11. **回复未验证。** schema 来自客户端包（`in_reply_to_tweet_id` + `exclude_reply_user_ids`）。实页 `page.fetch` 回复没有成功过。
 12. **超长走 CreateNoteTweet。** 加权长度大于 280（或 `--long`）不要再发 CreateTweet，否则服务端回 **186**。长文的 `semantic_annotation_options` 多一个 `composition_signal_1: true`。全文看 `note_tweet…text`，不要只看被截断的 `legacy.full_text`。硬上限仍是 25000 字。
-13. **媒体、私信、点赞、关注都不做。** `media_entities` 保持空数组。
+13. **图片只走 2026-11-04 捕获的上传。** `--image` 最多 4 张 png / jpeg / webp，每张 ≤ 5 MiB。GIF 不做。没有 `--yes` 不上传。上传必须在 x.com 页面里 `page.evaluate`（`fetch` + `FormData`），不要从 Node 直接 POST 文件，也不要给上传请求加 `x-client-transaction-id`。私信、点赞、关注仍不做。没有图片时 `media_entities` 仍是空数组。
 14. **ego 内嵌 Node 不继承 shell 环境变量。** 文案写在临时 entry 的 JSON 里再交给 `ego-browser nodejs`。不要指望 `VAR=x ego-browser` 能读到 `VAR`。
 15. **默认关掉 space。** 发帖和 check-login 结束都是 `finish({ keep: [] })`，除非 `--keep`。`cleanup` 只关任务空间 `x-post`，不调用 DeleteTweet。
 16. **queryId 会过期。** 新的 `main.*.js` 发布后，旧 id 会失败。失败时重新从包里读 CreateTweet，或由人用 `--query-id` 传入新捕获的 id。不要从别的操作抄一个 id 来试。
