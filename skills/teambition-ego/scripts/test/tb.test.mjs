@@ -10,9 +10,9 @@ function capture() {
 const PROJECT = "a".repeat(24);
 const PLAN = "b".repeat(24);
 
-test("the registry is phase 1 testcase only", () => {
+test("the registry is testcase only", () => {
   assert.deepEqual(Object.keys(DOMAIN_REGISTRY), ["testcase"]);
-  assert.equal(DOMAIN_REGISTRY.testcase.phase, 1);
+  assert.equal(DOMAIN_REGISTRY.testcase.phase, "2a");
 });
 
 test("main prints parse-url and usage", async () => {

@@ -78,7 +78,7 @@ test("fetch parses strings, objects, and empty responses", async () => {
   const session = createPageSession(ok);
   const parsed = await session.fetch("https://www.teambition.com/testcase/api/x", { timeout: 5 });
   assert.deepEqual(parsed, { status: 200, body: { ok: true } });
-  assert.equal(ok.calls.fetch[0].opts.timeout, 5);
+  assert.deepEqual(ok.calls.fetch[0].opts, { timeout: 5 });
 
   const loose = fakePage({ response: { status: 200, body: '{"a":"x\u0001y"}' } });
   const looseSession = createPageSession(loose);
@@ -96,6 +96,40 @@ test("fetch parses strings, objects, and empty responses", async () => {
     },
   });
   assert.deepEqual(await createPageSession(empty).fetch("u"), { status: 0, body: null });
+});
+
+test("non-GET fetch sends JSON bodies and leaves archive empty", async () => {
+  const posted = fakePage();
+  await createPageSession(posted).fetch("https://www.teambition.com/testcase/api/v1/testcases", {
+    method: "post",
+    body: { title: "新建" },
+    timeout: 9,
+  });
+  assert.equal(posted.calls.fetch[0].opts.method, "POST");
+  assert.equal(posted.calls.fetch[0].opts.credentials, "include");
+  assert.equal(posted.calls.fetch[0].opts.headers["content-type"], "application/json");
+  assert.equal(posted.calls.fetch[0].opts.body, "{\"title\":\"新建\"}");
+  assert.equal(posted.calls.fetch[0].opts.timeout, 9);
+
+  const archived = fakePage();
+  await createPageSession(archived).fetch("https://www.teambition.com/api/testcases/abc/archive", {
+    method: "POST",
+    body: null,
+  });
+  assert.equal(archived.calls.fetch[0].opts.method, "POST");
+  assert.equal(archived.calls.fetch[0].opts.credentials, "include");
+  assert.equal(archived.calls.fetch[0].opts.body, undefined);
+  assert.equal(archived.calls.fetch[0].opts.headers, undefined);
+
+  const put = fakePage();
+  await createPageSession(put).fetch("https://www.teambition.com/testcase/api/v1/title", {
+    method: "PUT",
+    body: "{\"title\":\"已改\"}",
+    headers: { "x-trace": "1" },
+  });
+  assert.equal(put.calls.fetch[0].opts.body, "{\"title\":\"已改\"}");
+  assert.equal(put.calls.fetch[0].opts.headers["x-trace"], "1");
+  assert.equal(put.calls.fetch[0].opts.headers["content-type"], "application/json");
 });
 
 test("finish, cleanup, and handOff", async () => {

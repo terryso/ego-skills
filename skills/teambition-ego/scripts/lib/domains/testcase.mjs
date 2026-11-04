@@ -27,6 +27,31 @@ import {
   resolveProcessExit,
 } from "../pure.mjs";
 import { createTransport } from "../session.mjs";
+import {
+  archiveEndpoint,
+  buildCreateBody,
+  caseMatchesRef,
+  coerceSteps,
+  createCaseEndpoint,
+  extractNamedList,
+  flowStatusEndpoint,
+  formatArchiveResult,
+  formatCreateResult,
+  formatFlowStatuses,
+  formatStatusResult,
+  formatUpdateResult,
+  groupIdFromPlan,
+  pickTestcaseFlow,
+  scenarioIdFromCases,
+  scenarioIdFromPlan,
+  stepsForUpdate,
+  taskflowStatusEndpoint,
+  taskflowsEndpoint,
+  testhubEndpoint,
+  testhubIdFrom,
+  usercaseFieldEndpoint,
+  validateWriteConfig,
+} from "../write.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +86,8 @@ export async function collectCases(session, config) {
     if (!body || typeof body !== "object") return { error: "响应 JSON 解析失败" };
     const rows = Array.isArray(body.result) ? body.result : [];
     if (config.mode === "get") {
-      found = rows.find((item) => String(item.uniqueId) === String(config.uniqueId)) || null;
+      const ref = config.caseRef != null && config.caseRef !== "" ? config.caseRef : config.uniqueId;
+      found = rows.find((item) => caseMatchesRef(item, ref)) || null;
       if (found) break;
     } else {
       out.push(...rows);
@@ -74,6 +100,180 @@ export async function collectCases(session, config) {
   return { cases: out };
 }
 
+const READ_OR_WRITE = new Set([
+  "plan",
+  "groups",
+  "cases",
+  "get",
+  "flow-statuses",
+  "create",
+  "update",
+  "set-status",
+  "delete",
+]);
+
+function fetchWith(link) {
+  return (url, opts) => link.request(url, opts);
+}
+
+async function requestChecked(link, url, opts) {
+  const payload = await link.request(url, opts);
+  const checked = interpretFetch(payload);
+  if (!checked.error && (checked.body == null || typeof checked.body !== "object")) {
+    return { error: "响应 JSON 解析失败" };
+  }
+  return checked;
+}
+
+async function findCase(session, link, config) {
+  const collected = await collectCases(session, {
+    mode: "get",
+    projectId: config.projectId,
+    planId: config.planId,
+    caseRef: config.caseRef != null && config.caseRef !== "" ? config.caseRef : config.uniqueId,
+    needResult: true,
+    maxPages: config.maxPages,
+    fetch: fetchWith(link),
+  });
+  if (collected.error) return { error: mapBrowserError(collected.error) };
+  if (collected.found == null) {
+    const label = config.caseRef != null && config.caseRef !== "" ? config.caseRef : config.uniqueId;
+    return { error: `计划内未找到用例 ${label}` };
+  }
+  if (!collected.found._id) return { error: "用例缺少 _id" };
+  return { item: collected.found };
+}
+
+async function resolveCreateContext(link, session, config) {
+  let groupId = config.groupId || "";
+  let sfcId = config.scenarioFieldConfigId || "";
+  if (!groupId || !sfcId) {
+    const plan = await requestChecked(link, planEndpoint(config.projectId, config.planId));
+    if (plan.error) return plan;
+    if (!groupId) groupId = groupIdFromPlan(plan.body);
+    if (!sfcId) sfcId = scenarioIdFromPlan(plan.body);
+  }
+  if (!groupId) return { error: "缺少分组：传入 --group <groupId>" };
+  if (!sfcId) {
+    const collected = await collectCases(session, {
+      mode: "cases",
+      projectId: config.projectId,
+      planId: config.planId,
+      needResult: false,
+      maxPages: 1,
+      fetch: fetchWith(link),
+    });
+    if (collected.error) return { error: mapBrowserError(collected.error) };
+    sfcId = scenarioIdFromCases(collected.cases);
+  }
+  if (!sfcId) return { error: "缺少场景字段配置：传入 --scenario-field-config-id" };
+  return { groupId, sfcId };
+}
+
+async function createCase(link, session, config) {
+  const steps = coerceSteps(config);
+  if (steps.error) return fail(steps.error);
+  const context = await resolveCreateContext(link, session, config);
+  if (context.error) return fail(context.error);
+  const checked = await requestChecked(link, createCaseEndpoint(config.projectId, config.planId), {
+    method: "POST",
+    body: buildCreateBody({
+      title: config.title,
+      precondition: config.precondition,
+      steps: steps.steps || [],
+      priority: config.priority,
+      executorId: config.executorId,
+      caseType: config.caseType,
+      projectId: config.projectId,
+      planId: config.planId,
+      groupId: context.groupId,
+      scenarioFieldConfigId: context.sfcId,
+    }),
+    timeout: 30_000,
+  });
+  if (checked.error) return fail(checked.error);
+  return ok(formatCreateResult(checked.body, config.asJson));
+}
+
+async function putUsercaseField(link, config, testhubId, usercaseId, field, body) {
+  return requestChecked(
+    link,
+    usercaseFieldEndpoint(config.projectId, testhubId, usercaseId, field),
+    { method: "PUT", body, timeout: 30_000 },
+  );
+}
+
+async function updateCase(link, session, config) {
+  const steps = coerceSteps(config);
+  if (steps.error) return fail(steps.error);
+  const found = await findCase(session, link, config);
+  if (found.error) return fail(found.error);
+  if (!found.item._fromHubTestcaseId) {
+    return fail("用例缺少 _fromHubTestcaseId，无法更新标题、前置条件或步骤");
+  }
+  const hub = await requestChecked(link, testhubEndpoint(config.projectId));
+  if (hub.error) return fail(hub.error);
+  const testhubId = testhubIdFrom(hub.body);
+  if (!testhubId) return fail("GET /testhub 没有返回 testhubId");
+  const applied = {};
+  if (config.title != null) {
+    const title = await putUsercaseField(link, config, testhubId, found.item._fromHubTestcaseId, "title", {
+      title: String(config.title),
+    });
+    if (title.error) return fail(`更新 title 失败: ${title.error}`);
+    applied.title = title.body;
+  }
+  if (config.precondition != null) {
+    const precondition = await putUsercaseField(link, config, testhubId, found.item._fromHubTestcaseId, "precondition", {
+      precondition: String(config.precondition),
+    });
+    if (precondition.error) return fail(`更新 precondition 失败: ${precondition.error}`);
+    applied.precondition = precondition.body;
+  }
+  if (steps.steps != null) {
+    const saved = await putUsercaseField(link, config, testhubId, found.item._fromHubTestcaseId, "steps", {
+      steps: stepsForUpdate(steps.steps, found.item.steps),
+    });
+    if (saved.error) return fail(`更新 steps 失败: ${saved.error}`);
+    applied.steps = saved.body;
+  }
+  return ok(formatUpdateResult({ caseItem: found.item, testhubId, fields: applied }, config.asJson));
+}
+
+async function setStatus(link, session, config) {
+  const found = await findCase(session, link, config);
+  if (found.error) return fail(found.error);
+  const checked = await requestChecked(link, flowStatusEndpoint(config.projectId, config.planId, found.item._id), {
+    method: "PUT",
+    body: { _flowStatusId: String(config.flowStatusId) },
+    timeout: 30_000,
+  });
+  if (checked.error) return fail(checked.error);
+  return ok(formatStatusResult(checked.body, config.flowStatusId, config.asJson));
+}
+
+async function archiveCase(link, session, config) {
+  const found = await findCase(session, link, config);
+  if (found.error) return fail(found.error);
+  const checked = await requestChecked(link, archiveEndpoint(found.item._id), {
+    method: "POST",
+    timeout: 30_000,
+  });
+  if (checked.error) return fail(checked.error);
+  return ok(formatArchiveResult(checked.body, found.item, config.asJson));
+}
+
+async function listFlowStatuses(link, config) {
+  const flows = await requestChecked(link, taskflowsEndpoint(config.projectId));
+  if (flows.error) return fail(flows.error);
+  const flow = pickTestcaseFlow(extractNamedList(flows.body, ["taskflows"]));
+  if (!flow) return fail("未找到 type=testcase 的任务流");
+  const statuses = await requestChecked(link, taskflowStatusEndpoint(flow._id));
+  if (statuses.error) return fail(statuses.error);
+  const rows = extractNamedList(statuses.body, ["taskflowstatuses", "statuses"]);
+  return ok(formatFlowStatuses(flow, rows, config.asJson));
+}
+
 export async function executeTestcase(config, { session, transport } = {}) {
   const cmd = config.cmd;
   try {
@@ -81,34 +281,38 @@ export async function executeTestcase(config, { session, transport } = {}) {
       await session.cleanup();
       return ok("已关闭常驻浏览器空间\n");
     }
-    if (cmd !== "plan" && cmd !== "groups" && cmd !== "cases" && cmd !== "get") {
-      return fail(`未知命令: ${cmd || ""}`);
-    }
-    const idError = missingIds(cmd, [cmd, config.projectId, config.planId, config.uniqueId]);
+    if (!READ_OR_WRITE.has(cmd)) return fail(`未知命令: ${cmd || ""}`);
+    const idError = missingIds(cmd, [cmd, config.projectId, config.planId, config.caseRef || config.uniqueId]);
     if (idError) return fail(idError);
+    const writeError = validateWriteConfig(config);
+    if (writeError) return fail(writeError);
     if (typeof session.ensureSite === "function") await session.ensureSite();
     const link = transport || createTransport(config.transport || "browser", session);
     if (cmd === "plan") {
-      const payload = await link.request(planEndpoint(config.projectId, config.planId));
-      const checked = interpretFetch(payload);
+      const checked = await requestChecked(link, planEndpoint(config.projectId, config.planId));
       if (checked.error) return fail(checked.error);
       return ok(formatPlan(checked.body, config.asJson));
     }
     if (cmd === "groups") {
-      const payload = await link.request(groupsEndpoint(config.projectId, config.planId));
-      const checked = interpretFetch(payload);
+      const checked = await requestChecked(link, groupsEndpoint(config.projectId, config.planId));
       if (checked.error) return fail(checked.error);
       return ok(formatGroups(checked.body, config.asJson));
     }
+    if (cmd === "flow-statuses") return await listFlowStatuses(link, config);
+    if (cmd === "create") return await createCase(link, session, config);
+    if (cmd === "update") return await updateCase(link, session, config);
+    if (cmd === "set-status") return await setStatus(link, session, config);
+    if (cmd === "delete") return await archiveCase(link, session, config);
     const collected = await collectCases(session, {
       mode: cmd,
       projectId: config.projectId,
       planId: config.planId,
       groupId: config.groupId,
       uniqueId: config.uniqueId,
+      caseRef: config.caseRef,
       needResult: true,
       maxPages: config.maxPages,
-      fetch: (url, opts) => link.request(url, opts),
+      fetch: fetchWith(link),
     });
     if (collected.error) return fail(mapBrowserError(collected.error));
     if (cmd === "get") {
@@ -227,21 +431,41 @@ export async function runTestcaseCli(argv, deps = {}) {
     }
     return ok(`${ids.projectId}\t${ids.planId}\t${ids.groupId}\n`);
   }
-  if (!["plan", "groups", "cases", "get", "cleanup"].includes(parsed.cmd)) {
+  if (!READ_OR_WRITE.has(parsed.cmd) && parsed.cmd !== "cleanup") {
     return { exitCode: 1, stdout: USAGE, stderr: "" };
   }
   const idError = missingIds(parsed.cmd, parsed.positional);
   if (idError) return fail(idError);
+  const built = buildTestcaseConfig(parsed);
+  if (built.error) return fail(built.error);
+  const writeError = validateWriteConfig(built.config);
+  if (writeError) return fail(writeError);
+  return launchTestcase(built.config, deps);
+}
+
+export function buildTestcaseConfig(parsed) {
   const ids = parsed.positional.slice(1);
+  const steps = parsed.stepsJson != null ? coerceSteps({ stepsJson: parsed.stepsJson }) : { steps: undefined };
+  if (steps.error) return { error: steps.error };
   const config = {
     cmd: parsed.cmd,
     asJson: Boolean(parsed.asJson),
     projectId: ids[0],
     planId: ids[1],
     uniqueId: ids[2],
+    caseRef: ids[2],
     groupId: parsed.groupId || "",
+    title: parsed.title,
+    precondition: parsed.precondition,
+    steps: steps.steps,
+    executorId: parsed.executorId,
+    caseType: parsed.caseType,
+    scenarioFieldConfigId: parsed.scenarioFieldConfigId || "",
+    flowStatusId: parsed.flowStatusId,
+    yes: Boolean(parsed.yes),
     taskName: SPACE_NAME,
     transport: "browser",
   };
-  return launchTestcase(config, deps);
+  if (parsed.priority != null) config.priority = Number(parsed.priority);
+  return { config };
 }

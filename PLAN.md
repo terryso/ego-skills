@@ -1,7 +1,7 @@
 # Ego Browser Skills — Open-Source Plan
 
 > Working title: **ego-skills** (community skill pack for [ego lite](https://lite.ego.app/) / `ego-browser`)
-> Status: public repo; **`pinterest-download`**, **`instagram-saved-download`**, **`wechat-channels-video`**, **`kuaishou-video`**, **`youtube-video`**, **`douyin-video`**, and **`teambition-ego`** (Phase 1 testcase read). Requires ego lite / `ego-browser`. Each skill checks its own login. No separate cookie-healthcheck skill. Star-only, no commercial features.
+> Status: public repo; **`pinterest-download`**, **`instagram-saved-download`**, **`wechat-channels-video`**, **`kuaishou-video`**, **`youtube-video`**, **`douyin-video`**, and **`teambition-ego`** (testcase reads plus Phase 2a single-case writes). Requires ego lite / `ego-browser`. Each skill checks its own login. No separate cookie-healthcheck skill. Star-only, no commercial features.
 > License target: **MIT**. Goal: **GitHub stars / agent adoption**, not commercialization.
 
 ---
@@ -70,13 +70,13 @@ Success metric v0: stars, clones, skill installs, demo GIF views, "works with eg
 | 2c | `kuaishou-video` | Publish a local video on the Kuaishou creator platform (**shipping**) | Success is the under-review state |
 | 2d | `youtube-video` | Publish a local video to YouTube Studio (**shipping**) | Private by default; success is a video URL plus processing status |
 | 2e | `douyin-video` | Publish a local video to the Douyin creator center (**shipping**) | Public by default; success is content management or a publish-success message |
-| 2f | `teambition-ego` | Read Teambition test plans and cases through the Ego session (**shipping**, Phase 1) | Login matters; the testcase API is not the Open API token |
+| 2f | `teambition-ego` | Read Teambition test plans and cases, and write one case at a time, through the Ego session (**shipping**, Phase 2a) | Login matters; the testcase API is not the Open API token |
 | 3 | `form-fill-demo` | Fill + submit a public demo form end-to-end | Not started |
 | 4 | `github-starred-export` | Export the user's own starred repos | Not started |
 | 5 | `notion-page-dump` | Export a logged-in Notion page to md/json | Not started |
 | 6 | `qa-smoke-clickpath` | Recorded click path for webapp dogfooding | Not started |
 
-**Shipped:** `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, and `teambition-ego` (Phase 1 read-only testcase). Each needs ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
+**Shipped:** `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, `youtube-video`, `douyin-video`, and `teambition-ego` (testcase read plus Phase 2a single-case create / update / set-status / archive). Each needs ego lite and `ego-browser` on `PATH`. Each skill checks login itself. Do not add a separate `cookie-healthcheck` skill.
 
 ---
 
