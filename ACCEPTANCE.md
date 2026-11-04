@@ -1,15 +1,16 @@
 # Acceptance
 
-`npm test` on 2026-11-02 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
+`npm test` on 2026-11-04 (Node v24.22.1, c8). Covered modules: `pure.mjs`, `run.mjs` / `run-check.mjs`, `launch.mjs` / `launch-check.mjs`, and `media-fetch.mjs` where that file exists, under `pinterest-download`, `instagram-saved-download`, and `wechat-channels-video`. `kuaishou-video` also covers `config-file.mjs` and `run-ego.mjs`. `youtube-video` also covers `config-file.mjs`, `run-ego.mjs`, `publish-flow.mjs`, and `studio-dom.mjs`. `ego-deps.mjs` stays out of the c8 include, same as the other skills.
 
 | Metric | Result |
 |--------|--------|
-| Tests | 90 passed |
-| Line coverage | **98.47%** |
-| Statement coverage | 98.47% |
+| Tests | 138 passed |
+| Line coverage | **98.69%** |
+| Statement coverage | 98.69% |
 | Threshold | lines ≥ 80% (`package.json` `c8.lines`) |
 | `wechat-channels-video` lib lines | **98.02%** |
 | `kuaishou-video` lib lines | **98.46%** |
+| `youtube-video` lib lines | **99.2%** |
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
@@ -129,4 +130,19 @@ Included lib line coverage: `pure.mjs` 100%, `run-check.mjs` 100%, `config-file.
 ```bash
 node skills/kuaishou-video/scripts/check-login.mjs
 bash skills/kuaishou-video/scripts/publish.sh /absolute/path/to/video.mp4 "描述 #话题"
+```
+
+## youtube-video
+
+Publish a caller-supplied local video to https://studio.youtube.com/ . No download step and no yt-dlp. Login-check first. Logged out or missing `ego-browser` exits 2 with `how_to_login` / `how_to_login_zh`. Logged in exits 0 and still prints `login_tip` (being signed in to YouTube inside Ego gives the best results). The task space closes with `finish({ keep: [] })` unless `--keep` (that path calls `handOff()`).
+
+Publish success is a video id, a `https://youtu.be/...` URL, and a processing status (`Uploading`, `Upload complete`, `Processing`, `Checks complete`, `Saved`, or `Published`). Visibility defaults to `private`. Made for kids defaults to No. Flow errors exit 1. No public upload was run here.
+
+Login-check on this machine (ego-browser 0.6.0.12) exited 0. Studio was already signed in (`platformChrome` and `loggedInCookie` true, page title `频道信息中心 - YouTube Studio`), and the task space closed. No upload was started.
+
+Included lib line coverage: `pure.mjs` 100%, `studio-dom.mjs` 100%, `run-check.mjs` 100%, `config-file.mjs` 100%, `publish-flow.mjs` 99.67%, `launch-check.mjs` 94.87%, `run-ego.mjs` 92.98%.
+
+```bash
+node skills/youtube-video/scripts/check-login.mjs
+bash skills/youtube-video/scripts/publish.sh /absolute/path/to/video.mp4 "Title" "Description"
 ```

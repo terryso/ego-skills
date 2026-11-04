@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/) 和 [`kuaishou-video`](./skills/kuaishou-video/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`kuaishou-video`](./skills/kuaishou-video/) 和 [`youtube-video`](./skills/youtube-video/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -62,6 +62,7 @@ cd ego-skills
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。 |
 | [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。 |
+| [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -82,7 +83,12 @@ node skills/kuaishou-video/scripts/check-login.mjs
 bash skills/kuaishou-video/scripts/publish.sh /absolute/path/to/video.mp4 "描述 #话题"
 ```
 
-如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙）。说明见各技能的 `references/login.md`。
+```bash
+node skills/youtube-video/scripts/check-login.mjs
+bash skills/youtube-video/scripts/publish.sh /absolute/path/to/video.mp4 "标题" "简介"
+```
+
+如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
 

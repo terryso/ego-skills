@@ -1,6 +1,6 @@
 # Contributing
 
-Shipped skills are `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, and `kuaishou-video`. Each requires ego lite and `ego-browser` on `PATH`, and each skill checks login itself.
+Shipped skills are `pinterest-download`, `instagram-saved-download`, `wechat-channels-video`, `kuaishou-video`, and `youtube-video`. Each requires ego lite and `ego-browser` on `PATH`, and each skill checks login itself.
 
 - One skill per PR under `skills/<id>/`.
 - Match ego layout: `SKILL.md` frontmatter, optional `agents/openai.yaml`, `scripts/*.mjs`, `references/`.
