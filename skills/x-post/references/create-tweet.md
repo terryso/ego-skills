@@ -49,7 +49,7 @@ Sent by `page.fetch` with `credentials: "include"` so the browser attaches `auth
 | `content-type` | `application/json` |
 | `referer` | `https://x.com/compose/post` |
 
-Both CreateTweet and CreateNoteTweet now send `x-client-transaction-id`. The skill reads it from the x.com shell document (`https://x.com/i/jf/`, then home) — verification key, `ondemand.s`, and `loading-x-anim` — and does not post when any of those are missing. `--transaction-id` supplies a value copied from a real UI request. Do not invent one.
+Both CreateTweet and CreateNoteTweet now send `x-client-transaction-id`. The skill reads the verification key, `ondemand.s` URL, and `loading-x-anim` from the x.com shell document (`https://x.com/i/jf/`, then home). Script bytes come from the page cache or, in parallel, from Node HTTPS and from the Ego browser (`Network.loadNetworkResource`, then a script tag on the current x.com page). It does not post when any of those materials are missing. `--transaction-id` supplies a value copied from a real UI request. Do not invent one.
 
 Do not set a `Cookie` header. The jar rides along with `credentials: "include"`.
 
@@ -115,7 +115,7 @@ Long plain text in `https://x.com/compose/post` uses a different mutation. Artic
 
 `legacy.full_text` is a short preview (capture: 279). The full body is `note_tweet.note_tweet_results.result.text`.
 
-`page.fetch` without `x-client-transaction-id` returned GraphQL **226**. The same body with a transaction id the web client had just produced returned 200. This skill builds that header for the CreateNoteTweet POST. `twitter-site-verification` and `loading-x-anim` come from the Ego document. `ondemand.s` and `main.*.js` URLs are discovered from that document, then loaded with Node HTTPS (up to 4 attempts, backing off after `ECONNRESET` and other transient failures). `page.fetch` from x.com is CORS-blocked on `abs.twimg.com`. If Node still returns 0 bytes, the bytes already in the page are read from script text, the performance resource list, `Page.getResourceContent`, and `Network.getResponseBody`. `--transaction-id` passes a value copied from a real UI request. A missing page does not get a made-up id. Do not reuse a header from a different GraphQL call.
+`page.fetch` without `x-client-transaction-id` returned GraphQL **226**. The same body with a transaction id the web client had just produced returned 200. This skill builds that header for the CreateNoteTweet POST. `twitter-site-verification` and `loading-x-anim` come from the Ego document. `ondemand.s` and `main.*.js` URLs are discovered from that document. Bytes already in the page are used first. Otherwise Node HTTPS (up to 4 attempts, backing off after `ECONNRESET` and other transient failures) races the Ego browser: `Network.loadNetworkResource`, then a `<script src>` inserted into the current x.com page whose body is read back from script text, the performance resource list, `Page.getResourceContent`, and `Network.getResponseBody`. A home page right after check-login often has not cached `ondemand.s`; the browser race loads it without opening the composer. `page.fetch` from x.com is CORS-blocked on `abs.twimg.com`. The first source to return bytes wins and the other attempt is aborted. `--transaction-id` passes a value copied from a real UI request. A missing page does not get a made-up id. Do not reuse a header from a different GraphQL call.
 
 Re-read the query id from the loaded `main.*.js`. The captured id is only the fallback.
 

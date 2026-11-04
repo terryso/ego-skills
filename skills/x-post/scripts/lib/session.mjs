@@ -1,7 +1,7 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
 import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
-import { readLoadedClientScript } from "./loaded-script.mjs";
+import { loadClientWebBytes, readLoadedClientScript, warmClientScript } from "./loaded-script.mjs";
 import { COMPOSE_URL, HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
 import {
   animationPathsFromHtml,
@@ -51,26 +51,16 @@ export function createXSession({ task, page, pageName = "p1", keep = false, fetc
     finished = true;
     await task.finish({ keep: names });
   };
-  async function loadClientWeb(url) {
-    let nodeError = "";
-    try {
-      const body = await loadPublic(url);
-      if (body && String(body).trim()) return String(body);
-      nodeError = "empty body";
-    } catch (error) {
-      nodeError = error && error.message ? error.message : "fetch failed";
-    }
-    let cached = "";
-    try {
-      cached = await readLoadedClientScript(page, url);
-    } catch (error) {
-      const extra = error && error.message ? error.message : "browser cache failed";
-      nodeError = [nodeError, extra].filter(Boolean).join("; ");
-    }
-    if (cached && String(cached).trim()) return String(cached);
-    const failure = new Error([nodeError, "browser cache empty"].filter(Boolean).join("; "));
-    failure.code = "PUBLIC_JS";
-    throw failure;
+  function loadClientWeb(url) {
+    // Node and the Ego browser run together. Pro often cannot open
+    // abs.twimg.com from Node; the browser warm-up still can. Mini's Node
+    // path wins when it returns first, and the loser is aborted.
+    return loadClientWebBytes({
+      url,
+      readCached: (target) => readLoadedClientScript(page, target),
+      warm: (target, warmOptions) => warmClientScript(page, target, warmOptions),
+      loadPublic: (target, fetchOptions) => loadPublic(target, fetchOptions),
+    });
   }
   return {
     spaceId: task.spaceId,
