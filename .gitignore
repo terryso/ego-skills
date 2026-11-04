@@ -5,3 +5,4 @@ tmp/
 .smoke/
 node_modules/
 coverage/
+scratch/

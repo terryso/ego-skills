@@ -5,6 +5,7 @@ import {
   editSettled,
   mainCoverApplied,
   pickNote,
+  publishButtonRef,
   publishSucceeded,
   uploadReady,
 } from "./pure.mjs";
@@ -14,6 +15,7 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
   let finished = false;
   const uploadAttempts = timings.uploadAttempts ?? 40;
   const coverAttempts = timings.coverAttempts ?? 8;
+  const imageTabAttempts = timings.imageTabAttempts ?? 10;
   const waitMs = timings.waitMs ?? 500;
 
   const finishWith = async (names) => {
@@ -98,6 +100,57 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
       if (!found.ok) throw new Error(found.error || "video file input not found");
       await this.setInputFiles(VIDEO_INPUT_SELECTOR, file);
       return found;
+    },
+    async switchToImageTab() {
+      const clicked = await evalAct({ op: "image-tab" });
+      if (!clicked.ok) throw new Error(clicked.error || "上传图文 tab not found");
+      let found = null;
+      for (let i = 0; i < imageTabAttempts; i += 1) {
+        found = await evalAct({ op: "image-input" });
+        if (found.ok) return { clicked, input: found };
+        await pause(waitMs);
+      }
+      throw new Error(`image upload input did not appear after 上传图文: ${found && found.error ? found.error : "not found"}`);
+    },
+    async setImageFiles(files) {
+      const found = await evalAct({ op: "image-input" });
+      if (!found.ok) throw new Error(found.error || "image upload input not found");
+      if (found.accept && String(found.accept).toLowerCase().includes(".mp4")) {
+        throw new Error("refusing a video accept input for image upload");
+      }
+      const list = Array.isArray(files) ? files : [files];
+      await this.setInputFiles(found.selector, list);
+      return { ...found, files: list.length };
+    },
+    async imageState() {
+      const state = await evalAct({ op: "image-state" });
+      if (!state || state.ok === false) throw new Error((state && state.error) || "image state was not readable");
+      return {
+        uploadThumbs: Number(state.uploadThumbs) || 0,
+        imgTotal: Number(state.imgTotal) || 0,
+        counter: typeof state.counter === "number" ? state.counter : null,
+        pending: Boolean(state.pending),
+        failed: Boolean(state.failed),
+        text: String(state.text || ""),
+      };
+    },
+    async waitImagesReady(expected) {
+      const want = Math.max(1, Number(expected) || 1);
+      let last = null;
+      for (let i = 0; i < uploadAttempts; i += 1) {
+        last = await this.imageState();
+        if (last.failed) {
+          const error = new Error(`image upload failed on the page: ${last.text.slice(0, 200)}`);
+          error.state = last;
+          throw error;
+        }
+        const counted = Math.max(last.uploadThumbs, last.counter == null ? 0 : last.counter);
+        if (!last.pending && counted >= want) return { ok: true, state: last };
+        await pause(waitMs);
+      }
+      const error = new Error(`image upload did not settle: expected ${want} thumbnails, saw ${last ? last.uploadThumbs : 0} (pending=${last ? last.pending : "?"})`);
+      error.state = last;
+      throw error;
     },
     async clearAutoCovers() {
       let last = await this.coverState();
@@ -199,7 +252,8 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
       }
       return read;
     },
-    async clickPublish() {
+    async clickPublish(mode = "video") {
+      if (mode === "image") return this.clickPublishImage();
       const result = await evalAct({ op: "click-publish" });
       if (!result.ok) throw new Error(result.error || "发布 button not found");
       if (typeof result.x === "number" && page.mouse && typeof page.mouse.click === "function") {
@@ -211,6 +265,23 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
         return result;
       }
       throw new Error("发布 button was found but the page has no click API");
+    },
+    // The image editor footer button lives in a closed shadow root. DOM
+    // selectors cannot reach it; the accessibility snapshot names it as a
+    // `button` whose exact text child is 发布. Click by snapshot ref.
+    async clickPublishImage() {
+      if (typeof page.snapshot !== "function") throw new Error("page.snapshot is required for the image-text 发布 button");
+      const snap = await page.snapshot();
+      const ref = publishButtonRef(snap);
+      if (ref != null && typeof page.click === "function") {
+        await page.click(`ref=${ref}`);
+        return { ok: true, via: `ref=${ref}` };
+      }
+      if (typeof page.click === "function") {
+        await page.click("loc=role:button[name='发布']");
+        return { ok: true, via: "loc=role:button" };
+      }
+      throw new Error("发布 button was found in the snapshot but the page has no click API");
     },
     async waitEditSettled() {
       let last = { url: "", text: "" };

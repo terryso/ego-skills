@@ -19,6 +19,7 @@ import {
   exploreUrl,
   inputErrorSummary,
   planOf,
+  postCommand,
   strip,
   updateUrl,
   validateEditInput,
@@ -120,9 +121,18 @@ export async function performPublish(config, session, checked) {
   }
 
   try {
-    await session.setVideo(checked.video);
-    base.uploaded = true;
-    await session.waitUpload();
+    if (checked.images && checked.images.length) {
+      const tab = await session.switchToImageTab();
+      base.image_input = tab.input;
+      const upload = await session.setImageFiles(checked.images);
+      base.uploaded = true;
+      base.image_count = upload.files;
+      await session.waitImagesReady(checked.images.length);
+    } else {
+      await session.setVideo(checked.video);
+      base.uploaded = true;
+      await session.waitUpload();
+    }
   } catch (error) {
     return { ...base, exitCode: 1, error: String(error && error.message ? error.message : error) };
   }
@@ -145,6 +155,10 @@ export async function performPublish(config, session, checked) {
     base.replaced_first_frame = true;
     base.cover_scope = cover.cover_scope || "main";
     base.cover_via = cover.via || "选择图片上传";
+  } else if (checked.images && checked.images.length) {
+    coverConfirmed = true;
+    base.cover_confirmed = true;
+    base.cover_scope = "first-image";
   }
 
   try {
@@ -176,8 +190,9 @@ export async function performPublish(config, session, checked) {
   const guard = assertCoverBeforePublish({ cover: checked.cover, coverConfirmed });
   if (!guard.ok) return { ...base, exitCode: 1, error: guard.error };
 
+  const publishMode = checked.images && checked.images.length ? "image" : "video";
   try {
-    await session.clickPublish();
+    await session.clickPublish(publishMode);
   } catch (error) {
     return {
       ...base,
@@ -397,11 +412,13 @@ export async function executePost(config = {}, deps = {}) {
   const exists = deps.existsSync || existsSync;
   const stat = deps.statSync || statSync;
   const checked = validatePostInput(config, { exists, stat });
-  if (!checked.ok) return inputErrorSummary(config, checked);
+  const command = postCommand(config);
+  const request = { ...config, command };
+  if (!checked.ok) return inputErrorSummary(request, checked);
 
   const summary = {
     skill: SKILL,
-    command: "post-video",
+    command,
     ok: false,
     published: false,
     uploaded: false,
@@ -416,14 +433,14 @@ export async function executePost(config = {}, deps = {}) {
   try {
     if (!deps.browser || typeof deps.browser.open !== "function") throw new Error("browser is required");
     session = await deps.browser.open({
-      taskName: config.taskName || PUBLISH_TASK,
-      startUrl: config.yes ? PUBLISH_URL : CREATOR_HOME,
-      keepBrowser: Boolean(config.keep),
+      taskName: request.taskName || PUBLISH_TASK,
+      startUrl: request.yes ? PUBLISH_URL : CREATOR_HOME,
+      keepBrowser: Boolean(request.keep),
     });
     summary.spaceId = session.spaceId;
-    const result = config.yes
-      ? await performPublish(config, session, checked)
-      : await inspectOnly(config, session, checked);
+    const result = request.yes
+      ? await performPublish(request, session, checked)
+      : await inspectOnly(request, session, checked);
     Object.assign(summary, result);
   } catch (error) {
     summary.error = String(error && error.message ? error.message : error);

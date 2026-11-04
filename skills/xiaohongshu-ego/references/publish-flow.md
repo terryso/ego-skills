@@ -93,4 +93,4 @@ If the update page says 加载失败, do not click 发布. Do not treat a failed
 - Title, description, and topics cannot contain links (`http(s)://`, `www.`, bare domains such as `github.com/xxx` or `x.com/xxx`, `t.co`). The same check runs on a dry run. Without `--strip-links` the command exits `4` and lists the fragments. `--strip-links` removes the links, a dangling `项目地址：` or `链接：` on that line, and leftover blank lines, then prints what was removed.
 - `finish({ keep: [] })` unless `--keep`
 - Exit `2` when ego-browser is missing, the creator site is logged out, or `--expect-account` does not match
-- No MCP. No batch loop. No image-only notes. No scheduled publish. No delete
+- No MCP. No batch loop. No scheduled publish. No delete. Image-text notes are a separate path: `references/imagetext-flow.md`
