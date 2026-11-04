@@ -2,6 +2,8 @@
 // page.fetch uses window.fetch and the browser CORS-blocks that host from x.com.
 // These files are static and do not need the logged-in cookie jar.
 // Pro accept4 reached this path and then saw `read ECONNRESET`, so a single GET is not enough.
+// A caller can pass `signal` and abort the socket when the Ego browser already
+// has the same bytes. An abort is not retried.
 
 import https from "node:https";
 
@@ -34,22 +36,56 @@ export function publicJsBackoffMs(attempt) {
   return 250 * (2 ** attempt);
 }
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function abortError(signal) {
+  const reason = signal && signal.reason;
+  if (reason instanceof Error) return reason;
+  const error = new Error("public JS aborted");
+  error.code = "ABORT_ERR";
+  return error;
 }
 
-function fetchPublicJsOnce(url, { request = https.request, timeout = 60_000, redirects = 3 } = {}) {
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
+    let timer;
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError(signal));
+    };
+    timer = setTimeout(() => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function fetchPublicJsOnce(url, { request = https.request, timeout = 60_000, redirects = 3, signal } = {}) {
   if (!isPublicClientWeb(url)) {
     return Promise.reject(new Error(`refusing to Node-fetch a non public client-web URL: ${url}`));
   }
+  if (signal?.aborted) return Promise.reject(abortError(signal));
   return new Promise((resolve, reject) => {
     let settled = false;
-    const fail = (error) => {
+    let req;
+    const finish = (error, body) => {
       if (settled) return;
       settled = true;
-      reject(error);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (error) reject(error instanceof Error ? error : new Error(String(error)));
+      else resolve(body);
     };
-    const req = request(url, {
+    const onAbort = () => {
+      const error = abortError(signal);
+      // Settle before destroy. destroy often emits ECONNRESET, which must not start another retry.
+      finish(error);
+      if (req && typeof req.destroy === "function") req.destroy(error);
+    };
+    if (signal) signal.addEventListener("abort", onAbort);
+    req = request(url, {
       method: "GET",
       headers: { accept: "*/*", "accept-encoding": "identity" },
       timeout,
@@ -58,54 +94,63 @@ function fetchPublicJsOnce(url, { request = https.request, timeout = 60_000, red
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
         if (redirects <= 0) {
-          fail(new Error(`public JS redirected too many times: ${url}`));
+          finish(new Error(`public JS redirected too many times: ${url}`));
           return;
         }
         let next = "";
         try {
           next = new URL(res.headers.location, url).href;
         } catch (error) {
-          fail(error);
+          finish(error);
           return;
         }
-        fetchPublicJsOnce(next, { request, timeout, redirects: redirects - 1 }).then((body) => {
-          if (settled) return;
-          settled = true;
-          resolve(body);
-        }, fail);
+        fetchPublicJsOnce(next, { request, timeout, redirects: redirects - 1, signal }).then(
+          (body) => finish(null, body),
+          (error) => finish(error),
+        );
         return;
       }
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
       res.on("end", () => {
-        if (settled) return;
-        settled = true;
         const body = Buffer.concat(chunks).toString("utf8");
         if (status !== 200) {
-          reject(new Error(`public JS HTTP ${status} for ${url}`));
+          finish(new Error(`public JS HTTP ${status} for ${url}`));
           return;
         }
-        resolve(body);
+        finish(null, body);
       });
-      res.on("error", fail);
+      res.on("error", (error) => finish(error));
     });
-    req.on("error", fail);
-    req.on("timeout", () => req.destroy(new Error(`public JS timeout for ${url}`)));
+    req.on("error", (error) => finish(error));
+    req.on("timeout", () => {
+      const error = new Error(`public JS timeout for ${url}`);
+      finish(error);
+      if (typeof req.destroy === "function") req.destroy(error);
+    });
     req.end();
   });
 }
 
 export async function fetchPublicJs(url, options = {}) {
   const attempts = Math.min(5, Math.max(1, Number(options.attempts) || PUBLIC_JS_ATTEMPTS));
-  const sleep = options.sleep || wait;
+  const signal = options.signal;
+  const sleep = options.sleep || ((ms) => wait(ms, signal));
   let last = new Error("public JS fetch failed");
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (signal?.aborted) throw abortError(signal);
     try {
       return await fetchPublicJsOnce(url, options);
     } catch (error) {
       last = error instanceof Error ? error : new Error(String(error));
-      if (attempt === attempts - 1 || !isRetryablePublicJsError(last)) throw last;
-      await sleep(publicJsBackoffMs(attempt));
+      if (signal?.aborted || attempt === attempts - 1 || !isRetryablePublicJsError(last)) throw last;
+      try {
+        await sleep(publicJsBackoffMs(attempt));
+      } catch (sleepError) {
+        if (signal?.aborted) throw abortError(signal);
+        throw sleepError;
+      }
+      if (signal?.aborted) throw abortError(signal);
     }
   }
   throw last;

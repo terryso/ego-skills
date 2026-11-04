@@ -7,7 +7,7 @@ description: >
   Uses page.fetch CreateTweet, not the composer click path. Reply is best-effort.
   Use when the user asks to tweet, post, or reply on X or Twitter from Ego.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   requires:
     bins:
       - ego-browser
@@ -89,7 +89,7 @@ node skills/x-post/scripts/cleanup.mjs
 
 加权长度用 twitter-text v3 的 `maxWeightedTweetLength`（280）。不超过就发 **CreateTweet**。超过，或显式 `--long`，就发 **CreateNoteTweet**（2026-11-04 捕获）。普通 `/compose/post` 的长文就会走这条，不必打开 Articles。
 
-CreateTweet 和 CreateNoteTweet 都带现算的 `x-client-transaction-id`。verification key 和 `loading-x-anim` 从 Ego 页面读。`ondemand.s` 和 `main.*.js` 的地址从页面 DOM / performance 发现后，用 **Node HTTPS** 拉取（失败会退避重试），不用 `page.fetch`（浏览器 CORS 会让 `abs.twimg.com` 变成 0 字节）。Node 仍然读不到时，改用页面已经加载的那份：script 文本、performance resource，以及 CDP `Page.getResourceContent` / `Network.getResponseBody`。query id 来自这份 `main.*.js`。不要复用别的 GraphQL 请求上的 transaction id。长文在材料齐了之后打开 `https://x.com/compose/post`，等两秒，再发。材料不全就退出码 `1`、`sent: false`。也可以传 `--transaction-id`。不要编一个假的。
+CreateTweet 和 CreateNoteTweet 都带现算的 `x-client-transaction-id`。verification key 和 `loading-x-anim` 从 x.com 文档读。`ondemand.s` 和 `main.*.js` 的地址从文档或 performance 发现。字节谁先返回用谁：页面里已经加载的脚本；**并行**的 Node HTTPS（`ECONNRESET` 等中断会退避重试）和 Ego 浏览器网络。浏览器这条走 CDP `Network.loadNetworkResource`；该方法没有正文时，把 `<script src>` 插进当前 x.com 页面，再用 script 文本、performance resource、`Page.getResourceContent` 和 `Network.getResponseBody` 读取。check-login 刚结束时主页常常还没有 `ondemand.s`，所以短帖也会主动让浏览器去拉，而不是只读空缓存。`page.fetch` 不用于 `abs.twimg.com`（CORS 会得到 0 字节），也不为了热身去点作曲框。query id 来自这份 `main.*.js`。不要复用别的 GraphQL 请求上的 transaction id。长文仍在材料齐了之后打开 `https://x.com/compose/post`，等两秒，再发。两边都拿不到字节就退出码 `1`、`sent: false`，错误里写明缺什么。也可以传 `--transaction-id`。不要编一个假的。
 
 成功仍然是 `https://x.com/<screen_name>/status/<id>`。长文的完整正文在 `note_tweet.note_tweet_results.result.text`；`legacy.full_text` 会被截断，不当成全文。
 

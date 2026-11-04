@@ -127,3 +127,56 @@ test("fetchPublicJs retries a reset, then returns the body", async () => {
     /ECONNRESET/,
   );
 });
+
+test("fetchPublicJs aborts the socket instead of retrying", async () => {
+  const url = "https://abs.twimg.com/responsive-web/client-web/ondemand.s.hang.js";
+  const already = new AbortController();
+  already.abort();
+  let called = 0;
+  await assert.rejects(
+    () => fetchPublicJs(url, {
+      signal: already.signal,
+      request: () => { called += 1; throw new Error("request should not run"); },
+    }),
+    /abort/i,
+  );
+  assert.equal(called, 0);
+
+  let destroyed = 0;
+  const inflight = new AbortController();
+  const pending = fetchPublicJs(url, {
+    signal: inflight.signal,
+    attempts: 4,
+    sleep: async () => { throw new Error("must not retry after abort"); },
+    request: () => {
+      const req = new EventEmitter();
+      req.end = () => {};
+      req.destroy = (error) => {
+        destroyed += 1;
+        queueMicrotask(() => req.emit("error", error || new Error("read ECONNRESET")));
+      };
+      queueMicrotask(() => inflight.abort());
+      return req;
+    },
+  });
+  await assert.rejects(pending, /abort/i);
+  assert.equal(destroyed, 1);
+
+  const duringSleep = new AbortController();
+  let tries = 0;
+  const sleeping = fetchPublicJs(url, {
+    signal: duringSleep.signal,
+    attempts: 4,
+    request: () => {
+      tries += 1;
+      const req = new EventEmitter();
+      req.end = () => {};
+      req.destroy = () => {};
+      queueMicrotask(() => req.emit("error", new Error("read ECONNRESET")));
+      return req;
+    },
+  });
+  setTimeout(() => duringSleep.abort(), 20);
+  await assert.rejects(sleeping, /abort/i);
+  assert.equal(tries, 1);
+});

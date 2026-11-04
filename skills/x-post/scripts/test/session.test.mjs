@@ -202,7 +202,7 @@ test("js bytes decode, and a live header is reused when indices are missing", ()
   assert.equal(bodyText(null), "");
 });
 
-test("Node ECONNRESET falls back to the script the Ego page already loaded", async () => {
+test("bytes already in the Ego page are used without another Node fetch", async () => {
   const pathD = "M 10 20 C 1 2 3 4 5 6 7 8 9 10 11";
   const ondemand = "https://abs.twimg.com/responsive-web/client-web/ondemand.s.h4sha.js";
   const main = "https://abs.twimg.com/responsive-web/client-web/main.live.js";
@@ -246,7 +246,7 @@ test("Node ECONNRESET falls back to the script the Ego page already loaded", asy
   });
   const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
   assert.equal(id.source, "generated");
-  assert.match(nodeCalls[0], /ondemand\.s\.h4sha\.js/);
+  assert.equal(nodeCalls.length, 0);
   assert.equal(harness.calls.fetch.some((call) => String(call.url).includes("abs.twimg.com")), false);
   assert.equal(cdpCalls.includes("Page.getResourceContent"), true);
   const discovered = await resolveOperationQuery(session, "CreateNoteTweet", "");
@@ -264,6 +264,49 @@ test("Node ECONNRESET falls back to the script the Ego page already loaded", asy
     () => failed.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" }),
     /read ECONNRESET; browser cache empty/,
   );
+});
+
+test("an empty page cache is filled through the Ego browser when Node is refused", async () => {
+  const pathD = "M 10 20 C 1 2 3 4 5 6 7 8 9 10 11";
+  const ondemand = "https://abs.twimg.com/responsive-web/client-web/ondemand.s.h4sha.js";
+  const html = `<meta name="twitter-site-verification" content="AAAAAAAA"><svg id="loading-x-anim-0"><path d="M 0 0"/><path d="${pathD}"/></svg><script src="${ondemand}"></script>`;
+  installDocument({ html });
+  const harness = fakePage({ response: { status: 200, body: html } });
+  const cdpCalls = [];
+  const indices = "(a[0], 16)(a[1], 16)";
+  harness.page.cdp = async (method, args) => {
+    cdpCalls.push(method);
+    if (method === "Page.getResourceTree") {
+      return { frameTree: { frame: { id: "main" }, resources: [] } };
+    }
+    if (method === "Network.loadNetworkResource") {
+      assert.equal(args.frameId, "main");
+      assert.equal(args.url, ondemand);
+      assert.equal(args.options.includeCredentials, false);
+      return { resource: { success: true, httpStatusCode: 200, stream: "ondemand-stream" } };
+    }
+    if (method === "IO.read") {
+      assert.equal(args.handle, "ondemand-stream");
+      return { base64Encoded: true, data: Buffer.from(indices).toString("base64"), eof: true };
+    }
+    if (method === "IO.close") return {};
+    return { cookies: [] };
+  };
+  const nodeCalls = [];
+  const session = createXSession({
+    ...harness,
+    fetchPublicJs: async (url) => {
+      nodeCalls.push(url);
+      throw new Error("connect ECONNREFUSED 127.0.0.1:443");
+    },
+  });
+  const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateTweet" });
+  assert.equal(id.source, "generated");
+  assert.equal(String(id.id).includes("="), false);
+  assert.equal(cdpCalls.includes("Network.loadNetworkResource"), true);
+  assert.equal(cdpCalls.includes("IO.read"), true);
+  assert.equal(harness.calls.fetch.some((call) => String(call.url).includes("abs.twimg.com")), false);
+  assert.equal(harness.calls.goto.includes("https://x.com/compose/post"), false);
 });
 
 test("a header from another GraphQL call is not reused when indices are missing", async () => {
