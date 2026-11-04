@@ -89,7 +89,7 @@ node skills/x-post/scripts/cleanup.mjs
 
 加权长度用 twitter-text v3 的 `maxWeightedTweetLength`（280）。不超过就发 **CreateTweet**。超过，或显式 `--long`，就发 **CreateNoteTweet**（2026-11-04 捕获）。普通 `/compose/post` 的长文就会走这条，不必打开 Articles。
 
-CreateTweet 和 CreateNoteTweet 都带现算的 `x-client-transaction-id`（verification key、`ondemand.s` 里成簇的 `[n], 16`、`loading-x-anim`）。这个值和本次 POST 路径绑定。不要复用首页别的 GraphQL 请求上的 id：2026-11-04 那样复用会让 CreateNoteTweet 返回 226。query id 从页面已经加载的 `main.*.js` 读。长文会先打开 `https://x.com/compose/post`，等两秒，再 `page.fetch`。材料或 query id 算不出来就退出码 `1`、`sent: false`。也可以传 `--transaction-id`。不要编一个假的。
+CreateTweet 和 CreateNoteTweet 都带现算的 `x-client-transaction-id`。verification key 和 `loading-x-anim` 从 Ego 页面读。`ondemand.s` 和 `main.*.js` 的地址从页面 DOM / performance 发现后，用 **Node HTTPS** 拉取，不用 `page.fetch`（浏览器 CORS 会让 `abs.twimg.com` 变成 0 字节）。query id 来自这份 Node 拉到的 `main.*.js`。不要复用别的 GraphQL 请求上的 transaction id。长文在材料齐了之后打开 `https://x.com/compose/post`，等两秒，再发。材料不全就退出码 `1`、`sent: false`。也可以传 `--transaction-id`。不要编一个假的。
 
 成功仍然是 `https://x.com/<screen_name>/status/<id>`。长文的完整正文在 `note_tweet.note_tweet_results.result.text`；`legacy.full_text` 会被截断，不当成全文。
 

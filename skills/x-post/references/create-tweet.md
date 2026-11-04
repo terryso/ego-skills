@@ -115,7 +115,7 @@ Long plain text in `https://x.com/compose/post` uses a different mutation. Artic
 
 `legacy.full_text` is a short preview (capture: 279). The full body is `note_tweet.note_tweet_results.result.text`.
 
-`page.fetch` without `x-client-transaction-id` returned GraphQL **226**. The same body with a transaction id the web client had just produced returned 200. This skill builds that header from the live page (`twitter-site-verification`, `ondemand.s`, `loading-x-anim`). `--transaction-id` passes a value copied from a real UI request. A missing page does not get a made-up id.
+`page.fetch` without `x-client-transaction-id` returned GraphQL **226**. The same body with a transaction id the web client had just produced returned 200. This skill builds that header for the CreateNoteTweet POST. `twitter-site-verification` and `loading-x-anim` come from the Ego document. `ondemand.s` and `main.*.js` URLs are discovered from that document, then loaded with Node HTTPS — `page.fetch` from x.com is CORS-blocked on `abs.twimg.com` and returns 0 bytes. `--transaction-id` passes a value copied from a real UI request. A missing page does not get a made-up id. Do not reuse a header from a different GraphQL call.
 
 Re-read the query id from the loaded `main.*.js`. The captured id is only the fallback.
 

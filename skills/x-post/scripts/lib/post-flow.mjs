@@ -1,3 +1,4 @@
+import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
 import {
   CAPTURED_CREATE_NOTE_TWEET_QUERY_ID,
   CAPTURED_CREATE_TWEET_QUERY_ID,
@@ -85,7 +86,9 @@ export async function resolveOperationQuery(session, operationName, override) {
     if (queryId && bearer) break;
     let source = "";
     try {
-      source = await session.fetchText(url);
+      source = isPublicClientWeb(url)
+        ? await (typeof session.fetchPublicJs === "function" ? session.fetchPublicJs(url) : fetchPublicJs(url))
+        : await session.fetchText(url);
     } catch {
       continue;
     }

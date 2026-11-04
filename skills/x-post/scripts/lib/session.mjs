@@ -1,5 +1,6 @@
 // page.fetch session for x.com. Cookie values stay inside this process.
 
+import { fetchPublicJs, isPublicClientWeb } from "./fetch-public.mjs";
 import { COMPOSE_URL, HOME_URL, cookieHeaderNames, detectSignals, parseLooseJson } from "./pure.mjs";
 import {
   animationPathsFromHtml,
@@ -41,7 +42,7 @@ function cookieNames(jar, header) {
   ];
 }
 
-export function createXSession({ task, page, pageName = "p1", keep = false } = {}) {
+export function createXSession({ task, page, pageName = "p1", keep = false, fetchPublicJs: loadPublic = fetchPublicJs } = {}) {
   if (!task || !page) throw new Error("createXSession requires task and page");
   let finished = false;
   const finishWith = async (names) => {
@@ -118,11 +119,15 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       const html = await page.evaluate(() => (document.documentElement && document.documentElement.outerHTML) || "");
       return String(html || "");
     },
+    fetchPublicJs: loadPublic,
     async fetchText(url, timeout = 30_000) {
+      if (isPublicClientWeb(url)) {
+        throw new Error("abs.twimg.com is fetched with Node, not page.fetch");
+      }
       const response = await page.fetch(url, {
         method: "GET",
         credentials: "include",
-        timeout: /\.js(\?|$)/.test(String(url || "")) ? Math.max(timeout, 60_000) : timeout,
+        timeout,
       });
       return bodyText(response ? response.body : "");
     },
@@ -237,7 +242,7 @@ export function createXSession({ task, page, pageName = "p1", keep = false } = {
       let fetchError = "";
       if (chunkUrl) {
         try {
-          chunk = await this.fetchText(chunkUrl);
+          chunk = await loadPublic(chunkUrl);
         } catch (error) {
           fetchError = error && error.message ? error.message : "fetch failed";
           chunk = "";

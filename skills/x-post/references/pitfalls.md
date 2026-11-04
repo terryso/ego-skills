@@ -8,7 +8,7 @@
 4. **不要猜 POST body，也不要猜 queryId。** 只使用 `references/create-tweet.md` 里 2026-11-04 捕获并验证过的 CreateTweet。客户端包里读到的 `operationName:"CreateTweet"` 可以覆盖捕获值。读不到就用 `l4hk8uVGvR-a8kzQ4nOhPA`。不要发明别的 mutation。
 5. **功能开关用捕获下来的那一份。** 少字段或多字段都可能失败。不要为了“补全”去添键。
 6. **登录墙和限流。** 401 或没有 `auth_token` 就是要在 Ego 里登录 x.com。HTTP 429 或错误码 88 是限流，不要重试，不要换端点。
-7. **GraphQL 226。** transaction id 和本次 `POST /i/api/graphql/.../CreateNoteTweet` 绑定。2026-11-04 Pro 把首页别的 GraphQL 请求上的 id 拿来复用，CreateNoteTweet 返回 226。不要再复用别的操作的头。id 必须用当前页的 verification key、`ondemand.s` 下标（`(name[n], 16)` 或 `[n], 16` 这一簇）和 `loading-x-anim` 现算。query id 从已经加载的 `main.*.js`（`script[src]` 或 performance resource）读，不要停在捕获值上。材料不全就退出，`sent: false`。长文发送前会先打开 `https://x.com/compose/post` 再等两秒。 **344** 是每日上限，不要当成缺 id。
+7. **GraphQL 226 和 CORS。** transaction id 必须按本次 POST 路径现算。不要复用别的 GraphQL 请求上的头。`ondemand.s` 和 `main.*.js` 在 `abs.twimg.com`，`page.fetch`（window.fetch）从 x.com 拉它们会被 CORS 拒绝，正文是 0 字节。这两份公开 JS 用 Node 的 HTTPS 去拉。verification key 和 `loading-x-anim` 仍从 Ego 页面文档读。材料不全就退出，`sent: false`。长文在材料齐了之后才打开 `https://x.com/compose/post`，等两秒，再 `page.fetch` 发帖。 **344** 是每日上限。
 8. **`ct0` 必须等于 `x-csrf-token`。** 对不上会 403。这是会话密钥，禁止打印、禁止写进日志、禁止让用户粘贴。
 9. **`auth_token` 是 HttpOnly。** `document.cookie` 看不到它。`page.fetch` 必须 `credentials: "include"`，由浏览器自己带上。不要自己拼 Cookie 头。
 10. **成功只认状态链接。** `rest_id` 加上 `core.user_results.result.core.screen_name` 组成 `https://x.com/<screen_name>/status/<id>`。没有链接就不是成功。不要把页面上的 toast 当成唯一证据，也不要点掉无关确认框。

@@ -56,6 +56,11 @@ function session(overrides = {}) {
       if (overrides.fetchError) throw new Error("bundle down");
       return overrides.bundle ?? "";
     },
+    async fetchPublicJs(url) {
+      calls.fetched.push(url);
+      if (overrides.fetchError) throw new Error("bundle down");
+      return overrides.bundle ?? "";
+    },
     async screenName() {
       if (overrides.screenError) throw new Error("no profile");
       return overrides.href ?? "/Suchuanyi";
@@ -313,14 +318,17 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
   assert.equal(resolved.queryId, CAPTURED_CREATE_TWEET_QUERY_ID);
   const missed = session({
     html: '<script src="https://abs.twimg.com/responsive-web/client-web/main.err.js"></script>',
-    fetchError: true,
   });
+  missed.fetchPublicJs = async (url) => {
+    missed.calls.fetched.push(url);
+    throw new Error("bundle down");
+  };
   const fallback = await resolveCreateTweetQuery(missed, "");
   assert.equal(fallback.queryId, CAPTURED_CREATE_TWEET_QUERY_ID);
   assert.equal(missed.calls.fetched.length, 1);
   const shell = session({ html: "<html>no scripts</html>" });
   shell.shellHtml = async () => `<script src="https://abs.twimg.com/responsive-web/client-web/main.live.js"></script>`;
-  shell.fetchText = async (url) => {
+  shell.fetchPublicJs = async (url) => {
     shell.calls.fetched.push(url);
     if (String(url).includes("main.live")) return `queryId:"LiveNoteQueryId123",operationName:"CreateNoteTweet"`;
     return "";
@@ -334,7 +342,7 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
 
   const fromDom = session({ html: "<html>no scripts</html>" });
   fromDom.scriptUrls = async () => ["https://abs.twimg.com/responsive-web/client-web/main.fromdom.js"];
-  fromDom.fetchText = async (url) => {
+  fromDom.fetchPublicJs = async (url) => {
     fromDom.calls.fetched.push(url);
     if (String(url).includes("main.fromdom")) return `queryId:"DomNoteQueryId12345",operationName:"CreateNoteTweet"`;
     return "";

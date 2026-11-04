@@ -173,15 +173,22 @@ test("animation paths and a client transaction id come from the live document", 
     ],
   });
   const harness = fakePage();
-  harness.state.response = { status: 200, body: "(a[0], 16)(a[1], 16)" };
-  const session = createXSession(harness);
+  const publicCalls = [];
+  const session = createXSession({
+    ...harness,
+    fetchPublicJs: async (url) => {
+      publicCalls.push(url);
+      return "(a[0], 16)(a[1], 16)";
+    },
+  });
   const paths = await session.animationPaths();
   assert.equal(paths[0], pathD);
   assert.equal(paths[1], "");
   const id = await session.clientTransaction({ method: "POST", path: "/i/api/graphql/abc/CreateNoteTweet" });
   assert.equal(id.source, "generated");
   assert.equal(String(id.id).includes("="), false);
-  assert.match(harness.calls.fetch.at(-1).url, /ondemand\.s\.h4sha\.js/);
+  assert.match(publicCalls.at(-1), /ondemand\.s\.h4sha\.js/);
+  assert.equal(harness.calls.fetch.some((call) => String(call.url).includes("abs.twimg.com")), false);
 
   const empty = createXSession(fakePage({ evaluateNull: true }));
   assert.deepEqual(await empty.animationPaths(), []);
@@ -227,8 +234,10 @@ test("fetch, navigation, and finish", async () => {
   assert.equal(elsewhere.calls.goto[0], HOME_URL);
   await moved.goto("https://x.com/home");
 
-  const text = await session.fetchText("https://abs.twimg.com/responsive-web/client-web/main.js");
-  assert.equal(text, '{"ok":true}');
+  await assert.rejects(
+    () => session.fetchText("https://abs.twimg.com/responsive-web/client-web/main.js"),
+    /Node, not page\.fetch/,
+  );
   harness.state.response = { status: 200, body: { queryId: "abc" } };
   assert.match(await session.fetchText("https://x.com/bundle"), /queryId/);
   harness.state.response = { status: 200, body: null };
