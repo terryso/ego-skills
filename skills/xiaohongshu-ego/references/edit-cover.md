@@ -16,7 +16,7 @@ node skills/xiaohongshu-ego/scripts/edit-cover.mjs \
 1. 打开 `https://creator.xiaohongshu.com/publish/update?id=<noteId>&noteType=video`（笔记管理 → 编辑 会到这个地址）。
 2. 核对 `--expect-account`。
 3. 页面如果是「加载失败」，退出码 `1`，不点发布。
-4. `setInputFiles` 到「选择图片上传」旁边的主封面文件框，不用 PK 槽。
+4. 悬停主封面卡片点「编辑封面」，`setInputFiles` 到弹窗里 `.upload-btn input.upload-input`，等「完成」可用后点它。不用 PK 槽。
 5. 主封面预览发生变化才点发布。否则不点。
 6. 点页脚上文本正好是「发布」的按钮。
 

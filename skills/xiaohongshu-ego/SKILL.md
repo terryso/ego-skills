@@ -6,7 +6,7 @@ description: >
   ego-browser is missing, the creator site is logged out, or --expect-account
   does not match the header nickname. Nothing is uploaded without --yes: that
   run only inspects login and prints a plan. Video notes accept --cover: with
-  --yes, 发布 runs only after 选择图片上传 changes the main-cover preview; if the
+  --yes, 发布 runs only after the 编辑封面 dialog changes the main-cover preview; if the
   preview does not change, the run refuses to publish. Without --cover the
   platform keeps the video first frame. Image-text notes take 1-18 images
   (--images) through the 上传图文 tab; the first image becomes the cover and
@@ -40,7 +40,7 @@ Install **Ego Lite** and put `ego-browser` on `PATH`. A non-interactive shell al
 
 ## 封面
 
-传 `--cover` 才会换主封面（例如 `cover-3x4.png`）。路径是页面上的「选择图片上传」：找到这个控件旁边、且不是视频上传框、也不是 `input.pk-cover-list-file-input` 的文件输入，再 `setInputFiles`。主封面预览必须发生变化，才点「发布」。确认失败就退出，不要带着视频首帧发布。
+传 `--cover` 才会换主封面（例如 `cover-3x4.png`）。2026-11-05 改版后走「编辑封面」弹窗：悬停主封面卡片（`.cover--column .default.column`）让「编辑封面」（`.cover-edit-entry`）显现并点击，把图片传进弹窗里的 `.upload-btn input.upload-input`，等「完成」按钮变为可用后点它。主封面预览（卡片 background-image）必须发生变化，才点「发布」。确认失败就退出，不要带着视频首帧发布。
 
 PK 封面槽不能代替主封面。只上传 PK 时，主封面和笔记管理缩略图仍是视频首帧，角标「封面待PK」，要等约 72 小时 PK 结束才会换。因此 `--cover` 不走 PK 槽。
 
@@ -48,7 +48,7 @@ PK 封面槽不能代替主封面。只上传 PK 时，主封面和笔记管理�
 
 图文笔记没有 `--cover`：第一张图就是封面，传了 `--cover` 直接校验失败。图文走「上传图文」tab，见下面的图文一节。
 
-Pass `--cover` to set the **main** cover (for example `cover-3x4.png`) through the verified control 「选择图片上传」. The file input is the one next to that control, not `input.upload-input` and not `input.pk-cover-list-file-input`. Click 发布 only after the main-cover preview changes. If that confirmation fails, the run fails and does not publish the first frame.
+Pass `--cover` to set the **main** cover (for example `cover-3x4.png`) through the cover editor dialog, verified on 2026-11-05: hover the 主封面 card (`.cover--column .default.column`) to reveal 编辑封面 (`.cover-edit-entry`), click it, `setInputFiles` the image into `.upload-btn input.upload-input`, wait for the 完成 button to enable, then click it. Click 发布 only after the main-cover preview (the card's background-image) changes. If that confirmation fails, the run fails and does not publish the first frame.
 
 PK slots are not this path. Uploading only a PK cover leaves the main cover and the note-manager thumbnail as the video's first frame (badge 封面待PK) until the 72-hour PK ends. `--cover` does not use the PK slots.
 
@@ -100,13 +100,13 @@ node scripts/check-login.mjs --keep
 
 ## 确认规则
 
-没有 `--yes`：只检查登录并打印计划 JSON（`cover_mode` 为 `main-cover`，`cover_selector` 为「选择图片上传」，并带上封面路径），退出码 `3`。这一步不上传视频，也不点「发布」。
+没有 `--yes`：只检查登录并打印计划 JSON（`cover_mode` 为 `main-cover`，`cover_selector` 为「编辑封面」，并带上封面路径），退出码 `3`。这一步不上传视频，也不点「发布」。
 
-有 `--yes`：才会上传。如果带了 `--cover`，必须走「选择图片上传」设置主封面，并且主封面预览发生变化，才点「发布」。预览没变就失败退出，不发布。PK 槽不算主封面。
+有 `--yes`：才会上传。如果带了 `--cover`，必须走「编辑封面」弹窗设置主封面，并且主封面预览发生变化，才点「发布」。预览没变就失败退出，不发布。PK 槽不算主封面。
 
-Without `--yes` the command only inspects login and prints the plan JSON (`cover_mode=main-cover`, `cover_selector=选择图片上传`, plus the cover path), then exits `3`. It does not upload and it does not click 发布.
+Without `--yes` the command only inspects login and prints the plan JSON (`cover_mode=main-cover`, `cover_selector=编辑封面`, plus the cover path), then exits `3`. It does not upload and it does not click 发布.
 
-With `--yes` it uploads. When `--cover` is set, it must set the main cover through 选择图片上传 and click 发布 only after the main-cover preview changes. If the preview does not change, the run fails and does not publish. PK slots do not count as the main cover.
+With `--yes` it uploads. When `--cover` is set, it must set the main cover through the 编辑封面 dialog and click 发布 only after the main-cover preview changes. If the preview does not change, the run fails and does not publish. PK slots do not count as the main cover.
 
 ## 命令
 

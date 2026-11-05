@@ -1,4 +1,10 @@
-import { creatorAct, COVER_INPUT_SELECTOR, VIDEO_INPUT_SELECTOR } from "./creator-dom.mjs";
+import {
+  creatorAct,
+  COVER_INPUT_SELECTOR,
+  COVER_EDIT_ENTRY_SELECTOR,
+  MAIN_COVER_CARD_SELECTOR,
+  VIDEO_INPUT_SELECTOR,
+} from "./creator-dom.mjs";
 import {
   coverReplacedFirstFrame,
   editPageFailed,
@@ -16,6 +22,8 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
   const uploadAttempts = timings.uploadAttempts ?? 40;
   const coverAttempts = timings.coverAttempts ?? 8;
   const imageTabAttempts = timings.imageTabAttempts ?? 10;
+  const doneAttempts = timings.doneAttempts ?? 30;
+  const closeAttempts = timings.closeAttempts ?? 20;
   const waitMs = timings.waitMs ?? 500;
 
   const finishWith = async (names) => {
@@ -178,12 +186,75 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
         scope: "main",
       };
     },
+    // 2026-11-05: the main cover is set through the cover editor dialog.
+    // Hover the 主封面 card to reveal 编辑封面, click it, upload into the
+    // dialog's image input, wait for 完成 to enable, click it. The PK
+    // swiper input is never touched.
     async setMainCover(file) {
-      const found = await evalAct({ op: "main-cover-input" });
-      if (!found.ok) throw new Error(found.error || "选择图片上传 control not found");
-      if (found.scope === "pk") throw new Error("refusing the PK cover input for the main cover");
+      await this.openCoverEditor();
+      await this.setDialogCover(file);
+      await this.confirmCoverEditor();
+      return { ok: true, via: "编辑封面", scope: "main" };
+    },
+    async openCoverEditor() {
+      const editorAttempts = timings.editorAttempts ?? 4;
+      const polls = timings.editorPolls ?? 8;
+      const hoverMs = timings.hoverMs ?? 600;
+      for (let attempt = 1; attempt <= editorAttempts; attempt += 1) {
+        try {
+          if (typeof page.hover === "function") {
+            await page.hover(MAIN_COVER_CARD_SELECTOR);
+            await pause(hoverMs);
+          }
+          if (typeof page.click === "function") {
+            await page.click(COVER_EDIT_ENTRY_SELECTOR);
+          }
+        } catch {
+          // The entry is hover-revealed; a zero-size box throws until the
+          // overlay settles. The dialog poll below decides success.
+        }
+        for (let i = 0; i < polls; i += 1) {
+          await pause(waitMs);
+          const state = await evalAct({ op: "cover-editor-state" });
+          if (state && state.dialogOpen) return { ok: true, attempts: attempt };
+        }
+        try {
+          if (page.keyboard && typeof page.keyboard.press === "function") {
+            await page.keyboard.press("Escape");
+          }
+        } catch {
+          // best effort close of a half-open dialog before the next attempt
+        }
+        await pause(waitMs);
+      }
+      throw new Error("封面编辑器（编辑封面）没有打开");
+    },
+    async setDialogCover(file) {
+      const found = await evalAct({ op: "dialog-cover-input" });
+      if (!found.ok) throw new Error(found.error || "cover editor image input not found");
       await this.setInputFiles(found.selector, file);
       return found;
+    },
+    async confirmCoverEditor() {
+      let last = null;
+      for (let i = 0; i < doneAttempts; i += 1) {
+        last = await evalAct({ op: "cover-editor-state" });
+        if (last && last.doneFound && last.doneEnabled) break;
+        await pause(waitMs);
+      }
+      if (!last || !last.doneFound || !last.doneEnabled) {
+        const error = new Error("封面编辑器的 完成 按钮一直没有就绪（封面图未处理完成）");
+        error.state = last;
+        throw error;
+      }
+      const clicked = await evalAct({ op: "click-cover-editor-done" });
+      if (!clicked.ok) throw new Error(clicked.error || "完成 click failed");
+      for (let i = 0; i < closeAttempts; i += 1) {
+        await pause(waitMs);
+        const state = await evalAct({ op: "cover-editor-state" });
+        if (state && !state.dialogOpen) return { ok: true, state };
+      }
+      throw new Error("封面编辑器在点 完成 后没有关闭");
     },
     async waitMainCover(before) {
       let last = null;
@@ -192,7 +263,7 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
         if (mainCoverApplied(before, last)) return { ok: true, state: last };
         await pause(waitMs);
       }
-      const error = new Error("Main cover preview did not change after 选择图片上传");
+      const error = new Error("Main cover preview did not change after 编辑封面");
       error.state = last;
       throw error;
     },
@@ -245,9 +316,24 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
         throw new Error("page.keyboard.insertText is required for the ProseMirror body");
       }
       await page.click(target.selector);
-      await page.keyboard.insertText(body);
+      // 2026-11-05: one insertText of the whole body turned every \n into
+      // extra blank lines on the publish page. Write line by line and press
+      // Enter between lines so ProseMirror splits paragraphs cleanly.
+      const lines = String(body || "").split("\n");
+      const hasEnter = typeof page.keyboard.press === "function";
+      for (let i = 0; i < lines.length; i += 1) {
+        if (i > 0) {
+          if (hasEnter) await page.keyboard.press("Enter");
+          else await page.keyboard.insertText("\n");
+        }
+        if (lines[i]) await page.keyboard.insertText(lines[i]);
+      }
       const read = await evalAct({ op: "body-value" });
-      if (!read.ok || String(read.value || "") !== String(body || "")) {
+      // innerText renders every block (paragraphs, and the blank line between
+      // description and topics) as its own \n\n separator. Compare with runs
+      // of newlines normalized so paragraph structure, not rendering, decides.
+      const normalize = (value) => String(value || "").replace(/\n{2,}/g, "\n\n").trim();
+      if (!read.ok || normalize(read.value) !== normalize(body)) {
         throw new Error(`description readback mismatch: ${read && read.value != null ? read.value : read && read.error}`);
       }
       return read;
@@ -255,16 +341,33 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
     async clickPublish(mode = "video") {
       if (mode === "image") return this.clickPublishImage();
       const result = await evalAct({ op: "click-publish" });
-      if (!result.ok) throw new Error(result.error || "发布 button not found");
-      if (typeof result.x === "number" && page.mouse && typeof page.mouse.click === "function") {
-        await page.mouse.click(result.x, result.y);
-        return result;
+      if (result.ok) {
+        if (typeof result.x === "number" && page.mouse && typeof page.mouse.click === "function") {
+          await page.mouse.click(result.x, result.y);
+          return result;
+        }
+        if (typeof page.click === "function" && result.selector) {
+          await page.click(result.selector);
+          return result;
+        }
+        throw new Error("发布 button was found but the page has no click API");
       }
-      if (typeof page.click === "function" && result.selector) {
-        await page.click(result.selector);
-        return result;
+      // 2026-11-05: the video 发布 button can sit in a closed shadow root, so
+      // DOM matching finds nothing. Fall back to the a11y snapshot path that
+      // image notes already use.
+      if (typeof page.snapshot === "function") {
+        const snap = await page.snapshot();
+        const ref = publishButtonRef(snap);
+        if (ref != null && typeof page.click === "function") {
+          await page.click(`ref=${ref}`);
+          return { ok: true, via: `ref=${ref}` };
+        }
+        if (typeof page.click === "function") {
+          await page.click("loc=role:button[name='发布']");
+          return { ok: true, via: "loc=role:button" };
+        }
       }
-      throw new Error("发布 button was found but the page has no click API");
+      throw new Error(result.error || "发布 button not found");
     },
     // The image editor footer button lives in a closed shadow root. DOM
     // selectors cannot reach it; the accessibility snapshot names it as a

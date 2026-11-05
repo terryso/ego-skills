@@ -50,7 +50,7 @@ export async function applyCover(session, file) {
           state,
           replaced_first_frame: true,
           cover_scope: "main",
-          via: "选择图片上传",
+          via: "编辑封面",
         };
       }
       lastError = "main cover preview did not change";
@@ -63,7 +63,7 @@ export async function applyCover(session, file) {
     attempts: 2,
     replaced_first_frame: false,
     cover_scope: "main",
-    error: "Main cover was not confirmed after 选择图片上传. Refusing to publish with the video first frame. PK slots are not used; they leave the thumbnail as the first frame until PK ends.",
+    error: "Main cover was not confirmed after 编辑封面. Refusing to publish with the video first frame. PK slots are not used; they leave the thumbnail as the first frame until PK ends.",
     detail: lastError,
   };
 }
@@ -147,14 +147,14 @@ export async function performPublish(config, session, checked) {
         exitCode: 1,
         cover_confirmed: false,
         replaced_first_frame: false,
-        error: cover.error || "Main cover was not confirmed after 选择图片上传. Refusing to publish with the video first frame.",
+        error: cover.error || "Main cover was not confirmed after 编辑封面. Refusing to publish with the video first frame.",
       };
     }
     coverConfirmed = true;
     base.cover_confirmed = true;
     base.replaced_first_frame = true;
     base.cover_scope = cover.cover_scope || "main";
-    base.cover_via = cover.via || "选择图片上传";
+    base.cover_via = cover.via || "编辑封面";
   } else if (checked.images && checked.images.length) {
     coverConfirmed = true;
     base.cover_confirmed = true;
@@ -306,13 +306,13 @@ export async function performEdit(config, session, checked) {
       ...base,
       exitCode: 1,
       cover_confirmed: false,
-      error: cover.error || "Main cover was not confirmed after 选择图片上传. Refusing to click 发布.",
+      error: cover.error || "Main cover was not confirmed after 编辑封面. Refusing to click 发布.",
     };
   }
   base.cover_confirmed = true;
   base.replaced_first_frame = true;
   base.cover_scope = cover.cover_scope || "main";
-  base.cover_via = cover.via || "选择图片上传";
+  base.cover_via = cover.via || "编辑封面";
   const again = await readGate(session, config.expectAccount);
   base.nickname = again.nickname || base.nickname;
   if (!again.logged_in || !again.ok) {
