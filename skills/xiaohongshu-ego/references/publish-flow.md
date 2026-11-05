@@ -2,7 +2,9 @@
 
 Captured 2026-11-04 on creator account 听懂AI. Do not invent APIs. This skill drives the creator web UI with ego-browser.
 
-Two public notes from that capture, after the PK cover was applied:
+Cover flow re-captured 2026-11-05: the old `选择图片上传` control is gone. The main cover is set through the cover editor dialog (编辑封面).
+
+Two public notes from the 2026-11-04 capture, after the PK cover was applied:
 
 - https://www.xiaohongshu.com/explore/6aeae169000000000e00c4ad
 - https://www.xiaohongshu.com/explore/6aeae281000000000e00cb56
@@ -25,29 +27,32 @@ Also reachable from creator home → 发布笔记 → 上传视频.
 ## File inputs
 
 1. Video: `input.upload-input[type=file]` accept `.mp4,.mov,.flv,.f4v,.mkv,.rm,.rmvb,.m4v,.mpg,.mpeg,.ts`
-2. Main cover: the file input next to the control labeled `选择图片上传`. Do not use `input.pk-cover-list-file-input` for `--cover`.
+2. Main cover: `.upload-btn input.upload-input` inside the cover editor dialog (accept `image/png, image/jpeg, image/*`). Do not use `input.pk-cover-list-file-input` for `--cover`.
 
-Use `page.setInputFiles`. Do not open an OS file dialog. There is **no crop or confirm dialog** after the cover file is set. Do not click 确定, 完成, or a crop control.
+Use `page.setInputFiles`. Do not open an OS file dialog.
 
 ## When the video is ready
 
 Wait until the body no longer matches `/上传中\s*\d+%/` and shows 重新上传 or 设置封面.
 
-The platform then uses the **video first frame** as the main cover until 「选择图片上传」 replaces it. A PK-slot upload does not do that.
+The platform then uses the **video first frame** as the main cover until the 编辑封面 dialog replaces it. A PK-slot upload does not do that.
 
 ## Cover, required when `--cover` is set
 
-Verified on 2026-11-04 with note 053: 「选择图片上传」 sets the **main** cover. After that control was used, the published note's cover was the custom image.
+Verified on 2026-11-05: the cover editor dialog sets the **main** cover. 2026-11-05 UI facts:
 
-PK slots are a different control (`input.pk-cover-list-file-input`). Filling only those leaves the main cover and the note-manager thumbnail as the video first frame, badged 封面待PK, until the 72-hour PK ends. `--cover` does not upload a PK slot.
+- 「设置封面」 is now a section title, not a control. 「编辑封面」 (`.cover-edit-entry`) is the entry; it sits in a hover-revealed overlay on the 主封面 card, so it has a zero-size box until the card (`.cover--column .default.column`) is hovered.
+- The dialog has 裁剪 / 模版 / 上传 tabs; the image input exists immediately. After `setInputFiles`, the 完成 button stays disabled for a moment (cover processing) and enables after a few seconds.
+- Clicking 完成 closes the dialog and the 主封面 card renders the uploaded image as its `background-image` (a `ros-preview.xhscdn.com/spectrum/...` URL). That background-image is the change signal.
+- PK may auto-fill 3 recommended covers (「PK封面 3/3 已自动填充推荐封面」) with the switch remembered on. PK slots are a different control (`input.pk-cover-list-file-input`). Filling only those leaves the main cover and the note-manager thumbnail as the video first frame, badged 封面待PK, until the 72-hour PK ends. `--cover` does not upload a PK slot.
 
 The script:
 
-1. Finds the element whose text is exactly `选择图片上传`.
-2. Uses the `input[type=file]` next to that control. It refuses `input.upload-input` and `input.pk-cover-list-file-input`. No other class name is assumed.
-3. Calls `setInputFiles` on that input.
-4. Waits until the main-cover preview `img` (not an image inside a `pk-cover` node) changes.
-5. Retries the file input once. If the preview does not change, exits `1` and does not click 发布.
+1. Hovers the 主封面 card (`.cover--column .default.column`) to reveal 编辑封面, clicks `.cover-edit-entry`. Retries up to 4 times (press Escape between attempts); the dialog is confirmed by `.upload-btn input.upload-input` appearing.
+2. Calls `setInputFiles` on the dialog's image input (marked `data-xhs-editor-cover`). It refuses the PK input.
+3. Waits until the dialog's 完成 button exists and is enabled, clicks it, and waits for the dialog to close.
+4. Waits until the main-cover card signature (background-image + card `img` srcs) changes.
+5. Retries the whole sequence once. If the preview does not change, exits `1` and does not click 发布.
 
 Without `--cover`, do not invent an image. Leave the first frame and say so in the plan.
 
@@ -75,7 +80,7 @@ Verified path for note `6aeae281000000000e00cb56`:
 
 1. Note manager → 编辑
 2. `https://creator.xiaohongshu.com/publish/update?id=<noteId>&noteType=video`
-3. The same 「选择图片上传」 main-cover input, not `input.pk-cover-list-file-input`
+3. The same 编辑封面 dialog main-cover input (`.upload-btn input.upload-input`), not `input.pk-cover-list-file-input`
 4. The main-cover preview must change before 发布
 5. Footer button whose text is exactly `发布`
 

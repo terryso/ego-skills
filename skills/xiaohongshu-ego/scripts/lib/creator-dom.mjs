@@ -6,6 +6,12 @@
 export const VIDEO_INPUT_SELECTOR = "input.upload-input";
 export const COVER_INPUT_SELECTOR = "input.pk-cover-list-file-input";
 export const PK_COVER_CLOSE_SELECTOR = ".pk-cover-list-slide-close";
+// 2026-11-05 capture: the old 选择图片上传 control is gone. The main cover
+// now lives in the cover editor dialog: hover the 主封面 card, click
+// 编辑封面 (.cover-edit-entry), upload into .upload-btn input.upload-input,
+// then click the 完成 button.
+export const MAIN_COVER_CARD_SELECTOR = ".cover--column .default.column";
+export const COVER_EDIT_ENTRY_SELECTOR = ".cover-edit-entry";
 
 export function creatorAct(payload) {
   const doc = globalThis.document;
@@ -188,28 +194,6 @@ export function creatorAct(payload) {
     return classList(el).includes("pk-cover-list-file-input");
   }
 
-  function isVideoInput(el) {
-    return classList(el).includes("upload-input");
-  }
-
-  function isMainFileInput(el) {
-    return isFileInput(el) && !isPkInput(el) && !isVideoInput(el);
-  }
-
-  function findChooser() {
-    const nodes = qsa("*");
-    const hits = nodes.filter((el) => {
-      const label = labelOf(el);
-      return label.full === "选择图片上传" || label.own === "选择图片上传";
-    });
-    return hits.length ? hits[hits.length - 1] : null;
-  }
-
-  function fileInputsUnder(root) {
-    if (!root || typeof root.querySelectorAll !== "function") return [];
-    return [...root.querySelectorAll("input")].filter((el) => isMainFileInput(el));
-  }
-
   if (op === "cover-input") {
     const found = fileInput("input.pk-cover-list-file-input", "PK cover");
     if (!found.ok) return found;
@@ -219,43 +203,63 @@ export function creatorAct(payload) {
     return { ...found, scope: "pk" };
   }
 
-  if (op === "main-cover-input") {
-    const chooser = findChooser();
-    if (!chooser) return { ok: false, error: "选择图片上传 control not found" };
-    let node = chooser;
-    let input = null;
-    for (let depth = 0; node && depth < 8; depth += 1) {
-      const found = fileInputsUnder(node);
-      if (found.length) {
-        input = found[0];
-        break;
-      }
-      node = node.parentElement || null;
+  if (op === "dialog-cover-input") {
+    const inputs = qsa("input").filter(isFileInput).filter((el) => {
+      const parent = el.parentElement;
+      return parent && classList(parent).includes("upload-btn");
+    });
+    const input = inputs.find((el) => acceptKind(el.getAttribute("accept")) === "image");
+    if (!input) {
+      return { ok: false, error: "cover editor image input (.upload-btn) not found; click 编辑封面 first" };
     }
-    if (!input) return { ok: false, error: "main cover file input next to 选择图片上传 was not found" };
-    if (isPkInput(input) || isVideoInput(input)) {
-      return { ok: false, error: "refusing the PK cover input for the main cover" };
-    }
-    return { ok: true, selector: mark(input, "data-xhs-main-cover"), via: "选择图片上传", scope: "main" };
+    if (isPkInput(input)) return { ok: false, error: "refusing the PK cover input for the main cover" };
+    return { ok: true, selector: mark(input, "data-xhs-editor-cover"), via: "编辑封面", scope: "main" };
+  }
+
+  if (op === "cover-editor-state") {
+    // Inline selector: creatorAct is serialized and must not touch module scope.
+    const input = qs(".upload-btn input.upload-input");
+    const done = qsa("button").find((el) => {
+      const t = String(el.innerText || "").replace(/\s+/g, "");
+      return t === "完成" || labelOf(el).full === "完成";
+    });
+    return {
+      ok: true,
+      dialogOpen: Boolean(input),
+      doneFound: Boolean(done),
+      doneEnabled: Boolean(done) && !done.disabled,
+    };
+  }
+
+  if (op === "click-cover-editor-done") {
+    const done = qsa("button").find((el) => {
+      const t = String(el.innerText || "").replace(/\s+/g, "");
+      return t === "完成" || labelOf(el).full === "完成";
+    });
+    if (!done) return { ok: false, error: "完成 button not found in the cover editor" };
+    if (done.disabled) return { ok: false, error: "完成 button is still disabled (cover not processed yet)" };
+    if (typeof done.click !== "function") return { ok: false, error: "完成 button is not clickable" };
+    done.click();
+    return { ok: true };
   }
 
   if (op === "main-cover-state") {
-    const chooser = findChooser();
-    if (!chooser) return { ok: false, error: "选择图片上传 control not found", signature: "" };
-    let root = chooser;
-    for (let depth = 0; depth < 4 && root && root.parentElement && root.parentElement.tagName !== "BODY"; depth += 1) {
-      root = root.parentElement;
+    // Inline selector: creatorAct is serialized and must not touch module scope.
+    const card = qs(".cover--column .default.column");
+    if (!card) return { ok: false, error: "主封面 card not found", signature: "", label: "主封面", scope: "main" };
+    const style = card.style || {};
+    let bg = "";
+    if (typeof style.getPropertyValue === "function") {
+      try { bg = String(style.getPropertyValue("background-image") || ""); } catch { bg = ""; }
     }
-    const images = root && typeof root.querySelectorAll === "function" ? [...root.querySelectorAll("img")] : [];
-    const signature = images.filter((el) => {
-      let node = el;
-      while (node) {
-        if (String(node.className || "").includes("pk-cover")) return false;
-        node = node.parentElement || null;
-      }
-      return true;
-    }).map((el) => (el.getAttribute ? (el.getAttribute("src") || "") : "")).join("|");
-    return { ok: true, signature, label: "选择图片上传", scope: "main" };
+    if (!bg) bg = String(style.backgroundImage || "");
+    if (/^\s*none\s*$/i.test(bg)) bg = "";
+    const images = typeof card.querySelectorAll === "function"
+      ? [...card.querySelectorAll("img")]
+      : [];
+    const signature = [bg, ...images.map((el) => (el.getAttribute ? (el.getAttribute("src") || "") : ""))]
+      .filter(Boolean).join("|");
+    return { ok: true, signature, label: "主封面", scope: "main" };
   }
 
   if (op === "close-pk-cover") {

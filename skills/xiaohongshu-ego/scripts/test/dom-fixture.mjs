@@ -12,7 +12,9 @@ function matches(el, part) {
     const cls = rest.slice(1).split("[")[0];
     rest = rest.slice(1 + cls.length);
     const classes = String(el.className || "").split(/\s+/);
-    if (!classes.includes(cls)) return false;
+    // ".a.b" requires both classes, like a real css engine.
+    const wanted = cls.split(".").filter(Boolean);
+    if (!wanted.every((name) => classes.includes(name))) return false;
   }
   if (rest.startsWith("[")) {
     const body = rest.slice(1, -1);

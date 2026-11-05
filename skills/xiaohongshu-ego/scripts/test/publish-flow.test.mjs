@@ -97,7 +97,7 @@ test("applyCover retries once and then refuses", async () => {
   const failed = await applyCover(stuck.api, COVER);
   assert.equal(failed.ok, false);
   assert.match(failed.error, /first frame/);
-  assert.match(failed.error, /选择图片上传/);
+  assert.match(failed.error, /编辑封面/);
   const soft = session({ badCover: true, cover: { signature: "first-frame", scope: "main" } });
   const unchanged = await applyCover(soft.api, COVER);
   assert.equal(unchanged.ok, false);
@@ -118,7 +118,7 @@ test("dry-run lists the cover and does not upload", async () => {
   assert.equal(summary.uploaded, false);
   assert.equal(summary.plan.cover, cover);
   assert.equal(summary.plan.cover_mode, "main-cover");
-  assert.equal(summary.plan.cover_selector, "选择图片上传");
+  assert.equal(summary.plan.cover_selector, "编辑封面");
   assert.equal(opens[0].startUrl, CREATOR_HOME);
   assert.equal(live.calls.some((call) => call[0] === "setVideo"), false);
   assert.equal(live.calls.some((call) => call[0] === "setMainCover"), false);
@@ -196,17 +196,17 @@ test("--yes replaces the first frame before 发布", async () => {
   assert.equal(live.calls.find((call) => call[0] === "goto")[1], PUBLISH_URL);
 });
 
-test("missing 选择图片上传 fails before 发布 and does not use PK", async () => {
-  const missing = session({ coverThrow: "选择图片上传 control not found" });
+test("missing 编辑封面 fails before 发布 and does not use PK", async () => {
+  const missing = session({ coverThrow: "封面编辑器（编辑封面）没有打开" });
   const summary = await performPublish({ yes: true }, missing.api, checked);
   assert.equal(summary.exitCode, 1);
-  assert.match(summary.error, /选择图片上传/);
+  assert.match(summary.error, /编辑封面/);
   assert.equal(summary.clicked_publish, false);
   assert.equal(missing.calls.some((call) => call[0] === "clickPublish"), false);
   const live = session();
   const ok = await performPublish({ yes: true }, live.api, checked);
   assert.equal(ok.cover_scope, "main");
-  assert.equal(ok.cover_via, "选择图片上传");
+  assert.equal(ok.cover_via, "编辑封面");
   assert.equal(live.calls.some((call) => call[0] === "clearAutoCovers"), false);
 });
 

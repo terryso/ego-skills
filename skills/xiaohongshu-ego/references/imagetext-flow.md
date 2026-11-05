@@ -42,4 +42,4 @@ Verified 2026-11-05 by publishing note `6aeb6a4d000000000e00dbcc`:
 
 ## Cover
 
-There is no cover step. The first image is the note cover. `--cover` fails validation for `--images` notes. 选择图片上传 and the PK slots belong to the video flow only.
+There is no cover step. The first image is the note cover. `--cover` fails validation for `--images` notes. The 编辑封面 dialog and the PK slots belong to the video flow only.

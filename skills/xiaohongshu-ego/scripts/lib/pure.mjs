@@ -15,7 +15,7 @@ export const EDIT_TASK = "xiaohongshu-ego-edit";
 export const RESULT_TAG = "XHSEGO";
 export const VIDEO_INPUT_SELECTOR = "input.upload-input";
 export const COVER_INPUT_SELECTOR = "input.pk-cover-list-file-input";
-export const MAIN_COVER_LABEL = "选择图片上传";
+export const MAIN_COVER_LABEL = "编辑封面";
 export const TITLE_RECOMMENDED_CHARS = 20;
 export const LINKS_EXIT = 4;
 export const IMAGE_TAB_LABEL = "上传图文";
@@ -37,7 +37,7 @@ export const HOW_TO_LOGIN = [
   "Visit https://creator.xiaohongshu.com/ and sign in to the creator account that should publish. www.xiaohongshu.com can show a different account than the creator site.",
   "Leave that creator session signed in inside Ego. Do not paste cookies or type a password into the skill.",
   "Re-run check-login. When --expect-account is set, the creator header nickname must match before any upload.",
-  "One video note per run. Nothing is uploaded without --yes. If --cover is set, 发布 is clicked only after 选择图片上传 changes the main-cover preview.",
+  "One video note per run. Nothing is uploaded without --yes. If --cover is set, 发布 is clicked only after the 编辑封面 dialog changes the main-cover preview.",
 ];
 
 export const HOW_TO_LOGIN_ZH = [
@@ -45,7 +45,7 @@ export const HOW_TO_LOGIN_ZH = [
   "访问 https://creator.xiaohongshu.com/ ，登录要发布的创作者账号。www.xiaohongshu.com 上的登录账号可能和创作者平台不是同一个。",
   "保持 Ego 里的创作者平台为登录状态。不要粘贴 Cookie，也不要让技能代填密码。",
   "重新跑 check-login。传了 --expect-account 时，必须是创作者页眉上的昵称一致，才能上传。",
-  "每次只发一条视频笔记。没有 --yes 不会上传。传了 --cover 时，必须用「选择图片上传」换上主封面，并且预览已变化，才会点「发布」。",
+  "每次只发一条视频笔记。没有 --yes 不会上传。传了 --cover 时，必须通过「编辑封面」弹窗换上主封面，并且预览已变化，才会点「发布」。",
 ];
 
 export const LOGIN_TIP =
@@ -59,7 +59,7 @@ export const USAGE = `xiaohongshu-ego — publish one Xiaohongshu note (video or
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
 Nothing is uploaded without --yes: that run only checks login and prints a plan (exit 3).
 --video and --images are mutually exclusive: one note is either a video or an image-text note.
-With --yes and --cover (video only), 发布 is clicked only after 选择图片上传 changes the main-cover preview.
+With --yes and --cover (video only), 发布 is clicked only after the 编辑封面 dialog (hover the 主封面 card, upload, 完成) changes the main-cover preview.
 If that preview does not change, the run fails and does not publish. PK slots are not used.
 Without --cover, the platform keeps the first frame. This skill does not invent a cover.
 Image-text notes take 1-18 images (.jpg/.jpeg/.png/.webp, max 32MB each) through the 上传图文 tab.
@@ -76,7 +76,7 @@ The first image becomes the note cover; --cover is rejected for image-text notes
 check-login exits 0 when the creator site is signed in, 2 when login is required, the nickname mismatches, or ego-browser is missing.
 post-video/post-images without --yes check login, print a plan JSON, and exit 3. They do not upload.
 Notes cannot contain links. http(s), www, bare domains, and t.co in --title, --desc, or --topics exit 4 unless --strip-links is set.
-post-video --yes sets the main cover via 选择图片上传 when --cover is passed, then prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
+post-video --yes sets the main cover via the 编辑封面 dialog when --cover is passed, then prints https://www.xiaohongshu.com/explore/<noteId> after 发布成功.
 If the main-cover preview does not change, --yes exits 1 and does not click 发布.
 post-images --yes clicks the 上传图文 tab, uploads all images through the image input, waits for every thumbnail, then publishes.
 edit-cover.mjs is best-effort for a note that already published. Prefer --cover on post-video.
@@ -506,9 +506,9 @@ export function planOf(config = {}, checked = {}, gate = {}) {
   } else if (!cover) {
     plan.cover_note = "No --cover. Xiaohongshu keeps the video first frame. This skill does not invent a cover.";
   } else if (noteId) {
-    plan.cover_note = "Best-effort edit. Use 选择图片上传 for the main cover, then confirm the main-cover preview changed before 发布. PK slots are not used. Save may return the note to 审核中. If the page says 加载失败, 发布 is not clicked.";
+    plan.cover_note = "Best-effort edit. Set the main cover through the 编辑封面 dialog, then confirm the main-cover preview changed before 发布. PK slots are not used. Save may return the note to 审核中. If the page says 加载失败, 发布 is not clicked.";
   } else {
-    plan.cover_note = "Set the main cover with 选择图片上传. Confirm the main-cover preview changed before 发布. PK slots stay unused: they leave the thumbnail as the first frame until PK ends. If confirmation fails, 发布 is not clicked.";
+    plan.cover_note = "Set the main cover through the 编辑封面 dialog (hover the 主封面 card, upload, wait for 完成, click it). Confirm the main-cover preview changed before 发布. PK slots stay unused: they leave the thumbnail as the first frame until PK ends. If confirmation fails, 发布 is not clicked.";
   }
   return plan;
 }
@@ -671,7 +671,7 @@ export function assertCoverBeforePublish({ cover = "", coverConfirmed = false } 
   if (String(cover || "").trim() && !coverConfirmed) {
     return {
       ok: false,
-      error: "Refusing to click 发布 because the main cover was not confirmed after 选择图片上传. The video first frame would stay the thumbnail.",
+      error: "Refusing to click 发布 because the main cover was not confirmed after 编辑封面. The video first frame would stay the thumbnail.",
     };
   }
   return { ok: true };

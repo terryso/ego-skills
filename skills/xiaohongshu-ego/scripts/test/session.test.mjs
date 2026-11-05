@@ -45,7 +45,12 @@ function page(extra = {}) {
     keyboard: {
       async insertText(value) {
         const el = globalThis.document.querySelector("[data-xhs-body='1']");
-        if (el) el.innerText = value;
+        if (el) el.innerText += value;
+      },
+      async press(key) {
+        if (key !== "Enter") return;
+        const el = globalThis.document.querySelector("[data-xhs-body='1']");
+        if (el) el.innerText += "\n";
       },
     },
     mouse: extra.mouse || null,
@@ -96,19 +101,33 @@ test("setVideo and setCover use the captured file inputs", async () => {
   const session = createCreatorSession({ task: task(), page: tab });
   await session.setVideo("/absolute/path/to/video.mp4");
   await session.setCover("/absolute/path/to/cover-3x4.png");
-  const preview = h("img", { attrs: { src: "first-frame.jpg" } });
-  const main = h("input", { type: "file", accept: ".jpg,.jpeg,.png" });
-  const group = h("div", {}, [h("button", {}, ["选择图片上传"]), main, preview]);
-  createDocument(h("body", {}, [video, cover, group]));
+  const card = h("div", { className: "default column" }, [
+    h("img", { className: "coverDetectTag", attrs: { src: "badge.png" } }),
+  ]);
+  const coverColumn = h("div", { className: "cover--column" }, [card]);
+  const entry = h("div", { className: "cover-edit-entry" });
+  const main = h("input", { className: "upload-input", type: "file", accept: "image/png, image/jpeg, image/*" });
+  const uploadBtn = h("div", { className: "upload-btn" }, [main]);
+  const done = h("button", {
+    onClick: () => {
+      body.childNodes = body.childNodes.filter((node) => node !== uploadBtn);
+    },
+  }, ["完成"]);
+  const body = h("body", {}, [video, cover, coverColumn, entry, uploadBtn, done]);
+  createDocument(body);
+  const before = await session.mainCoverState();
+  assert.equal(before.signature, "badge.png");
   await session.setMainCover("/absolute/path/to/cover-3x4.png");
-  preview.setAttribute("src", "custom-cover.jpg");
-  const applied = await session.waitMainCover(await session.mainCoverState().then(() => ({ signature: "first-frame.jpg" })));
-  assert.equal(applied.state.signature, "custom-cover.jpg");
+  assert.equal(entry.clicked, 1);
   assert.deepEqual(tab.files[0], { selector: VIDEO_INPUT_SELECTOR, file: "/absolute/path/to/video.mp4" });
   assert.deepEqual(tab.files[1], { selector: COVER_INPUT_SELECTOR, file: "/absolute/path/to/cover-3x4.png" });
   assert.equal(tab.files[2].file, "/absolute/path/to/cover-3x4.png");
-  assert.equal(tab.files[2].selector, "[data-xhs-main-cover='1']");
+  assert.equal(tab.files[2].selector, "[data-xhs-editor-cover='1']");
   assert.notEqual(tab.files[2].selector, COVER_INPUT_SELECTOR);
+  assert.equal(done.clicked, 1);
+  card.style.backgroundImage = "url(custom-cover.jpg)";
+  const applied = await session.waitMainCover(before);
+  assert.equal(applied.state.signature, "url(custom-cover.jpg)|badge.png");
 });
 
 test("setCover reveals 换封面 once when the PK input is missing", async () => {

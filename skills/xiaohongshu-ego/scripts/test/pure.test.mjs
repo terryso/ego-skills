@@ -150,9 +150,9 @@ test("file validation includes a missing cover and does not invent one", () => {
   assert.equal(planOf({ title: "标题", desc: "正文" }, omitted).cover_mode, "platform-default-first-frame");
   const planned = planOf({ expectAccount: "听懂AI", cover }, ok, { nickname: "听懂AI" });
   assert.equal(planned.cover, cover);
-  assert.equal(planned.cover_selector, "选择图片上传");
+  assert.equal(planned.cover_selector, "编辑封面");
   assert.equal(planned.cover_mode, "main-cover");
-  assert.match(planned.cover_note, /选择图片上传/);
+  assert.match(planned.cover_note, /编辑封面/);
   assert.match(planned.cover_note, /PK slots/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -250,7 +250,7 @@ test("cover confirmation requires the toast and a counter advance", () => {
   assert.equal(coverReplacedFirstFrame({}, { pkApplied: true, text: "已添加 PK 封面 1/3" }), true);
   const guard = assertCoverBeforePublish({ cover: "/tmp/cover-3x4.png", coverConfirmed: false });
   assert.equal(guard.ok, false);
-  assert.match(guard.error, /选择图片上传/);
+  assert.match(guard.error, /编辑封面/);
   assert.match(guard.error, /first frame/);
   assert.equal(assertCoverBeforePublish({ cover: "", coverConfirmed: false }).ok, true);
   assert.equal(assertCoverBeforePublish({ cover: "/tmp/a.png", coverConfirmed: true }).ok, true);
