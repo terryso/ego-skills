@@ -20,7 +20,8 @@
     "xiaohongshu"
   ],
   "scripts": {
-    "test": "c8 node --test skills/*/scripts/test/*.test.mjs scripts/test/*.test.mjs",
+    "test": "c8 node --test \"skills/*/scripts/test/**/*.test.mjs\" \"scripts/test/**/*.test.mjs\"",
+    "hygiene": "node scripts/check-skill-hygiene.mjs",
     "new-skill": "node scripts/new-skill.mjs",
     "install-skills": "bash ./scripts/install-skills.sh"
   },

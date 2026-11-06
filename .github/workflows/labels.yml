@@ -1,0 +1,113 @@
+name: Labels
+
+# Creates the contributor labels and applies the ones that can be inferred.
+# needs-ego-smoke, blocked-tos, and "good first skill" are created only.
+# Maintainers add those by hand. This is not a required check, and it does
+# not log in to Ego.
+#
+# pull_request_target is used so fork PRs can be labeled. The job does not
+# checkout the pull request and does not run its code. It only reads the
+# changed-file list from the API.
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  sync:
+    name: sync labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure labels and apply the obvious ones
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: "skill-request", color: "0E8A16", description: "Proposal for a new ego-browser skill" },
+              { name: "skill-pr", color: "1D76DB", description: "Pull request that adds or changes a skill" },
+              { name: "bug", color: "D73A4A", description: "Broken shipped skill or install path" },
+              { name: "docs", color: "0075CA", description: "Documentation only" },
+              { name: "good first skill", color: "7057FF", description: "Small skill task for a new contributor" },
+              { name: "needs-ego-smoke", color: "FBCA04", description: "Local Ego smoke still to do; not a required check" },
+              { name: "blocked-tos", color: "B60205", description: "Waiting on a terms-of-service decision" },
+            ];
+
+            async function ensure(label) {
+              const params = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label.name,
+                color: label.color,
+                description: label.description,
+              };
+              try {
+                await github.rest.issues.createLabel(params);
+              } catch (error) {
+                const status = error.status || (error.response && error.response.status);
+                if (status !== 422) throw error;
+                await github.rest.issues.updateLabel(params);
+              }
+            }
+
+            for (const label of labels) {
+              await ensure(label);
+            }
+
+            if (context.eventName === "issues") {
+              const title = context.payload.issue.title || "";
+              const add = [];
+              if (/^skill\s*:/i.test(title)) add.push("skill-request");
+              if (/^bug\s*:/i.test(title)) add.push("bug");
+              if (add.length) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  labels: add,
+                });
+              }
+            }
+
+            if (context.eventName === "pull_request_target") {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100,
+              });
+              const add = [];
+              let skill = false;
+              let docs = false;
+              for (const file of files) {
+                const name = file.filename;
+                if (name.indexOf("skills/") === 0) skill = true;
+                if (
+                  name === "README.md" ||
+                  name === "README_CN.md" ||
+                  name === "CONTRIBUTING.md" ||
+                  name === "PLAN.md" ||
+                  name === "ACCEPTANCE.md" ||
+                  name.indexOf("docs/") === 0
+                ) docs = true;
+              }
+              if (skill) add.push("skill-pr");
+              if (docs) add.push("docs");
+              if (add.length) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.pull_request.number,
+                  labels: add,
+                });
+              }
+            }

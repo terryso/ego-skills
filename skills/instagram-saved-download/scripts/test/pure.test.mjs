@@ -76,7 +76,7 @@ test("toConfig and login copy", () => {
   assert.equal(config.outDir, path.resolve("/tmp/ig"));
   assert.throws(() => toConfig(parseArgs(["--media", "nope"]), { resolve }), /--media/);
   assert.throws(() => assertSafeOutDir("/", resolve), /filesystem root/);
-  assert.equal(defaultOut("/Users/nick"), "/Users/nick/Downloads/instagram-saved");
+  assert.equal(defaultOut("/tmp/fixture-home"), "/tmp/fixture-home/Downloads/instagram-saved");
   assert.match(USAGE, /Saved/);
   assert.match(LOGIN_TIP, /Anonymous/);
   assert.match(LOGIN_TIP_ZH, /收藏/);

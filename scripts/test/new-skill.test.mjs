@@ -23,8 +23,9 @@ function walk(dir) {
 
 test("npm test and c8 use globs so a new skill is included", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8"));
-  assert.match(pkg.scripts.test, /skills\/\*\/scripts\/test\/\*\.test\.mjs/);
-  assert.match(pkg.scripts.test, /scripts\/test\/\*\.test\.mjs/);
+  assert.match(pkg.scripts.test, /skills\/\*\/scripts\/test\/\*\*\/\*\.test\.mjs/);
+  assert.match(pkg.scripts.test, /scripts\/test\/\*\*\/\*\.test\.mjs/);
+  assert.equal(pkg.scripts.hygiene, "node scripts/check-skill-hygiene.mjs");
   assert.equal(pkg.scripts["new-skill"], "node scripts/new-skill.mjs");
   assert.deepEqual(pkg.c8.include, ["skills/*/scripts/lib/**/*.mjs"]);
   assert.ok(pkg.c8.exclude.includes("skills/*/scripts/lib/ego-deps.mjs"));
