@@ -639,7 +639,9 @@ export function mainCoverApplied(before, after) {
   if (after.scope === "pk") return false;
   const beforeSig = before && before.signature ? String(before.signature) : "";
   const afterSig = after.signature ? String(after.signature) : "";
-  if (!afterSig || !beforeSig || afterSig === beforeSig) return false;
+  // First frame often has no inline background-image yet, so beforeSig can be
+  // empty. A non-empty after that differs from before still counts as applied.
+  if (!afterSig || afterSig === beforeSig) return false;
   if (/pk-cover-list/.test(afterSig)) return false;
   return true;
 }

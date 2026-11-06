@@ -254,6 +254,14 @@ export function creatorAct(payload) {
     }
     if (!bg) bg = String(style.backgroundImage || "");
     if (/^\s*none\s*$/i.test(bg)) bg = "";
+    if (!bg && typeof getComputedStyle === "function") {
+      try {
+        const computed = String(getComputedStyle(card).getPropertyValue("background-image") || "");
+        if (computed && !/^\s*none\s*$/i.test(computed)) bg = computed;
+      } catch {
+        // ignore computed-style failures in odd environments
+      }
+    }
     const images = typeof card.querySelectorAll === "function"
       ? [...card.querySelectorAll("img")]
       : [];

@@ -20,7 +20,7 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
   if (!task || !page) throw new Error("createCreatorSession requires task and page");
   let finished = false;
   const uploadAttempts = timings.uploadAttempts ?? 40;
-  const coverAttempts = timings.coverAttempts ?? 8;
+  const coverAttempts = timings.coverAttempts ?? 16;
   const imageTabAttempts = timings.imageTabAttempts ?? 10;
   const doneAttempts = timings.doneAttempts ?? 30;
   const closeAttempts = timings.closeAttempts ?? 20;
@@ -312,10 +312,29 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
     async fillBody(body) {
       const target = await evalAct({ op: "body-target" });
       if (!target.ok) throw new Error(target.error || "ProseMirror body not found");
-      if (typeof page.click !== "function" || !page.keyboard || typeof page.keyboard.insertText !== "function") {
+      if (!page.keyboard || typeof page.keyboard.insertText !== "function") {
         throw new Error("page.keyboard.insertText is required for the ProseMirror body");
       }
-      await page.click(target.selector);
+      // After 编辑封面, a sticky <xhs-publish-btn> can intercept Playwright's
+      // hit-target check on the ProseMirror editor. Focus via DOM instead of
+      // page.click so insertText still lands in the body.
+      if (typeof page.evaluate === "function") {
+        const focused = await page.evaluate((selector) => {
+          const el = document.querySelector(selector);
+          if (!el) return { ok: false, error: "body selector missing" };
+          try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch {}
+          if (typeof el.focus === "function") el.focus();
+          if (typeof el.click === "function") el.click();
+          return { ok: true, active: document.activeElement === el || (el.contains && el.contains(document.activeElement)) };
+        }, target.selector);
+        if (!focused || !focused.ok) {
+          throw new Error((focused && focused.error) || "body focus failed");
+        }
+      } else if (typeof page.click === "function") {
+        await page.click(target.selector);
+      } else {
+        throw new Error("page.evaluate or page.click is required to focus the ProseMirror body");
+      }
       // 2026-11-05: one insertText of the whole body turned every \n into
       // extra blank lines on the publish page. Write line by line and press
       // Enter between lines so ProseMirror splits paragraphs cleanly.
@@ -329,10 +348,10 @@ export function createCreatorSession({ task, page, pageName = "p1", keep = false
         if (lines[i]) await page.keyboard.insertText(lines[i]);
       }
       const read = await evalAct({ op: "body-value" });
-      // innerText renders every block (paragraphs, and the blank line between
-      // description and topics) as its own \n\n separator. Compare with runs
-      // of newlines normalized so paragraph structure, not rendering, decides.
-      const normalize = (value) => String(value || "").replace(/\n{2,}/g, "\n\n").trim();
+      // innerText renders every ProseMirror block as \n\n. Our writer also
+      // presses Enter for blank lines in composeBody, so exact newline runs
+      // diverge. Compare on content lines only.
+      const normalize = (value) => String(value || "").replace(/\n+/g, "\n").trim();
       if (!read.ok || normalize(read.value) !== normalize(body)) {
         throw new Error(`description readback mismatch: ${read && read.value != null ? read.value : read && read.error}`);
       }

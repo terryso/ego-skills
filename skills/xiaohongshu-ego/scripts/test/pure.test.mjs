@@ -238,6 +238,9 @@ test("cover confirmation requires the toast and a counter advance", () => {
   assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "custom-cover.jpg", scope: "main" }), true);
   assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "pk-cover-list-blob", scope: "pk" }), false);
   assert.equal(mainCoverApplied({ signature: "first-frame.jpg" }, { signature: "first-frame.jpg" }), false);
+  assert.equal(mainCoverApplied({ signature: "" }, { signature: "url(custom-cover.jpg)", scope: "main" }), true);
+  assert.equal(mainCoverApplied(null, { signature: "url(custom-cover.jpg)", scope: "main" }), true);
+  assert.equal(mainCoverApplied({ signature: "" }, { signature: "", scope: "main" }), false);
   assert.equal(coverReplacedFirstFrame(before, applied), true);
   assert.equal(coverReplacedFirstFrame(before, { pkApplied: true, coverCount: 0, text: "已添加 PK 封面 封面 0/3" }), false);
   assert.equal(coverReplacedFirstFrame(before, { pkApplied: false, coverCount: 1, text: "封面 1/3" }), false);
