@@ -72,10 +72,10 @@ Publish skills:
 `npm test` is c8 plus `node --test`. The script is a glob, not a hand-maintained list:
 
 ```json
-"test": "c8 node --test skills/*/scripts/test/*.test.mjs scripts/test/*.test.mjs"
+"test": "c8 node --test \"skills/*/scripts/test/**/*.test.mjs\" \"scripts/test/**/*.test.mjs\""
 ```
 
-c8 includes every `skills/*/scripts/lib/**/*.mjs` except `ego-deps.mjs`, with `"all": true` and a **lines ≥ 80%** gate. A new lib file is picked up on its own. You do not edit an allow-list.
+The quotes are there so the shell does not expand `**` itself. Node's test runner expands the glob, including a test nested under `scripts/test/`. c8 includes every `skills/*/scripts/lib/**/*.mjs` except `ego-deps.mjs`, with `"all": true` and a **lines ≥ 80%** gate. A new lib file is picked up on its own. You do not edit an allow-list.
 
 Put testable logic in `scripts/lib/` other than `ego-deps.mjs`. `ego-deps.mjs` is the runtime boundary (`taskSpace` and the other globals that exist only inside `ego-browser nodejs`). It is excluded from c8 on purpose. Entry files such as `check-login.mjs` are also outside the include set; drive them from lib helpers or spawn them in `scripts/test/`.
 
@@ -98,7 +98,7 @@ A docs-only pull request still runs `npm test`. It does not add a skill, so it d
    `<id>` is lowercase letters, digits, and single hyphens, starting with a letter (`my-site-download`). The command copies `skills/_template/` to `skills/<id>/` and replaces `__SKILL_ID__`. It will not overwrite an existing directory. Names that start with `_` are reserved for scaffolds. `scripts/install-skills.sh` does not link those directories. Shipped skills still link as before.
 
 4. Replace every TEMPLATE note, the `example.com` login URL, and the success-state section. Implement the skill. Keep examples on `/tmp/...` or `/absolute/path/to/video.mp4`.
-5. Run `npm test`.
+5. Run `npm run hygiene` and `npm test`.
 6. Open one pull request. Update `README.md`, `README_CN.md`, and the marketplace / plugin blurbs when the user-visible skill list changes. You can update the `package.json` description. Leave the version number to the maintainer.
 7. Review, then merge. A maintainer may add an `ACCEPTANCE.md` line and a demo GIF under `assets/demos/`. If you have no GIF, say why in the PR and give the local command you ran.
 
@@ -110,12 +110,39 @@ Please run `check-login` and the main path on your own Ego when you can, and pas
 
 ## Pull request checklist
 
-GitHub loads [.github/PULL_REQUEST_TEMPLATE.md](../.github/PULL_REQUEST_TEMPLATE.md). The short version: type of change, ego-browser only, no personal paths, login soft-fail, video success state, `npm test` / c8, bilingual README when the skill list changes, MIT checkbox, optional Ego smoke.
+GitHub loads [.github/PULL_REQUEST_TEMPLATE.md](../.github/PULL_REQUEST_TEMPLATE.md). The short version: type of change, ego-browser only, no personal paths, login soft-fail, video success state, `npm run hygiene` and `npm test` / c8, bilingual README when the skill list changes, MIT checkbox, optional Ego smoke.
 
-## Phase 2 (not in the tree yet)
+## CI (Phase 2)
 
-Still to do, on purpose:
+Phase 2 is in the tree. [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on pull requests and on pushes to `main`:
 
-- `.github/workflows/ci.yml` running `npm ci && npm test` on pull requests and `main`. Until that exists, run `npm test` locally.
-- `scripts/check-skill-hygiene.mjs`: `name` matches the directory, `ego-browser` is in bins, deny personal-path and secret-shaped files, require `scripts/test/` for every skill except `skills/_template`. The denylist should scan skill trees, not this document (this document names the path prefixes contributors must avoid).
-- CODEOWNERS and label automation (`skill-request`, `skill-pr`, `bug`, `docs`, `good first skill`, `needs-ego-smoke`, `blocked-tos`). Add those labels by hand for now. Issue forms do not set labels, so a missing label cannot block issue creation.
+1. Node LTS (`actions/setup-node` with `lts/*`)
+2. `npm ci`
+3. `node scripts/check-skill-hygiene.mjs` (same as `npm run hygiene`)
+4. `npm test` (c8, lines ≥ 80%)
+
+CI does not install Ego and does not log in. There is no browser e2e. `needs-ego-smoke` is not a required check.
+
+### Hygiene
+
+`scripts/check-skill-hygiene.mjs` checks every directory in `skills/` except scaffolds (names starting with `_`, including `skills/_template`):
+
+- `SKILL.md` exists, and frontmatter `name` equals the directory name
+- `metadata.requires.bins` includes `ego-browser`
+- the skill tree has no personal-path pattern: `/Users/` (also `C:\Users\`), `/home/<name>/`, or a path-shaped podcast directory (`/Podcasts/`, `~/Podcasts/`)
+- the skill tree has no secret-shaped file (`.env` and `.env.*`, `.pem`, `.p8`, `.key`, `AuthKey_*.p8`, `id_rsa`, cookie dumps) and no private-key block
+- `scripts/test/` contains at least one `*.test.mjs`
+
+The check reads skill trees only. It does not read `docs/`, `README.md`, or `README_CN.md`, so this guide can name the prefixes contributors must avoid. A sentence inside a skill that contains `/Users/` still fails.
+
+`~/Downloads/...`, `https://x.com/home`, `https://x.com/home/following`, and the word "podcast" are not personal paths. A real home directory and a `/Podcasts/` path are.
+
+### Ownership and labels
+
+[`.github/CODEOWNERS`](../.github/CODEOWNERS) is `* @terryso`, including `skills/`.
+
+[`.github/workflows/labels.yml`](../.github/workflows/labels.yml) creates these labels: `skill-request`, `skill-pr`, `bug`, `docs`, `good first skill`, `needs-ego-smoke`, `blocked-tos`.
+
+It applies `skill-request` and `bug` from issue titles (`skill:`, `bug:`). It applies `skill-pr` when a pull request touches `skills/`, and `docs` when it touches this guide, the READMEs, `PLAN.md`, or `ACCEPTANCE.md`. `needs-ego-smoke`, `blocked-tos`, and `good first skill` stay manual.
+
+Issue forms still do not set labels. A label that does not exist yet cannot block opening an issue. The workflow creates the label, then applies it. Label automation is not a required check. It does not checkout pull-request code.

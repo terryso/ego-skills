@@ -47,10 +47,11 @@ test("whichEgo maps the probe and the home-bin fallback", () => {
   assert.equal(whichEgo(() => ({ error: new Error("missing") }), {}), null);
   assert.equal(whichEgo(() => ({ status: 0 })), "ego-browser");
   assert.equal(whichEgo(() => null), "ego-browser");
+  const home = "/tmp/fixture-home";
   const fallback = whichEgo((cmd) => (
     cmd === "ego-browser" ? { error: new Error("no path") } : { status: 0 }
-  ), { HOME: "/home/tester" });
-  assert.equal(fallback, "/home/tester/.local/bin/ego-browser");
+  ), { HOME: home });
+  assert.equal(fallback, path.join(home, ".local", "bin", "ego-browser"));
   const live = whichEgo();
   // The live probe depends on the host: null when ego is not installed,
   // "ego-browser" when it is on PATH, and the absolute ~/.local/bin path when

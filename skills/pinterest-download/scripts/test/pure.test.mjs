@@ -110,7 +110,7 @@ test("toConfig resolves a safe directory and validates commands", () => {
   assert.throws(() => toConfig(parseArgs(["board"]), { resolve }), /--board/);
   assert.throws(() => toConfig(parseArgs(["download"]), { resolve }), /--url/);
   assert.throws(() => assertSafeOutDir("/", resolve), /filesystem root/);
-  assert.equal(defaultOut("/Users/nick"), "/Users/nick/Downloads/pinterest-ego");
+  assert.equal(defaultOut("/tmp/fixture-home"), "/tmp/fixture-home/Downloads/pinterest-ego");
   assert.match(USAGE, /related/);
   assert.match(LOGIN_TIP, /anonymous/i);
   assert.match(LOGIN_TIP_ZH, /匿名/);

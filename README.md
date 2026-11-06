@@ -132,7 +132,8 @@ The guide is [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md). Short version:
 - Open a skill-request issue, then `npm run new-skill -- <id>` (copies `skills/_template/`).
 - One skill per PR. Frontmatter bins include `ego-browser`. Login soft-fails with exit `2`. No passwords, no personal absolute paths, no Playwright as the primary path.
 - Video publish skills name the success state in `SKILL.md`. The caller supplies the local file. Do not auto-click a Publish control that needs a human QR scan. WeChat Channels stays draft-only.
-- MIT (checkbox on the PR; no DCO or CLA). `npm test` must pass (c8 lines ≥ 80%). A local Ego smoke is encouraged and is not required to merge; maintainers may add the `needs-ego-smoke` label.
+- MIT (checkbox on the PR; no DCO or CLA). `npm test` must pass (c8 lines ≥ 80%). GitHub Actions on pull requests and `main` runs `npm ci`, skill hygiene, and `npm test`. It does not log in to Ego.
+- A local Ego smoke is encouraged and is not required to merge; maintainers may add the `needs-ego-smoke` label.
 
 ## License
 

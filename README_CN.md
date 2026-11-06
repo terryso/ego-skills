@@ -130,7 +130,8 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
 - 先开 skill-request issue，再 `npm run new-skill -- <id>`（从 `skills/_template/` 复制骨架）。
 - 一个 PR 一个技能。frontmatter 的 bins 含 `ego-browser`。未登录或缺少二进制时 soft-fail，退出码 `2`。不代填密码，不写个人绝对路径，不以 Playwright 作为主路径。
 - 视频发布类技能必须在 `SKILL.md` 写明成功态。视频文件由调用方提供本地绝对路径。需要人扫码的「发表」不要自动点。视频号只存草稿。
-- 贡献即 MIT（PR 模板勾选，没有 DCO/CLA）。`npm test` 必须通过（c8 行覆盖 ≥ 80%）。本地 Ego smoke 鼓励去做，但不是合并前提；维护者可以打 `needs-ego-smoke` 标签。
+- 贡献即 MIT（PR 模板勾选，没有 DCO/CLA）。`npm test` 必须通过（c8 行覆盖 ≥ 80%）。PR 和 `main` 上的 GitHub Actions 会跑 `npm ci`、技能卫生检查和 `npm test`。CI 不会登录 Ego。
+- 本地 Ego smoke 鼓励去做，但不是合并前提；维护者可以打 `needs-ego-smoke` 标签。
 
 ## 许可证
 
