@@ -66,6 +66,7 @@ function session(overrides = {}) {
     async fillOptional() { calls.push("optional"); },
     async pasteHtml() { calls.push("paste"); },
     async uploadImage() { calls.push("upload"); if (overrides.uploadError) throw new Error(overrides.uploadError); },
+    async replaceSlot() { return this.uploadImage(); },
     async ensureCover() { calls.push("cover"); return overrides.cover || { ok: true, skipped: true }; },
     async readEditor() {
       calls.push("read");

@@ -38,6 +38,17 @@ export function mpAct(payload) {
     return true;
   }
 
+  function shown(el) {
+    if (!visible(el)) return false;
+    if (typeof el.getBoundingClientRect !== "function") return true;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function hint(el) {
+    return `${(el.getAttribute && (el.getAttribute("placeholder") || el.getAttribute("data-placeholder") || el.getAttribute("aria-label"))) || el.placeholder || ""}`;
+  }
+
   function ownLabel(el) {
     const direct = [...(el.childNodes || [])]
       .filter((node) => node && node.nodeType === 3)
@@ -104,6 +115,10 @@ export function mpAct(payload) {
   }
 
   function editorRoot() {
+    const rich = qsa(doc, ".rich_media_content .ProseMirror").find(shown);
+    if (rich) return { doc, body: rich };
+    const mirrors = qsa(doc, ".ProseMirror").filter((el) => shown(el) && !/标题/.test(hint(el)));
+    if (mirrors.length) return { doc, body: mirrors[0] };
     for (const frame of qsa(doc, "iframe")) {
       const idoc = frame.contentDocument;
       const body = idoc && idoc.body;
@@ -112,18 +127,39 @@ export function mpAct(payload) {
       const marked = qsa(idoc, ".editor-body").length || qsa(idoc, ".ProseMirror").length;
       if (editable || marked) return { doc: idoc, body };
     }
-    const marked = qsa(doc, ".ProseMirror")[0] || qsa(doc, ".editor-body")[0];
+    const marked = qsa(doc, ".editor-body")[0];
     if (marked) return { doc, body: marked };
     return null;
   }
 
   function titleField() {
-    const fields = qsaAny(["textarea", "input", "[contenteditable='true']"]);
-    return fields.find((el) => /标题/.test(
-      (el.getAttribute && (el.getAttribute("placeholder") || el.getAttribute("aria-label") || el.getAttribute("data-placeholder")))
-      || el.placeholder
-      || "",
-    )) || null;
+    const mirrors = qsa(doc, ".ProseMirror").filter((el) => shown(el) && /标题/.test(hint(el)));
+    if (mirrors[0]) return mirrors[0];
+    const fields = qsaAny(["textarea", "input", "[contenteditable='true']"]).filter((el) => /标题/.test(hint(el)));
+    return fields.find(shown) || fields[0] || null;
+  }
+
+  function selectInside(el, { collapse } = {}) {
+    if (!el) return false;
+    if (typeof el.focus === "function") el.focus();
+    const owner = el.ownerDocument || doc;
+    const view = owner.defaultView || globalThis;
+    if (!view.getSelection || !owner.createRange) return false;
+    const selection = view.getSelection();
+    if (!selection) return false;
+    const range = owner.createRange();
+    range.selectNodeContents(el);
+    if (collapse) range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
+  function placeCaret(el) {
+    const blocks = el ? qsa(el, "p,h2,h3,li,blockquote,pre") : [];
+    const last = blocks[blocks.length - 1];
+    if (last) return selectInside(last, { collapse: true });
+    return selectInside(el, { collapse: true });
   }
 
   function fieldByHint(pattern) {
@@ -206,11 +242,13 @@ export function mpAct(payload) {
     return clickFound(found, "text");
   }
 
-  if (op === "title-field") {
+  if (op === "title-field" || op === "focus-title") {
     const field = titleField();
     if (!field) return { ok: false, error: "title field not found" };
+    if (typeof field.focus === "function") field.focus();
     field.setAttribute("data-wx-article-title", "1");
-    return { ok: true, selector: "[data-wx-article-title='1']" };
+    const kind = String(field.className || "").includes("ProseMirror") || field.isContentEditable ? "prosemirror" : "input";
+    return { ok: true, kind, selector: "[data-wx-article-title='1']" };
   }
 
   if (op === "set-title" || op === "set-digest" || op === "set-source") {
@@ -220,10 +258,20 @@ export function mpAct(payload) {
     return setValue(field, input.value || "");
   }
 
+  if (op === "select-slot") {
+    const root = editorRoot();
+    if (!root) return { ok: false, error: "editor body not found" };
+    const slot = String(input.slot || "");
+    const target = qsa(root.body, "p").find((el) => String(el.innerText || el.textContent || "").includes(slot));
+    if (!target) return { ok: false, error: `slot ${slot} not found` };
+    selectInside(target);
+    return { ok: true };
+  }
+
   if (op === "focus-body") {
     const root = editorRoot();
     if (!root) return { ok: false, error: "editor body not found" };
-    if (typeof root.body.focus === "function") root.body.focus();
+    placeCaret(root.body);
     return { ok: true };
   }
 
@@ -258,7 +306,8 @@ export function mpAct(payload) {
     const text = bodyText();
     const present = /封面/.test(text);
     const filled = /已选择封面|封面已设置/.test(text) || qsa(doc, ".cover-preview img").length > 0;
-    const empty = present && (/未选择|选择封面|从正文选择/.test(text)) && !filled;
+    const required = /必须选择封面|封面不能为空|请上传封面/.test(text);
+    const empty = required && !filled;
     const file = qsa(doc, "input").find((el) => (
       (el.getAttribute("type") || "") === "file"
       && /cover|封面/.test(`${el.getAttribute("accept") || ""} ${el.getAttribute("class") || ""} ${el.className || ""}`)
@@ -269,6 +318,7 @@ export function mpAct(payload) {
       present,
       filled,
       empty,
+      required,
       selector: file ? "input[data-wx-article-cover='1']" : "",
     };
   }
@@ -286,7 +336,7 @@ export function mpAct(payload) {
   }
 
   if (op === "click-save") {
-    for (const label of ["保存草稿", "保存"]) {
+    for (const label of ["保存为草稿", "保存草稿", "保存"]) {
       const found = findExact(label);
       if (found) return clickFound(found, "save");
     }
@@ -320,16 +370,29 @@ export function mpAct(payload) {
   }
 
   if (op === "draft-rows") {
-    const nodes = qsaAny([".draft-title", ".weui-desktop-card__title", ".card_appmsg_title", ".appmsg_title"]);
+    const nodes = qsaAny([
+      ".weui-desktop-publish__cover__title",
+      ".draft-title",
+      ".weui-desktop-card__title",
+      ".card_appmsg_title",
+      ".appmsg_title",
+    ]);
     const rows = [];
     for (const el of nodes) {
       const title = normalize(el.getAttribute && el.getAttribute("data-draft-title") || el.innerText || el.textContent || "");
       if (!title || isForbidden(title)) continue;
-      const parent = el.parentElement;
-      const parentText = parent ? String(parent.innerText || parent.textContent || "") : "";
-      const timeLine = parentText.split(/\n/).map((line) => line.trim()).find((line) => (
-        line && line !== title && /月|今天|昨天|\d{2}:\d{2}|\d{4}-\d{2}/.test(line)
-      )) || "";
+      let timeNode = el;
+      let timeLine = "";
+      for (let depth = 0; depth < 6 && timeNode && !timeLine; depth += 1) {
+        const blob = String(timeNode.innerText || timeNode.textContent || "");
+        const matched = blob.match(/更新于\s*\d{1,2}:\d{2}/) || blob.match(/\d+月\d+日(?:\s*\d{1,2}:\d{2})?/);
+        if (matched) timeLine = matched[0];
+        const line = blob.split(/\n/).map((item) => item.trim()).find((item) => (
+          item && item !== title && /月|今天|昨天|\d{2}:\d{2}|\d{4}-\d{2}/.test(item)
+        ));
+        if (!timeLine && line) timeLine = line;
+        timeNode = timeNode.parentElement;
+      }
       const rawId = (el.getAttribute && (el.getAttribute("data-id") || el.getAttribute("data-appmsgid"))) || "";
       rows.push({
         title,
@@ -339,6 +402,24 @@ export function mpAct(payload) {
       if (rows.length >= 30) break;
     }
     return { ok: true, rows };
+  }
+
+  if (op === "open-draft-list") {
+    const names = qsa(doc, ".weui-desktop-menu__name");
+    const menu = (label) => {
+      const found = names.filter((el) => normalize(el.innerText || el.textContent) === label);
+      const name = found.find(shown) || found[0];
+      if (!name) return findExact(label);
+      const link = typeof name.closest === "function" ? name.closest("a") : null;
+      return link || name;
+    };
+    let draft = menu("草稿箱");
+    if (draft && shown(draft)) return clickFound(draft, "drafts");
+    const section = menu("内容管理");
+    if (section && typeof section.click === "function") section.click();
+    draft = menu("草稿箱");
+    if (!draft) return { ok: false, error: "草稿箱 not found" };
+    return clickFound(draft, "drafts");
   }
 
   if (op === "scroll") {

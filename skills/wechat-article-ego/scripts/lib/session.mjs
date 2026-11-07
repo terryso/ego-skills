@@ -75,10 +75,19 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       throw new Error("article editor did not open");
     },
     async fillTitle(title) {
-      const marked = await act("title-field");
-      if (marked.ok && typeof current.fill === "function") {
-        await current.fill(marked.selector, title);
-        return { ok: true, via: "fill" };
+      const marked = await act("focus-title");
+      if (!marked.ok) throw new Error(marked.error || "title field not found");
+      if (marked.kind !== "prosemirror" && typeof current.fill === "function") {
+        try {
+          await current.fill(marked.selector, title);
+          return { ok: true, via: "fill" };
+        } catch {
+          // A zero-size hidden input cannot be filled. The visible editor is next.
+        }
+      }
+      if (current.keyboard && typeof current.keyboard.insertText === "function") {
+        await current.keyboard.insertText(title);
+        return { ok: true, via: "insertText" };
       }
       const set = await act("set-title", { value: title });
       if (!set.ok) throw new Error(set.error || "title field not found");
@@ -103,43 +112,64 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       const result = await act("image-count");
       return result && typeof result.imageCount === "number" ? result.imageCount : 0;
     },
+    async replaceSlot(index, file) {
+      const slot = `WXIMG${index}`;
+      let selected = { ok: false, error: "image slot not found" };
+      for (let attempt = 0; attempt < 12 && !selected.ok; attempt += 1) {
+        selected = await act("select-slot", { slot });
+        if (!selected.ok && typeof current.waitForTimeout === "function") await current.waitForTimeout(300);
+      }
+      if (!selected.ok) {
+        const read = await act("read-editor");
+        const preview = String(read && read.text || "").replace(/\s+/g, " ").slice(0, 80);
+        throw new Error(`${selected.error || "image slot not found"}; body starts ${preview}`);
+      }
+      const before = await this.imageCount();
+      const input = await act("image-input");
+      if (!input.ok || typeof current.setInputFiles !== "function") {
+        throw new Error(input.error || "image upload control not found");
+      }
+      await current.setInputFiles(input.selector, [file]);
+      let after = before;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        after = await this.imageCount();
+        if (after >= before + 1) return { before, after };
+        if (typeof current.waitForTimeout === "function") await current.waitForTimeout(500);
+      }
+      throw new Error(`image did not replace WXIMG${index} (${before} -> ${after})`);
+    },
     async uploadImage(file) {
       const before = await this.imageCount();
-      const chooserPromise = typeof current.waitForFileChooser === "function"
-        ? current.waitForFileChooser({ timeout: 4_000 }).catch(() => null)
-        : Promise.resolve(null);
-      await act("open-image");
-      const chooser = await chooserPromise;
-      if (chooser && typeof chooser.setFiles === "function") {
-        await chooser.setFiles(file);
-      } else if (typeof current.setInputFiles === "function") {
-        const input = await act("image-input");
-        if (!input.ok) throw new Error(input.error || "image upload control not found");
+      await act("focus-body");
+      const input = await act("image-input");
+      if (input.ok && typeof current.setInputFiles === "function") {
         await current.setInputFiles(input.selector, [file]);
+      } else if (typeof current.waitForFileChooser === "function") {
+        const chooserPromise = current.waitForFileChooser({ timeout: 4_000 }).catch(() => null);
+        await act("open-image");
+        const chooser = await chooserPromise;
+        if (!chooser || typeof chooser.setFiles !== "function") throw new Error(input.error || "image upload control not found");
+        await chooser.setFiles(file);
       } else {
-        throw new Error("no supported file upload API");
+        throw new Error(input.error || "no supported file upload API");
       }
       await act("confirm-image");
       let after = before;
-      for (let index = 0; index < attempts; index += 1) {
+      for (let index = 0; index < 20; index += 1) {
         after = await this.imageCount();
         if (after >= before + 1) return { before, after };
-        await pause(waitMs);
+        if (typeof current.waitForTimeout === "function") await current.waitForTimeout(500);
       }
       throw new Error(`image did not appear in the editor (${before} -> ${after})`);
     },
-    async ensureCover(file) {
+    async ensureCover() {
       const state = await act("cover-state");
-      if (!state.present || state.filled) return { ok: true, skipped: true, reason: state.filled ? "cover already set" : "no cover control" };
+      if (!state.required || state.filled) {
+        return { ok: true, skipped: true, reason: state.filled ? "cover already set" : "cover not required for a draft" };
+      }
       const fromBody = await act("cover-from-body");
       if (fromBody.ok) return { ok: true, via: "body" };
-      if (state.selector && file && typeof current.setInputFiles === "function") {
-        await current.setInputFiles(state.selector, [file]);
-        await act("confirm-image");
-        return { ok: true, via: "upload" };
-      }
-      if (state.empty) return { ok: false, error: "cover is empty and no supported control" };
-      return { ok: true, skipped: true, reason: "cover not required" };
+      return { ok: false, error: "cover is required and was not set" };
     },
     async readEditor() {
       return act("read-editor");
@@ -159,8 +189,13 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       return false;
     },
     async listDrafts() {
-      await act("click", { text: "草稿箱" });
-      await pause(waitMs);
+      const opened = await act("open-draft-list");
+      if (!opened.ok) await act("click", { text: "草稿箱" });
+      for (let index = 0; index < attempts; index += 1) {
+        if (typeof current.waitForTimeout === "function") await current.waitForTimeout(700);
+        const listed = await act("draft-rows");
+        if ((listed.rows || []).length) return listed.rows;
+      }
       const listed = await act("draft-rows");
       return listed.rows || [];
     },

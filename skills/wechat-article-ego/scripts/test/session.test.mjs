@@ -45,6 +45,36 @@ function pageFor(state) {
   return page;
 }
 
+test("replaceSlot uploads at the placeholder and reports a missing slot", async () => {
+  const slot = h("p", { text: "WXIMG0" });
+  const body = h("div", { className: "ProseMirror" }, [slot]);
+  const rich = h("div", { className: "rich_media_content" }, [body]);
+  const file = h("input", { type: "file", accept: "image/jpeg" });
+  const title = h("div", { className: "ProseMirror", editable: true, attrs: { "data-placeholder": "请在这里输入标题" } });
+  title.getBoundingClientRect = () => ({ width: 200, height: 30 });
+  createDocument(h("div", {}, [title, rich, file]));
+  let uploaded = false;
+  const page = {
+    async evaluate(fn, arg) { return fn(arg); },
+    async setInputFiles() {
+      uploaded = true;
+      body.childNodes.push(h("img", { attrs: { src: "https://mmbiz.example/a.jpg" } }));
+    },
+    async waitForTimeout() {},
+    keyboard: { async insertText(value) { title.text = value; } },
+  };
+  const session = createMpSession({ task: { async finish() {} }, page, timings: { attempts: 1, waitMs: 0 } });
+  const titled = await session.fillTitle("正式标题");
+  assert.equal(titled.via, "insertText");
+  const replaced = await session.replaceSlot(0, "/absolute/path/a.jpg");
+  assert.equal(uploaded, true);
+  assert.equal(replaced.after, 1);
+  createDocument(h("div", { text: "只有正文" }, [
+    h("div", { className: "rich_media_content" }, [h("div", { className: "ProseMirror", text: "只有正文" })]),
+  ]));
+  await assert.rejects(() => session.replaceSlot(1, "/absolute/path/a.jpg"), /WXIMG1/);
+});
+
 test("createMpSession requires a task and a page", () => {
   assert.throws(() => createMpSession({}), /task and page/);
 });

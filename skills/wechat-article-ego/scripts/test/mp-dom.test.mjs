@@ -96,7 +96,14 @@ test("editor actions fill, paste-focus, upload, save, and never publish", () => 
   assert.equal(confirm.clicked, 1);
   const cover = mpAct({ op: "cover-state" });
   assert.equal(cover.present, true);
-  assert.equal(cover.empty, true);
+  assert.equal(cover.required, false);
+  assert.equal(cover.empty, false);
+  createDocument(h("body", { text: "必须选择封面" }));
+  assert.equal(mpAct({ op: "cover-state" }).empty, true);
+  createDocument(h("body", { text: "选择图片 上传图片 封面 未选择 从正文选择" }, [
+    title, digest, source, frame, imageButton, file, confirm, save, publish, mass, previewSend, preview, hidden,
+    h("div", { className: "weui-desktop-account__nickname", text: "加选" }),
+  ]));
   assert.equal(mpAct({ op: "click", text: "发表" }).forbidden, true);
   assert.equal(publish.clicked, 0);
   assert.equal(mpAct({ op: "click", text: "群发" }).forbidden, true);
@@ -168,6 +175,38 @@ test("draft rows, cover upload, and missing controls", () => {
   assert.equal(ok.clicked, 1);
   const read = mpAct({ op: "read-editor" });
   assert.deepEqual(read.hrefs, ["https://example.com/a"]);
+});
+
+test("the 2026 editor uses the visible title, body, save draft, and draft card", () => {
+  const hidden = h("textarea", { placeholder: "请在这里输入标题", id: "title" });
+  hidden.getBoundingClientRect = () => ({ width: 578, height: 0 });
+  const title = h("div", { className: "ProseMirror", editable: true, attrs: { "data-placeholder": "请在这里输入标题" } }, ["题"]);
+  title.getBoundingClientRect = () => ({ width: 578, height: 30 });
+  const body = h("div", { className: "ProseMirror", editable: true, text: "正文" });
+  body.getBoundingClientRect = () => ({ width: 586, height: 633 });
+  const rich = h("div", { className: "rich_media_content" }, [body]);
+  const save = h("button", {}, ["保存为草稿"]);
+  const publish = h("button", {}, ["发表"]);
+  const card = h("a", { className: "weui-desktop-publish__cover__title" }, ["正式标题"]);
+  const wrap = h("div", { text: "正式标题 更新于 00:46" }, [card]);
+  const section = h("span", { className: "weui-desktop-menu__name" }, ["内容管理"]);
+  const drafts = h("a", {}, ["草稿箱"]);
+  const name = h("span", { className: "weui-desktop-menu__name" }, ["草稿箱"]);
+  name.closest = () => drafts;
+  createDocument(h("body", { text: "从这里开始写正文 保存为草稿" }, [hidden, title, rich, save, publish, wrap, section, name]));
+  const focused = mpAct({ op: "focus-title" });
+  assert.equal(focused.kind, "prosemirror");
+  assert.equal(title.focused, true);
+  assert.equal(hidden.getAttribute("data-wx-article-title"), null);
+  assert.equal(mpAct({ op: "focus-body" }).ok, true);
+  assert.equal(body.focused, true);
+  assert.equal(mpAct({ op: "click-save" }).label, "保存为草稿");
+  assert.equal(publish.clicked, 0);
+  const rows = mpAct({ op: "draft-rows" }).rows;
+  assert.equal(rows[0].title, "正式标题");
+  assert.match(rows[0].time, /更新于 00:46/);
+  assert.equal(mpAct({ op: "open-draft-list" }).ok, true);
+  assert.equal(drafts.clicked, 1);
 });
 
 test("a bad location and a query failure stay inside the probe", () => {

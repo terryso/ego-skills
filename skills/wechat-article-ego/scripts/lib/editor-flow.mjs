@@ -33,21 +33,30 @@ async function compose(session, article) {
   await session.fillTitle(article.title);
   await session.fillOptional("set-digest", article.digest);
   await session.fillOptional("set-source", article.sourceUrl);
+  const html = [];
+  const images = [];
   for (const segment of article.segments) {
-    if (segment.kind === "html") {
-      await session.pasteHtml(segment.html, segment.text);
-      continue;
+    if (segment.kind === "html") html.push(segment.html);
+    if (segment.kind === "image") {
+      html.push(`<p>WXIMG${images.length}</p>`);
+      images.push(segment);
     }
-    if (segment.kind === "image") await session.uploadImage(segment.path);
   }
-  const cover = article.segments.find((segment) => segment.kind === "image");
-  const coverResult = await session.ensureCover(cover ? cover.path : "");
+  if (html.length) await session.pasteHtml(html.join(""), images.map((_, index) => `WXIMG${index}`).join(" "));
+  for (let index = 0; index < images.length; index += 1) {
+    await session.replaceSlot(index, images[index].path);
+  }
+  const coverResult = await session.ensureCover();
   if (!coverResult.ok) {
     const error = new Error(coverResult.error || "cover was not set");
     error.code = "cover";
     throw error;
   }
-  return session.readEditor();
+  const readback = await session.readEditor();
+  if (String(readback && readback.text || "").includes("WXIMG")) {
+    throw new Error("image slot was not replaced");
+  }
+  return readback;
 }
 
 function draftRef(match) {

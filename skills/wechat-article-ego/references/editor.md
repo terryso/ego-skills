@@ -20,7 +20,7 @@ The only page is the public Official Account console at `https://mp.weixin.qq.co
 
 ## Save and check
 
-Click a control whose exact label is 保存草稿 or 保存.
+Click a control whose exact label is 保存为草稿, 保存草稿, or 保存. The 2026 editor's visible control is 保存为草稿. The title is the visible ProseMirror in `.title-editor__input`, not the zero-height `#title` textarea. The body is `.rich_media_content .ProseMirror`. Images go through the editor's `input[type=file]` that accepts jpeg. A cover hint does not block 保存为草稿.
 
 Never click a control whose label contains 发表, 群发, 定时群发, or 发送预览. 预览 is allowed only when the exact label is 预览, and only to screenshot an on-screen preview. Do not send that preview to a person.
 
