@@ -18,6 +18,12 @@
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
+## x-bookmark workflow (not live acceptance)
+
+`npm test` on 2026-11-07 (Node v22.23.4, c8), including this workflow: **428 passed**, line coverage **97.72%**. `x-bookmark-export` lib lines **98.94%**. `x-bookmark-review` lib lines **93.50%**. Threshold remains lines ≥ 80%. A redacted real-file CLI run is in [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). It did not call X, and it did not prove a full-account absence while a next token remained.
+
+These two skills are portable cores. **A standalone Ego bookmark backend is not implemented and not accepted.** A Pro read-only smoke (ego-browser effective v0.6.2.8, plist 0.6.2.9, guide v2.2.0, host Node v26.12.1) showed `taskSpace` only inside `ego-browser nodejs` and a fixture task space cleaned with `finish({ keep: [] })`. It did not read or remove bookmarks. Printing a connector recipe does not call X. Do not upgrade the app from this note. Do not publish from the branch. Details: [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). The runnable host order is [templates/x-bookmark-keeper/getting-started.md](./templates/x-bookmark-keeper/getting-started.md). The table above is the 2026-11-04 snapshot of the other skills.
+
 ## Mini smoke (ego-browser 0.6.0.12)
 
 Default login gate, `wallpaper`, count 2, out `/tmp/ego-skills-smoke/login-required`:

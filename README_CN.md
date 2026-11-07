@@ -67,6 +67,8 @@ cd ego-skills
 | [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。Phase 2a 还能新建、改标题/前置/步骤、改状态，以及把一条用例移到回收站（`delete --yes`）。只走浏览器会话，不用 Open API token。 |
 | [`x-post`](./skills/x-post/) | 用已登录的 Ego 会话，通过 `page.fetch` CreateTweet 往 X 发帖。先检查登录。没有 `--yes` 不发送。可选 `--image`（最多 4 张 png/jpeg/webp，每张 ≤ 5 MiB）只在 `--yes` 之后上传。成功标准是 `https://x.com/<screen_name>/status/<id>`。 |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | 在小红书创作者平台发一条视频笔记。先检查登录。没有 `--yes` 不上传。笔记不能带链接，先从文案里删掉，或加 `--strip-links`。传 `--cover`（例如 `cover-3x4.png`）走「选择图片上传」，换成主封面。只传 PK 槽时缩略图会在大约 72 小时内一直是首帧。不传则平台用首帧。成功标准是 `https://www.xiaohongshu.com/explore/<noteId>`。 |
+| [`x-bookmark-export`](./skills/x-bookmark-export/) | 把书签页文件归档到账号目录。只有可移植核心和测试。运行时读取走 Grok Bot 的 X 连接器 `get_users_bookmarks`。Ego **未验证**，脚本不调用它。连接器配方不是已经跑通的 Ego 技能。 |
+| [`x-bookmark-review`](./skills/x-bookmark-review/) | 结构化建议（最多 3 条）和取消书签的**预览**。所有者同意并且带 `--yes` 之前，不会发出移除计划。脚本不调用 X。Ego **未验证**。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -115,6 +117,8 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
+**此首版不是 Ego 后端。** 独立 Ego 书签后端未实现、未验收。`check-deps` 报告 `standalone_ego_bookmark_backend: not_implemented` 和 `ego_bookmark_acceptance: not_accepted`。打印配方不会调用 X。安装和命令顺序见 [templates/x-bookmark-keeper/getting-started.md](./templates/x-bookmark-keeper/getting-started.md)。不要从未合并的分支发布这两个技能。
+
 如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
@@ -128,7 +132,7 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
 欢迎为**可运行的 ego-browser 技能**提 PR。不用 `ego-browser` 的 CLI / MCP 包装请放到 [claw-skills](https://github.com/terryso/claw-skills)，或自建仓库后用 `npx skills add` 安装。完整规则（英文）在 [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)。
 
 - 先开 skill-request issue，再 `npm run new-skill -- <id>`（从 `skills/_template/` 复制骨架）。
-- 一个 PR 一个技能。frontmatter 的 bins 含 `ego-browser`。未登录或缺少二进制时 soft-fail，退出码 `2`。不代填密码，不写个人绝对路径，不以 Playwright 作为主路径。
+- 一个 PR 一个技能。frontmatter 的 bins 含 `ego-browser`。未登录或缺少二进制时 soft-fail，退出码 `2`。不代填密码，不写个人绝对路径，不以 Playwright 作为主路径。`x-bookmark-export` 和 `x-bookmark-review` 是例外：标明 `ego_browser: unsupported`，不把 Ego 当成已验证后端。
 - 视频发布类技能必须在 `SKILL.md` 写明成功态。视频文件由调用方提供本地绝对路径。需要人扫码的「发表」不要自动点。视频号只存草稿。
 - 贡献即 MIT（PR 模板勾选，没有 DCO/CLA）。`npm test` 必须通过（c8 行覆盖 ≥ 80%）。PR 和 `main` 上的 GitHub Actions 会跑 `npm ci`、技能卫生检查和 `npm test`。CI 不会登录 Ego。
 - 本地 Ego smoke 鼓励去做，但不是合并前提；维护者可以打 `needs-ego-smoke` 标签。
