@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { archiveHash } from "../../../x-bookmark-export/scripts/lib/pure.mjs";
 import { ingestPage, readPost, readRecord, writeConsent } from "../../../x-bookmark-export/scripts/lib/store.mjs";
-import { acceptAnalysis, deliverRecommendations, parseAnalysis, sourceIsGrounded, suggestionKey } from "../lib/analysis.mjs";
+import { acceptAnalysis, deliverRecommendations, parseAnalysis, registerDelivery, sourceIsGrounded, suggestionKey } from "../lib/analysis.mjs";
 import {
   MAX_CAP,
   buildPlan,
@@ -88,6 +88,16 @@ function itemFor(root, id, disposition, fields = {}) {
     } : null,
     unhelpful_reason: disposition === "unhelpful" ? (fields.unhelpful_reason || "Already handled elsewhere.") : null,
   };
+}
+
+function offerAndRegister(root, deps) {
+  const offered = deliverRecommendations(root, ACCOUNT, deps);
+  if (offered.silent) return offered;
+  const registered = registerDelivery(root, ACCOUNT, {
+    recommendationId: offered.recommendation_id,
+    bodySha256: offered.body_sha256,
+  }, deps);
+  return { ...offered, registered };
 }
 
 function capture() {
@@ -212,7 +222,15 @@ test("connector delete receipts do not name a post and uncertain rows are not un
   ]), time.deps);
   const delivered = deliverRecommendations(root, ACCOUNT, time.deps);
   assert.equal(delivered.silent, false);
-  assert.deepEqual(delivered.notified, [id]);
+  assert.equal(delivered.delivered, false);
+  assert.deepEqual(delivered.notified, []);
+  const beforeRegister = buildPlan(root, ACCOUNT, { deps: time.deps });
+  assert.ok(beforeRegister.blocked.some((row) => row.post_id === id && row.reason === "delivery_required"));
+  assert.equal(beforeRegister.items.length, 0);
+  registerDelivery(root, ACCOUNT, {
+    recommendationId: delivered.recommendation_id,
+    bodySha256: delivered.body_sha256,
+  }, time.deps);
   const plan = buildPlan(root, ACCOUNT, { deps: time.deps });
   assert.deepEqual(plan.items.map((row) => row.post_id), [id]);
   assert.equal(plan.connector_ops.length, 0);
@@ -361,9 +379,24 @@ test("analysis is structured input, delivery is capped, and silence leaves state
   assert.equal(first.suggestions.length, 3);
   assert.match(first.body, /不是认同/);
   assert.deepEqual(first.suggestions.map((row) => row.post_id), [ids[0], ids[3], ids[4]]);
+  assert.equal(first.delivered, false);
+  assert.equal(readRecord(root, ACCOUNT, ids[0]).notified, false);
+  const registered = registerDelivery(root, ACCOUNT, {
+    recommendationId: first.recommendation_id,
+    bodySha256: first.body_sha256,
+  }, time.deps);
+  assert.equal(registered.idempotent, false);
+  assert.equal(registerDelivery(root, ACCOUNT, {
+    recommendationId: first.recommendation_id,
+    bodySha256: first.body_sha256,
+  }, time.deps).idempotent, true);
   assert.equal(readRecord(root, ACCOUNT, ids[0]).notified, true);
   assert.equal(readRecord(root, ACCOUNT, ids[0]).read, true);
   assert.equal(readRecord(root, ACCOUNT, ids[1]).notified, false);
+  assert.throws(() => registerDelivery(root, ACCOUNT, {
+    recommendationId: first.recommendation_id,
+    bodySha256: "true",
+  }, time.deps), (error) => error.code === "rejected");
   const second = deliverRecommendations(root, ACCOUNT, time.deps);
   assert.equal(second.suggestions.length, 1);
   assert.equal(second.suggestions[0].post_id, ids[5]);
@@ -401,7 +434,7 @@ test("cleanup stays a preview until opt-in, allowlist, receipt, and reconcile", 
   assert.ok(silentPlan.blocked.some((row) => row.post_id === actionable && row.reason === "delivery_required"));
   assert.ok(silentPlan.blocked.some((row) => row.post_id === unhelpful && row.reason === "no_consent"));
   assert.ok(silentPlan.blocked.some((row) => row.post_id === uncertain && row.reason === "content_not_complete"));
-  deliverRecommendations(root, ACCOUNT, time.deps);
+  offerAndRegister(root, time.deps);
   writeConsent(root, ACCOUNT, {
     schema: 1,
     account_id: ACCOUNT,
@@ -437,7 +470,7 @@ test("removal retries only after reconcile and never deletes the archive", () =>
     itemFor(root, id, "actionable", { title: "First action" }),
     itemFor(root, other, "actionable", { title: "Second action" }),
   ]), time.deps);
-  deliverRecommendations(root, ACCOUNT, time.deps);
+  offerAndRegister(root, time.deps);
   writeConsent(root, ACCOUNT, {
     schema: 1,
     account_id: ACCOUNT,
@@ -490,7 +523,7 @@ test("unhelpful discard, partial failure, forged receipts, and presence checks",
     itemFor(root, good, "actionable"),
     itemFor(root, noise, "unhelpful"),
   ]), time.deps);
-  deliverRecommendations(root, ACCOUNT, time.deps);
+  offerAndRegister(root, time.deps);
   writeConsent(root, ACCOUNT, {
     schema: 1,
     account_id: ACCOUNT,
@@ -621,7 +654,28 @@ test("review CLI previews cleanup and check-deps stays soft", () => {
   assert.equal(runReview(["accept-analysis", "--account", ACCOUNT, "--archive", archive, "--analysis", analysisPath], accepted), 0);
   const recommended = capture();
   assert.equal(runReview(["recommend", "--account", ACCOUNT, "--archive", archive], recommended), 0);
-  assert.equal(JSON.parse(recommended.buffers.out).silent, false);
+  const offer = JSON.parse(recommended.buffers.out);
+  assert.equal(offer.silent, false);
+  assert.equal(offer.delivered, false);
+  assert.equal(offer.completes_on_print, false);
+  const tooSoon = capture();
+  assert.equal(runReview(["plan", "--account", ACCOUNT, "--archive", archive], tooSoon), 0);
+  assert.equal(JSON.parse(tooSoon.buffers.out).items.length, 0);
+  const booleanDelivery = capture();
+  assert.equal(runReview(["register-delivery", "--delivered", "true", "--account", ACCOUNT, "--archive", archive], booleanDelivery), 1);
+  assert.equal(JSON.parse(booleanDelivery.buffers.err).code, "rejected");
+  const registered = capture();
+  assert.equal(runReview([
+    "register-delivery", "--account", ACCOUNT, "--archive", archive,
+    "--recommendation", offer.recommendation_id, "--body-sha256", offer.body_sha256,
+  ], registered), 0);
+  assert.equal(JSON.parse(registered.buffers.out).idempotent, false);
+  const registeredAgain = capture();
+  assert.equal(runReview([
+    "register-delivery", "--account", ACCOUNT, "--archive", archive,
+    "--recommendation", offer.recommendation_id, "--body-sha256", offer.body_sha256,
+  ], registeredAgain), 0);
+  assert.equal(JSON.parse(registeredAgain.buffers.out).idempotent, true);
   const consent = capture();
   assert.equal(runReview(["consent-set", "--account", ACCOUNT, "--archive", archive, "--processed", "true"], consent), 0);
   assert.equal(JSON.parse(consent.buffers.out).cleanup_processed, true);
@@ -638,6 +692,8 @@ test("review CLI previews cleanup and check-deps stays soft", () => {
   const ops = JSON.parse(issued.buffers.out);
   assert.equal(ops.issue, true);
   assert.equal(ops.connector_ops[0].tool, "delete_users_bookmark");
+  assert.equal(ops.connector_ops[0].executed, false);
+  assert.equal(ops.connector_ops[0].host_must_call, true);
   assert.equal(ops.deletes_post, false);
   const results = path.join(root, "results.json");
   fs.writeFileSync(results, JSON.stringify({
@@ -647,6 +703,14 @@ test("review CLI previews cleanup and check-deps stays soft", () => {
   const committed = capture();
   assert.equal(runReview(["commit-removal", "--account", ACCOUNT, "--archive", archive, "--results", results], committed), 0);
   assert.equal(fs.existsSync(path.join(archive, "accounts", ACCOUNT, "posts", `${pageId}.json`)), true);
+  const replay = capture();
+  assert.equal(runReview(["commit-removal", "--account", ACCOUNT, "--archive", archive, "--results", results], replay), 0);
+  assert.equal(JSON.parse(replay.buffers.out).skipped[0].reason, "already_succeeded");
+  const audited = capture();
+  assert.equal(runReview(["audit", "--account", ACCOUNT, "--archive", archive], audited), 0);
+  const audit = JSON.parse(audited.buffers.out);
+  assert.equal(audit.claims_full_absence, false);
+  assert.equal(audit.rows.find((row) => row.post_id === pageId).status, "cleanup_succeeded");
   const presence = path.join(root, "presence.json");
   fs.writeFileSync(presence, JSON.stringify({ account_id: ACCOUNT, posts: [] }));
   const reconciled = capture();

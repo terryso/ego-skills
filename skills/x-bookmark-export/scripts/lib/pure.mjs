@@ -7,9 +7,10 @@ import path from "node:path";
 
 export const SKILL = "x-bookmark-export";
 export const RUNTIME = "grok-x-connector";
-export const STANDALONE_EGO_BOOKMARK_BACKEND = "unsupported";
+export const STANDALONE_EGO_BOOKMARK_BACKEND = "not_implemented";
+export const EGO_BOOKMARK_ACCEPTANCE = "not_accepted";
 export const EGO_BOOKMARK_GAP =
-  "Standalone Ego is not an X bookmark backend. A runtime smoke inside ego-browser nodejs does not prove bookmark read or remove. The Grok Bot X connector is the runtime route. This recipe is not that backend.";
+  "This connector-first version is not an Ego backend. A standalone Ego bookmark backend is not implemented and not accepted. Printing a connector recipe does not call X. The host bot must call the X connector.";
 export const LIST_TOOL = "get_users_bookmarks";
 export const REMOVE_TOOL = "delete_users_bookmark";
 export const MAX_PAGE_RESULTS = 100;
@@ -487,9 +488,12 @@ export function listBookmarksCall({ accountId, paginationToken = null, maxResult
     tool: LIST_TOOL,
     arguments: args,
     live_call: false,
+    executed: false,
+    host_must_call: true,
+    completes_on_print: false,
     notes: [
-      "Call the authenticated Grok Bot X connector. Do not call api.x.com.",
-      "Do not use ego-browser, cookies, or a browser session.",
+      "The host bot calls get_users_bookmarks. This process only prints the arguments.",
+      "Do not call api.x.com. Do not use ego-browser, cookies, or a browser session.",
       "A short or empty page is not the end while pagination_token / next_token exists.",
       "Save the tool result and ingest it. Archive before any cleanup.",
     ],
@@ -504,12 +508,17 @@ export function removeBookmarkCall({ accountId, tweetId } = {}) {
     tool: REMOVE_TOOL,
     arguments: { id: accountId, tweet_id: tweetId },
     live_call: false,
+    executed: false,
+    host_must_call: true,
+    completes_on_print: false,
     effect: "unbookmark",
     deletes_post: false,
     notes: [
+      "The host bot calls delete_users_bookmark. Printing this object does not unbookmark.",
       "Unbookmark only. This does not delete the original post.",
       "Adding the bookmark again may not restore order or folder.",
-      "Issue this call only for an allowlisted id after local intent is committed.",
+      "Call it only for an allowlisted id after apply --yes has committed local intent.",
+      "Bind the raw tool result to that same id with commit-removal. Repeat is idempotent.",
     ],
   };
 }
@@ -531,14 +540,17 @@ export function dependencyReport({ requireConnector = false, requireEgo = false 
     ok: true,
     skill: SKILL,
     runtime: RUNTIME,
-    ego_browser: "unsupported",
+    ego_browser: "not_used",
     ego_browser_invoked: false,
-    ego_backend: "unverified",
+    ego_backend: "not_implemented",
+    ego_bookmark_acceptance: EGO_BOOKMARK_ACCEPTANCE,
     standalone_ego_bookmark_backend: STANDALONE_EGO_BOOKMARK_BACKEND,
     live_proven_ego_skill: false,
     connector_recipe_equals_ego_backend: false,
+    connector_recipe_completes_on_print: false,
     pro_runtime_smoke_proves_bookmarks: false,
     gap: EGO_BOOKMARK_GAP,
+    gap_zh: "此首版不是 Ego 后端。独立 Ego 书签后端未实现、未验收。打印连接器配方不会调用 X，必须由宿主 bot 调用连接器并交回执。",
     live_x: false,
     live_cleanup: false,
     bins: ["node"],

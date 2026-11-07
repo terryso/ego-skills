@@ -12,7 +12,7 @@ Use `skills/x-bookmark-review/references/onboarding.md`. One question at a time.
 
 The supported read tool is Grok Bot's X connector `get_users_bookmarks`. The supported unbookmark tool is `delete_users_bookmark`, and only after the local plan says `issue: true`.
 
-This template does not make Ego Lite a bookmark backend. `ego_backend` stays `unverified`. A connector recipe is not equivalent to a live-proven Ego skill.
+This version is not an Ego backend. `check-deps` reports `not_implemented` and `not_accepted`. Run [getting-started.md](./getting-started.md). A printed recipe is not a connector call.
 
 ## What not to ship from here
 

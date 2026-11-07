@@ -79,12 +79,15 @@ test("connector recipes describe sanctioned calls and do not prove Ego", () => {
   assert.equal(removal.deletes_post, false);
   assert.equal(removal.live_call, false);
   const report = dependencyReport();
-  assert.equal(report.ego_backend, "unverified");
-  assert.equal(report.standalone_ego_bookmark_backend, "unsupported");
+  assert.equal(report.ego_backend, "not_implemented");
+  assert.equal(report.standalone_ego_bookmark_backend, "not_implemented");
+  assert.equal(report.ego_bookmark_acceptance, "not_accepted");
+  assert.equal(report.connector_recipe_completes_on_print, false);
+  assert.match(report.gap_zh, /未实现、未验收/);
   assert.equal(report.live_proven_ego_skill, false);
   assert.equal(report.connector_recipe_equals_ego_backend, false);
   assert.equal(report.pro_runtime_smoke_proves_bookmarks, false);
-  assert.match(report.gap, /not an X bookmark backend/);
+  assert.match(report.gap, /not implemented and not accepted/);
   assert.equal(report.ego_browser_invoked, false);
   assert.equal(report.live_x, false);
   assert.equal(report.live_cleanup, false);

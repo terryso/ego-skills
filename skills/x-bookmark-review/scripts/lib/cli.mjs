@@ -3,8 +3,8 @@
 import fs from "node:fs";
 import { dependencyReport, WorkflowError } from "../../../x-bookmark-export/scripts/lib/pure.mjs";
 import { readConsent, writeConsent } from "../../../x-bookmark-export/scripts/lib/store.mjs";
-import { acceptAnalysis, deliverRecommendations } from "./analysis.mjs";
-import { buildPlan, commitRemoval, mapConnectorUnbookmarkReceipt, prepareApply, reconcilePresence } from "./cleanup.mjs";
+import { acceptAnalysis, deliverRecommendations, registerDelivery } from "./analysis.mjs";
+import { accountAudit, buildPlan, commitRemoval, mapConnectorUnbookmarkReceipt, prepareApply, reconcilePresence } from "./cleanup.mjs";
 import { applyOnboarding, mergeConsent, nextOnboardingQuestion } from "./onboard.mjs";
 import { siblingStatus } from "./sibling.mjs";
 
@@ -89,6 +89,8 @@ and is not invoked.
   node scripts/review.mjs onboard --answers /absolute/answers.json [--apply --account <id> --archive /absolute/archive]
   node scripts/review.mjs accept-analysis --account <id> --archive /absolute/archive --analysis /absolute/analysis.json
   node scripts/review.mjs recommend --account <id> --archive /absolute/archive
+  node scripts/review.mjs register-delivery --account <id> --archive /absolute/archive --recommendation <id> --body-sha256 <hex>
+  node scripts/review.mjs audit --account <id> --archive /absolute/archive
   node scripts/review.mjs plan --account <id> --archive /absolute/archive [--cap N]
   node scripts/review.mjs apply --account <id> --archive /absolute/archive --plan <planId> [--yes]
   node scripts/review.mjs commit-removal --account <id> --archive /absolute/archive --results /absolute/results.json
@@ -118,6 +120,9 @@ export function runReview(argv, io = {}) {
     }
     const command = positionals[0];
     if (positionals.length > 1) throw new WorkflowError("invalid_arg", "unexpected positional argument");
+    if (flags.delivered != null) {
+      throw new WorkflowError("rejected", "a delivered boolean is not a receipt");
+    }
     if (flags.yes && command !== "apply") {
       throw new WorkflowError("rejected", "--yes is only valid on apply");
     }
@@ -132,6 +137,13 @@ export function runReview(argv, io = {}) {
       return finish(stdout, acceptAnalysis(archive, account, readJsonFile(requireFlag(flags, "analysis"))));
     }
     if (command === "recommend") return finish(stdout, deliverRecommendations(archive, account));
+    if (command === "register-delivery") {
+      return finish(stdout, registerDelivery(archive, account, {
+        recommendationId: requireFlag(flags, "recommendation"),
+        bodySha256: requireFlag(flags, "body-sha256"),
+      }));
+    }
+    if (command === "audit") return finish(stdout, accountAudit(archive, account));
     if (command === "plan") {
       const cap = integerFlag(flags, "cap");
       return finish(stdout, buildPlan(archive, account, cap == null ? {} : { cap }));

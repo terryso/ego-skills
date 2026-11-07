@@ -117,7 +117,7 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-**独立 Ego 书签后端：不支持。** `x-bookmark-export` 和 `x-bookmark-review` 是连接器页面工具，不是 Ego 技能。`check-deps` 报告 `standalone_ego_bookmark_backend: unsupported`。Pro 上对 `taskSpace` 的运行时烟测不是书签读取或取消。说明见 [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md)。不要从未合并的分支发布这两个技能。
+**此首版不是 Ego 后端。** 独立 Ego 书签后端未实现、未验收。`check-deps` 报告 `standalone_ego_bookmark_backend: not_implemented` 和 `ego_bookmark_acceptance: not_accepted`。打印配方不会调用 X。安装和命令顺序见 [templates/x-bookmark-keeper/getting-started.md](./templates/x-bookmark-keeper/getting-started.md)。不要从未合并的分支发布这两个技能。
 
 如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布）。说明见各技能的 `references/login.md`。
 

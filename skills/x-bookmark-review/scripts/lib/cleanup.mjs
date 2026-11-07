@@ -21,6 +21,7 @@ import {
   readKey,
   readPost,
   readRecord,
+  readScan,
   transitionRecord,
   writeJsonAtomic,
   writeRecord,
@@ -31,6 +32,42 @@ import { PLAN_TTL_MS, receiptProblem, signPayload, verifyPayload } from "./recei
 export const MAX_CLEANUP_ATTEMPTS = 2;
 export const DEFAULT_CAP = 10;
 export const MAX_CAP = 25;
+export function accountAudit(root, accountId, deps = {}) {
+  const paths = ensureArchive(root, accountId, deps);
+  const scan = readScan(root, accountId, deps);
+  const records = listRecords(root, accountId, deps);
+  const pendingDelivery = [];
+  const writer = deps.fs || fs;
+  if (writer.existsSync(paths.recommendations)) {
+    for (const name of writer.readdirSync(paths.recommendations)) {
+      if (!name.endsWith(".json")) continue;
+      const meta = readJson(containedFile(paths.recommendations, name), deps);
+      if (meta && meta.delivery_registered !== true) pendingDelivery.push(meta.recommendation_id);
+    }
+  }
+  const rows = records.map((record) => ({
+    post_id: record.post_id,
+    status: record.status,
+    content_status: record.content_status,
+    read: record.read === true,
+    notified: record.notified === true,
+    delivery_registered: Boolean(record.delivery_receipt_id),
+    needs_reconcile: Boolean(record.cleanup_attempt?.remove_dispatched && !record.cleanup_attempt?.remove_acked),
+    cleanup_error: record.cleanup_attempt?.last_error || null,
+  }));
+  return {
+    ok: true,
+    account_id: accountId,
+    scan_complete: scan.complete === true,
+    incomplete_reason: scan.complete ? null : scan.incomplete_reason,
+    has_next_token: Boolean(scan.next_token),
+    claims_full_absence: false,
+    pending_delivery: pendingDelivery,
+    retained_incomplete_or_uncertain: rows.filter((row) => row.content_status !== "complete").map((row) => row.post_id),
+    rows,
+  };
+}
+
 export function mapConnectorUnbookmarkReceipt(payload, { accountId, tweetId } = {}) {
   assertAccountId(accountId);
   assertPostId(tweetId);

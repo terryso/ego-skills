@@ -32,8 +32,9 @@ test("check-deps soft-fails Ego and connector requests without invoking them", (
   const ok = capture();
   assert.equal(runDeps([], ok), 0);
   const report = parseOut(ok.buffers);
-  assert.equal(report.ego_backend, "unverified");
-  assert.equal(report.standalone_ego_bookmark_backend, "unsupported");
+  assert.equal(report.ego_backend, "not_implemented");
+  assert.equal(report.standalone_ego_bookmark_backend, "not_implemented");
+  assert.equal(report.ego_bookmark_acceptance, "not_accepted");
   assert.equal(report.live_proven_ego_skill, false);
   assert.equal(report.connector_recipe_equals_ego_backend, false);
   assert.equal(report.pro_runtime_smoke_proves_bookmarks, false);
@@ -70,8 +71,11 @@ test("export CLI archives a fixture page and refuses removal flags", () => {
   assert.equal(runExport(["recipe", "--account", ACCOUNT, "--token", "NEXTTOKEN123"], recipe), 0);
   const recipeJson = parseOut(recipe.buffers);
   assert.equal(recipeJson.live_call, false);
-  assert.equal(recipeJson.ego_backend, "unverified");
-  assert.equal(recipeJson.standalone_ego_bookmark_backend, "unsupported");
+  assert.equal(recipeJson.ego_backend, "not_implemented");
+  assert.equal(recipeJson.standalone_ego_bookmark_backend, "not_implemented");
+  assert.equal(recipeJson.host_must_call, true);
+  assert.equal(recipeJson.completes_on_print, false);
+  assert.equal(recipeJson.list.executed, false);
   assert.equal(recipeJson.connector_recipe_equals_ego_backend, false);
   assert.equal(recipeJson.pro_runtime_smoke_proves_bookmarks, false);
   assert.equal(recipeJson.list.arguments.pagination_token, "NEXTTOKEN123");

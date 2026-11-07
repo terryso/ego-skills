@@ -266,48 +266,37 @@ function deliverLocked(root, accountId, paths, deps) {
     if (chosen.length === MAX_SUGGESTIONS) break;
   }
   if (chosen.length === 0) {
-    return { ok: true, silent: true, suggestions: [], notified: [], body: null };
+    return {
+      ok: true,
+      silent: true,
+      delivered: false,
+      host_must_show_body: false,
+      suggestions: [],
+      notified: [],
+      body: null,
+    };
   }
   const body = renderRecommendationBody({ accountId, generatedAt: now, suggestions: chosen });
   const recommendationId = sha256Text(body).slice(0, 24);
-  const keyHex = readKey(root, accountId, deps);
-  const receipt = issueReceipt({
-    keyHex,
-    accountId,
-    recommendationId,
-    postIds: chosen.map((item) => item.post_id),
-    body,
-    nowMs,
-  });
+  const bodySha = sha256Text(body);
   const bodyFile = containedFile(paths.recommendations, `${recommendationId}.md`);
   const metaFile = containedFile(paths.recommendations, `${recommendationId}.json`);
-  const receiptFile = containedFile(paths.receipts, `${receipt.receipt_id}.json`);
   const writer = deps.fs || fs;
   writeJsonAtomic(metaFile, {
     schema: 1,
     recommendation_id: recommendationId,
     account_id: accountId,
     post_ids: chosen.map((item) => item.post_id),
-    receipt_id: receipt.receipt_id,
     generated_at: now,
+    delivery_registered: false,
+    receipt_id: null,
+    body_sha256: bodySha,
   }, deps);
   writer.mkdirSync(paths.recommendations, { recursive: true, mode: 0o700 });
   if (deps.failOn && deps.failOn(bodyFile)) {
     throw new WorkflowError("archive_failed", "failed to write recommendation body");
   }
   writer.writeFileSync(bodyFile, body, { mode: 0o600 });
-  writeJsonAtomic(receiptFile, receipt, deps);
-  const notified = [];
-  for (const item of chosen) {
-    const next = transitionRecord(item.record, "recommendation_delivered", "recommendation_delivered", now, {
-      read: true,
-      notified: true,
-      recommendation_id: recommendationId,
-      delivery_receipt_id: receipt.receipt_id,
-    });
-    writeRecord(root, accountId, next, deps);
-    notified.push(item.post_id);
-  }
   const entries = [
     ...(index.entries || []),
     ...chosen.map((item) => ({
@@ -315,17 +304,102 @@ function deliverLocked(root, accountId, paths, deps) {
       post_id: item.post_id,
       recommendation_id: recommendationId,
       title: item.title,
+      state: "offered",
     })),
   ];
   writeJsonAtomic(paths.suggestionIndex, { schema: 1, entries }, deps);
   return {
     ok: true,
     silent: false,
+    delivered: false,
+    executed: false,
+    host_must_show_body: true,
+    completes_on_print: false,
     recommendation_id: recommendationId,
-    receipt_id: receipt.receipt_id,
+    body_sha256: bodySha,
     suggestions: chosen.map(({ post_id, title, source_url }) => ({ post_id, title, source_url })),
-    notified,
+    notified: [],
     body,
     interest_not_endorsement: true,
+    next: "Show body to the user, then register-delivery with this body_sha256. A boolean is not delivery.",
   };
+}
+
+export function registerDelivery(root, accountId, { recommendationId, bodySha256 } = {}, deps = {}) {
+  assertAccountId(accountId);
+  if (typeof recommendationId !== "string" || !/^[0-9a-f]{24}$/.test(recommendationId)) {
+    throw new WorkflowError("invalid_arg", "recommendation id must be the 24-hex id from recommend");
+  }
+  if (typeof bodySha256 !== "string" || !/^[0-9a-f]{64}$/.test(bodySha256)) {
+    throw new WorkflowError("rejected", "body sha256 must be the hex digest of the shown body, not a boolean");
+  }
+  const paths = ensureArchive(root, accountId, deps);
+  return withLock(paths.dir, () => {
+    const now = (deps.now || (() => new Date().toISOString()))();
+    const nowMs = Date.parse(now);
+    const metaFile = containedFile(paths.recommendations, `${recommendationId}.json`);
+    const bodyFile = containedFile(paths.recommendations, `${recommendationId}.md`);
+    const meta = readJson(metaFile, deps);
+    if (!meta || meta.account_id !== accountId || meta.recommendation_id !== recommendationId) {
+      throw new WorkflowError("account_mismatch", "recommendation does not belong to this account");
+    }
+    const body = fs.readFileSync(bodyFile, "utf8");
+    const actual = sha256Text(body);
+    if (actual !== bodySha256 || meta.body_sha256 !== bodySha256) {
+      throw new WorkflowError("receipt_body_mismatch", "shown body does not match the offered recommendation");
+    }
+    if (meta.delivery_registered === true && meta.receipt_id) {
+      return {
+        ok: true,
+        idempotent: true,
+        delivered: true,
+        recommendation_id: recommendationId,
+        receipt_id: meta.receipt_id,
+        notified: meta.post_ids,
+      };
+    }
+    const keyHex = readKey(root, accountId, deps);
+    const receipt = issueReceipt({
+      keyHex,
+      accountId,
+      recommendationId,
+      postIds: meta.post_ids,
+      body,
+      nowMs,
+    });
+    writeJsonAtomic(containedFile(paths.receipts, `${receipt.receipt_id}.json`), receipt, deps);
+    const notified = [];
+    for (const postId of meta.post_ids) {
+      const record = readRecord(root, accountId, postId, deps);
+      if (record.status === "recommendation_delivered" && record.delivery_receipt_id === receipt.receipt_id) {
+        notified.push(postId);
+        continue;
+      }
+      if (record.status !== "analyzed") {
+        throw new WorkflowError("state_conflict", `post ${postId} cannot be marked delivered from ${record.status}`);
+      }
+      writeRecord(root, accountId, transitionRecord(record, "recommendation_delivered", "delivery_registered", now, {
+        read: true,
+        notified: true,
+        recommendation_id: recommendationId,
+        delivery_receipt_id: receipt.receipt_id,
+      }), deps);
+      notified.push(postId);
+    }
+    writeJsonAtomic(metaFile, {
+      ...meta,
+      delivery_registered: true,
+      receipt_id: receipt.receipt_id,
+      registered_at: now,
+    }, deps);
+    return {
+      ok: true,
+      idempotent: false,
+      delivered: true,
+      executed: false,
+      recommendation_id: recommendationId,
+      receipt_id: receipt.receipt_id,
+      notified,
+    };
+  }, deps.lock);
 }

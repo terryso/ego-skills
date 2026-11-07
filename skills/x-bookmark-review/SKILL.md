@@ -26,13 +26,13 @@ metadata:
 
 Read an archive from `x-bookmark-export`, accept a structured analysis file, and plan cleanup. The default command does not unbookmark anything.
 
-**独立 Ego 书签后端：不支持。** 连接器步骤不是 Ego 书签后端。Pro 运行时烟测没有证明书签读取或取消。
+**此首版不是 Ego 后端。** 独立 Ego 书签后端未实现、未验收。连接器由宿主 bot 调用。CLI 打印的配方 `executed` 为 false，不是已经取消书签。
 
-**Standalone Ego bookmark backend: unsupported.** Connector steps are not an Ego bookmark backend. The Pro runtime smoke did not prove bookmark read or remove.
+**This version is not an Ego backend.** A standalone Ego bookmark backend is not implemented and not accepted. The host bot calls the connector. A printed recipe has `executed: false` and is not an unbookmark.
 
-**状态：** 可移植核心和单元测试。现有只读分析例程不会被本技能自动切换。
+现有只读分析例程不会被本技能自动切换。没有 `register-delivery` 的建议不能进入清理。
 
-**Status:** portable core and unit tests. An existing read-only analysis routine is left untouched.
+An existing read-only analysis routine is left untouched. A suggestion cannot be cleaned up until `register-delivery` records the body that was shown.
 
 两个技能要装在相邻目录。只有 review、没有 export 时，退出码 `2`。
 
@@ -70,6 +70,11 @@ node skills/x-bookmark-review/scripts/review.mjs accept-analysis \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive --analysis /tmp/x-bookmark-analysis.json
 node skills/x-bookmark-review/scripts/review.mjs recommend \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive
+node skills/x-bookmark-review/scripts/review.mjs register-delivery \
+  --account 1000000000000000001 --archive /tmp/x-bookmark-archive \
+  --recommendation RECOMMENDATION_ID --body-sha256 BODY_SHA256
+node skills/x-bookmark-review/scripts/review.mjs audit \
+  --account 1000000000000000001 --archive /tmp/x-bookmark-archive
 node skills/x-bookmark-review/scripts/review.mjs plan \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive
   node skills/x-bookmark-review/scripts/review.mjs apply \
@@ -79,7 +84,7 @@ node skills/x-bookmark-review/scripts/review.mjs commit-removal \
   --results /tmp/connector-receipt.json --tweet-id 2000000000000000001
 ```
 
-引导问题一次只问一个。见 `references/onboarding.md`。清理细节见 `references/cleanup.md`。
+引导问题一次只问一个。见 `references/onboarding.md`。宿主逐步调用见 `references/host-loop.md`。安装和整链命令见仓库 `templates/x-bookmark-keeper/getting-started.md`。清理细节见 `references/cleanup.md`。
 
 ## 成功标准
 

@@ -1,6 +1,6 @@
 # X bookmark workflow — acceptance notes
 
-## Standalone Ego bookmark backend: unsupported
+## Standalone Ego bookmark backend: not implemented, not accepted
 
 A Pro read-only runtime smoke does **not** make an Ego bookmark backend. The connector skills are not equivalent to one. X access stays on the Grok Bot connector (`get_users_bookmarks` / `delete_users_bookmark`). No private X endpoints. No browser session against X. No real cleanup. Do not publish.
 
@@ -24,7 +24,7 @@ This branch is **not** a completed Ego skill. Unit tests cover the portable core
 |------|--------|
 | Branch | `cursor/x-bookmark-workflow-3736` |
 | Base | `main` |
-| Standalone Ego bookmark backend | `unsupported` |
+| Standalone Ego bookmark backend | `not_implemented` / `not_accepted` |
 | Connector recipe equals an Ego backend | no |
 | Pro runtime smoke proves bookmarks | no |
 | Live X read or unbookmark in the coding run | no |
@@ -121,7 +121,7 @@ One authorized account's saved connector page was run through this branch's CLI 
 | Bookmark time | Unknown. `created_at` was not copied into it. |
 | Single-item wrapper file | exit 1, `invalid_page`. It is not a page. The script did not pretend otherwise. |
 | External audit file | exit 1, `invalid_schema`. It is not `x-bookmark-analysis/1` and is not a delivery receipt. |
-| Local structured decision | One actionable item. `recommend` notified that one id. This is the script's own receipt, not the earlier host delivery. |
+| Local structured decision | `recommend` returns `delivered: false`. Plan before `register-delivery` is `delivery_required`. Registration is idempotent. |
 | Plan before consent | 0 items. Reason `no_consent`. `connector_ops` empty. |
 | `apply` without `--yes` | exit 3. `issue: false`. |
 | `apply --yes` | exit 0. `issue: true`. Tool `delete_users_bookmark`. `live_call: false`. `deletes_post: false`. The process did not call it. |
@@ -129,10 +129,10 @@ One authorized account's saved connector page was run through this branch's CLI 
 | Receipt plus the already dispatched id | Local `cleanup_succeeded`. Archive file kept. No X call. |
 | Two-page readback supplied beside the files | 50 rows, target not in those rows, next token still present. This script ingested one page and does not claim the bookmark is absent from the whole account. |
 
-Standalone Ego bookmark backend remains unsupported. No further unbookmark was performed.
+Standalone Ego bookmark backend remains not implemented and not accepted. The host must call the connector. A later file run must `register-delivery` before cleanup. No further unbookmark was performed by these CLIs.
 
 ## Coverage
 
-`npm test` on 2026-11-07 (Node v22.23.4): **428 passed**, c8 lines **97.76%** (gate 80%). `x-bookmark-export` lib lines 98.77%. `x-bookmark-review` lib lines 93.74%. Report path: `coverage/coverage-summary.json` (not committed).
+`npm test` on 2026-11-07 (Node v22.23.4): **428 passed**, c8 lines **97.72%** (gate 80%). `x-bookmark-export` lib lines 98.94%. `x-bookmark-review` lib lines 93.50%. Report path: `coverage/coverage-summary.json` (not committed).
 
 That run did not start Ego and did not call X. The historical table in `ACCEPTANCE.md` is an older snapshot of other skills.
