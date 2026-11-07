@@ -31,6 +31,7 @@ import {
   formatResult,
   hasHomeTitle,
   interpretCreateTweetResponse,
+  submissionVerdict,
   isLoginWall,
   isQueryId,
   isScreenName,
@@ -221,6 +222,11 @@ test("login classification uses auth_token, not ct0 alone", () => {
 
   const missing = egoMissingSummary("post");
   assert.equal(missing.exitCode, 2);
+  assert.equal(missing.outcome, "not_submitted");
+  assert.equal(missing.sent, false);
+  assert.equal(missing.definitely_unsent, true);
+  assert.equal(missing.retry, false);
+  assert.equal("outcome" in egoMissingSummary(), false);
   assert.match(missing.how_to_login_zh[0], /Ego Lite/);
   assert.match(JSON.stringify(missing), /x\.com\/home/);
 });
@@ -347,11 +353,23 @@ test("response parsing returns the status URL and surfaces 226", () => {
   assert.equal(restIdFromResult(tweetResult(legacy)), REST_ID);
   const wrapped = { data: { create_tweet: { tweet_results: { result: { tweet: created().data.create_tweet.tweet_results.result } } } } };
   assert.equal(interpretCreateTweetResponse(200, wrapped).url, `https://x.com/Suchuanyi/status/${REST_ID}`);
-  assert.equal(interpretCreateTweetResponse(200, { data: { create_tweet: { tweet_results: { result: { legacy: {} } } } } }).ok, false);
-  assert.match(interpretCreateTweetResponse(200, "not-json").error, /non-JSON/);
-  assert.match(interpretCreateTweetResponse(500, { data: {} }).error, /HTTP 500/);
+  const missingId = interpretCreateTweetResponse(200, { data: { create_tweet: { tweet_results: { result: { legacy: {} } } } } });
+  assert.equal(missingId.ok, false);
+  assert.equal(missingId.ambiguous, true);
+  const notJson = interpretCreateTweetResponse(200, "not-json");
+  assert.match(notJson.error, /non-JSON/);
+  assert.equal(notJson.ambiguous, true);
+  const serverError = interpretCreateTweetResponse(500, { data: {} });
+  assert.match(serverError.error, /HTTP 500/);
+  assert.equal(serverError.ambiguous, true);
+  assert.equal(interpretCreateTweetResponse(500, { errors: [{ message: "Internal error" }] }).ambiguous, false);
+  assert.equal(interpretCreateTweetResponse(403, { data: {} }).ambiguous, false);
   assert.equal(interpretCreateTweetResponse(200, JSON.stringify(created())).ok, true);
+  assert.equal(interpretCreateTweetResponse(200, JSON.stringify(created())).ambiguous, false);
   assert.equal(interpretCreateTweetResponse(0, created()).ok, true);
+  assert.equal(interpretCreateTweetResponse(401, null).loginRequired, true);
+  assert.equal(interpretCreateTweetResponse(401, null).ambiguous, false);
+  assert.equal(interpretCreateTweetResponse(429, null).ambiguous, false);
   assert.deepEqual(parseLooseJson("{\"ok\":true,\"v\":\"a\nb\"}"), { ok: true, v: "a b" });
   assert.equal(parseLooseJson(""), null);
   assert.equal(parseLooseJson("{"), null);
@@ -365,6 +383,7 @@ test("response parsing returns the status URL and surfaces 226", () => {
 
   const blocked = interpretCreateTweetResponse(200, { errors: [{ code: 226, message: "Authorization: This request looks like it might be automated." }] }, { replyTo: "5" });
   assert.equal(blocked.ok, false);
+  assert.equal(blocked.ambiguous, false);
   assert.equal(blocked.automated, true);
   assert.match(blocked.error, /best-effort/);
   const rootBlock = interpretCreateTweetResponse(200, { errors: [{ message: "automated", extensions: { code: "226" } }] });
@@ -407,6 +426,45 @@ test("response parsing returns the status URL and surfaces 226", () => {
   assert.equal(errorText([null, { code: "", message: "m" }]), "m");
   assert.match(explainGraphqlFailure({ status: 403, errors: [{ message: "nope" }] }), /nope/);
   assert.match(explainGraphqlFailure({ status: 403, errors: [] }), /HTTP 403/);
+});
+
+test("submission verdict separates refusal from an unknown post-submit result", () => {
+  const sent = submissionVerdict(200, created());
+  assert.equal(sent.outcome, "sent");
+  assert.equal(sent.sent, true);
+  assert.equal(sent.definitely_unsent, false);
+  assert.equal(sent.retry, false);
+  const refused = submissionVerdict(200, { errors: [{ code: 226, message: "automated" }] });
+  assert.equal(refused.outcome, "rejected");
+  assert.equal(refused.sent, false);
+  assert.equal(refused.definitely_unsent, true);
+  const lost = submissionVerdict(0, null);
+  assert.equal(lost.outcome, "unknown");
+  assert.equal(lost.sent, null);
+  assert.equal(lost.definitely_unsent, false);
+  assert.equal(lost.retry, false);
+  const malformed = submissionVerdict(200, { data: {} });
+  assert.equal(malformed.outcome, "unknown");
+  const client = submissionVerdict(400, { errors: [{ message: "bad request" }] });
+  assert.equal(client.outcome, "rejected");
+  const draft = confirmationSummary({ text: "hi" });
+  assert.equal(draft.outcome, "not_submitted");
+  assert.equal(draft.sent, false);
+  assert.equal(draft.retry, false);
+  const unknownText = formatResult({
+    exitCode: 1,
+    outcome: "unknown",
+    sent: null,
+    definitely_unsent: false,
+    verify_before_retry: "Verify the existing post before any retry.",
+    error: "timeout",
+  });
+  assert.match(unknownText, /Verify the existing post/);
+  assert.match(unknownText, /"sent": null/);
+  assert.equal(unknownText.includes('"sent": false'), false);
+  const unknownJson = formatResult({ exitCode: 1, outcome: "unknown", sent: null, url: "https://x.com/a/status/1" }, { asJson: true });
+  assert.equal(unknownJson.startsWith("{"), true);
+  assert.equal(formatResult({ exitCode: 0, sent: true, url: "https://x.com/Suchuanyi/status/1" }), "https://x.com/Suchuanyi/status/1\n");
 });
 
 test("tagged ego output and process exit", () => {

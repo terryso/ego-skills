@@ -44,6 +44,7 @@ serve-file:
   Prints JSON { ok, url, file, bytes, port } then stays until SIGINT.
 
 The publish/draft UI flow (wujie form, cover chooser, location) stays in SKILL.md for the agent — too brittle for a full script.
+Before 保存草稿, run descriptionReadbackOk, uploadProbeDecision, and coverPreviewDecision. Unresolved, timeout, or mismatch returns save:false. Never click 发表. refClick stays false.
 `;
 
 export function strip(obj) {
@@ -119,6 +120,135 @@ export function contentTypeFor(filePath) {
 export function publicUrl(port, leaf) {
   const name = encodeURIComponent(leaf || "file");
   return `http://127.0.0.1:${port}/${name}`;
+}
+
+export const CHANNELS_UPLOAD_WAIT_LIMIT = 8;
+export const CHANNELS_COVER_WAIT_LIMIT = 12;
+export const CHANNELS_WUJIE_NULL_WAIT_LIMIT = 8;
+
+const CHANNELS_UPLOAD_FAILURE_RE = /上传失败|上传出错|上传异常/;
+
+function boundedStop(attempt, limit, pendingReason) {
+  if (attempt >= limit) {
+    return {
+      ok: false,
+      action: "stop",
+      reason: pendingReason === "pending" ? "timeout" : pendingReason,
+      save: false,
+      publish: false,
+    };
+  }
+  return { ok: false, action: "retry", reason: pendingReason, save: false, publish: false };
+}
+
+export function normalizeDescription(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n+/g, "\n")
+    .trim();
+}
+
+export function expectedDescription(desc, tags) {
+  const body = normalizeDescription(desc);
+  const topic = normalizeDescription(tags);
+  if (!topic) return body;
+  if (!body) return topic;
+  return `${body}\n${topic}`;
+}
+
+export function descriptionReadbackOk(read, expected) {
+  const expectedText = typeof expected === "string"
+    ? expected
+    : expectedDescription(expected && expected.desc, expected && expected.tags);
+  if (!normalizeDescription(expectedText)) {
+    return { ok: false, save: false, publish: false, reason: "missing-expected" };
+  }
+  if (read == null || read.ok === false) {
+    return { ok: false, save: false, publish: false, reason: "unresolved" };
+  }
+  const actual = typeof read === "string" ? read : (read.value != null ? read.value : read.text);
+  if (actual == null) return { ok: false, save: false, publish: false, reason: "unresolved" };
+  const left = normalizeDescription(actual);
+  const right = normalizeDescription(expectedText);
+  if (!left) return { ok: false, save: false, publish: false, reason: "empty-readback" };
+  if (left !== right) {
+    return { ok: false, save: false, publish: false, reason: "mismatch", actual: left, expected: right };
+  }
+  return { ok: true, save: true, publish: false, reason: "match" };
+}
+
+export function wujieProbeDecision(probe, { attempt = 1, limit = CHANNELS_WUJIE_NULL_WAIT_LIMIT } = {}) {
+  if (probe && probe.wujie === true) {
+    return { ok: true, action: "proceed", reason: "ready", save: false, publish: false };
+  }
+  return boundedStop(Number(attempt) || 1, Number(limit) > 0 ? Number(limit) : CHANNELS_WUJIE_NULL_WAIT_LIMIT, "unresolved");
+}
+
+export function uploadProbeDecision(probe, { attempt = 1, limit = CHANNELS_UPLOAD_WAIT_LIMIT } = {}) {
+  const n = Number(attempt) || 1;
+  const cap = Number(limit) > 0 ? Number(limit) : CHANNELS_UPLOAD_WAIT_LIMIT;
+  if (!probe || typeof probe !== "object" || probe.wujie === false || probe.readable === false) {
+    return boundedStop(n, cap, "unresolved");
+  }
+  const text = String(probe.text || "");
+  if (probe.failed || CHANNELS_UPLOAD_FAILURE_RE.test(text)) {
+    return { ok: false, action: "stop", reason: "failed", save: false, publish: false };
+  }
+  const atHundred = probe.progress === 100 || probe.progress === "100%" || /(^|[^\d])100%/.test(text);
+  const preview = probe.hasPreview === true || (/转发/.test(text) && /赞/.test(text) && /评论/.test(text));
+  if (atHundred && preview && Number(probe.stableCount) >= 2) {
+    return { ok: true, action: "proceed", reason: "ready", save: true, publish: false };
+  }
+  return boundedStop(n, cap, "pending");
+}
+
+export function coverPreviewDecision(probe, { attempt = 1, limit = CHANNELS_COVER_WAIT_LIMIT } = {}) {
+  if (probe && probe.requested === false) {
+    return { ok: true, action: "skip", reason: "no-cover", save: true, publish: false };
+  }
+  const n = Number(attempt) || 1;
+  const cap = Number(limit) > 0 ? Number(limit) : CHANNELS_COVER_WAIT_LIMIT;
+  if (!probe || typeof probe !== "object" || probe.readable === false) {
+    return boundedStop(n, cap, "unresolved");
+  }
+  if (probe.revertedToDefault === true) {
+    return { ok: false, action: "stop", reason: "reverted", save: false, publish: false };
+  }
+  const spinning = probe.spinning === true || /转圈|上传中/.test(String(probe.text || ""));
+  if (!spinning && probe.previewChanged === true) {
+    return { ok: true, action: "proceed", reason: "confirmed", save: true, publish: false };
+  }
+  return boundedStop(n, cap, spinning ? "spinning" : "unresolved");
+}
+
+export function maySaveCheckpoint(upload) {
+  if (!upload || upload.ok !== true || upload.action !== "proceed") {
+    return { ok: false, save: false, publish: false, reason: "upload", detail: (upload && upload.reason) || "missing" };
+  }
+  return { ok: true, save: true, publish: false, reason: "upload-ready" };
+}
+
+export function maySaveDraft({ description, upload, cover } = {}) {
+  if (!description || description.ok !== true) {
+    return { ok: false, save: false, publish: false, reason: "description", detail: (description && description.reason) || "missing" };
+  }
+  if (!upload || upload.ok !== true || upload.action !== "proceed") {
+    return { ok: false, save: false, publish: false, reason: "upload", detail: (upload && upload.reason) || "missing" };
+  }
+  if (!cover || (cover.action !== "skip" && (cover.ok !== true || cover.action !== "proceed"))) {
+    return { ok: false, save: false, publish: false, reason: "cover", detail: (cover && cover.reason) || "missing" };
+  }
+  return { ok: true, save: true, publish: false, reason: "ready" };
+}
+
+export function channelsClickMethod() {
+  return {
+    refClick: false,
+    publish: false,
+    reason: "wujie intercepts ref and text clicks. Do not use an accessibility snapshot ref fallback. Use evaluate .click() inside the shadow root, or mouse.click coordinates.",
+  };
 }
 
 export function egoMissingSummary() {

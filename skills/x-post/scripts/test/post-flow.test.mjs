@@ -379,6 +379,135 @@ test("resolveCreateTweetQuery survives a dead bundle fetch", async () => {
   assert.equal(htmlId.calls.fetched.length, 0);
 });
 
+test("submission outcomes stay distinct and CreateTweet is attempted once", async () => {
+  const blocked = session();
+  blocked.clientTransaction = async () => { throw new Error("anim down"); };
+  const before = await performPost({ yes: true, text: "hi" }, blocked);
+  assert.equal(before.outcome, "not_submitted");
+  assert.equal(before.sent, false);
+  assert.equal(before.definitely_unsent, true);
+  assert.equal(before.retry, false);
+  assert.equal(blocked.calls.post, null);
+
+  let successPosts = 0;
+  const ok = session();
+  ok.postJson = async (request) => {
+    successPosts += 1;
+    ok.calls.post = request;
+    return { status: 200, body: successBody() };
+  };
+  const sent = await performPost({ yes: true, text: "hi" }, ok);
+  assert.equal(sent.outcome, "sent");
+  assert.equal(sent.sent, true);
+  assert.equal(sent.retry, false);
+  assert.equal(successPosts, 1);
+
+  let lostPosts = 0;
+  const lost = session();
+  lost.postJson = async () => {
+    lostPosts += 1;
+    throw new Error("timeout");
+  };
+  const unknown = await performPost({ yes: true, text: "hi" }, lost);
+  assert.equal(lostPosts, 1);
+  assert.equal(unknown.outcome, "unknown");
+  assert.equal(unknown.sent, null);
+  assert.notEqual(unknown.sent, false);
+  assert.equal(unknown.definitely_unsent, false);
+  assert.equal(unknown.retry, false);
+  assert.match(unknown.verify_before_retry, /Verify the existing post/);
+  assert.match(unknown.verify_before_retry_zh, /不要自动重发/);
+  assert.match(unknown.error, /Do not resend automatically/);
+  assert.equal(/definitely unsent|was not sent|did not send/i.test(unknown.error), false);
+
+  let malformedPosts = 0;
+  const malformed = session();
+  malformed.postJson = async (request) => {
+    malformedPosts += 1;
+    malformed.calls.post = request;
+    return { status: 200, body: "not-json" };
+  };
+  const badBody = await performPost({ yes: true, text: "hi" }, malformed);
+  assert.equal(malformedPosts, 1);
+  assert.equal(badBody.outcome, "unknown");
+  assert.equal(badBody.sent, null);
+  assert.equal(badBody.http_status, 200);
+
+  const noId = await performPost({ yes: true, text: "hi" }, session({
+    response: { status: 200, body: { data: { create_tweet: { tweet_results: { result: { legacy: {} } } } } } },
+  }));
+  assert.equal(noId.outcome, "unknown");
+  assert.equal(noId.definitely_unsent, false);
+
+  const server = await performPost({ yes: true, text: "hi" }, session({
+    response: { status: 500, body: { data: {} } },
+  }));
+  assert.equal(server.outcome, "unknown");
+  assert.equal(server.http_status, 500);
+
+  const droppedSession = session();
+  droppedSession.postJson = async () => null;
+  const dropped = await performPost({ yes: true, text: "hi" }, droppedSession);
+  assert.equal(dropped.outcome, "unknown");
+  assert.equal(dropped.sent, null);
+  assert.equal(dropped.http_status, 0);
+
+  let refusedPosts = 0;
+  const refused = session();
+  refused.postJson = async () => {
+    refusedPosts += 1;
+    return { status: 200, body: { errors: [{ code: 226, message: "automated" }] } };
+  };
+  const rejected = await performPost({ yes: true, text: "hi" }, refused);
+  assert.equal(refusedPosts, 1);
+  assert.equal(rejected.outcome, "rejected");
+  assert.equal(rejected.sent, false);
+  assert.equal(rejected.definitely_unsent, true);
+  assert.equal(rejected.retry, false);
+  assert.match(rejected.error, /Not retried/);
+
+  const opened = session();
+  let openedPosts = 0;
+  opened.postJson = async () => {
+    openedPosts += 1;
+    throw new Error("socket hang up");
+  };
+  const summary = await executePost({ yes: true, text: "once" }, {
+    browser: { async open() { return opened; } },
+  });
+  assert.equal(openedPosts, 1);
+  assert.equal(summary.outcome, "unknown");
+  assert.equal(summary.sent, null);
+  assert.equal(summary.definitely_unsent, false);
+  assert.equal(summary.retry, false);
+  assert.equal(opened.calls.finish, 1);
+
+  const file = pngFile("once.png");
+  const uploaded = session();
+  let uploads = 0;
+  let postsAfterUpload = 0;
+  uploaded.uploadImages = async () => {
+    uploads += 1;
+    return [{ path: file, media_id: "11", bytes: 10 }];
+  };
+  uploaded.postJson = async () => {
+    postsAfterUpload += 1;
+    throw new Error("timeout");
+  };
+  const afterMedia = await performPost({ yes: true, text: "hi", images: [file] }, uploaded);
+  assert.equal(uploads, 1);
+  assert.equal(postsAfterUpload, 1);
+  assert.equal(afterMedia.outcome, "unknown");
+  assert.equal(afterMedia.sent, null);
+
+  const failedUpload = session();
+  failedUpload.uploadImages = async () => { throw new Error("append broke"); };
+  const uploadFailed = await performPost({ yes: true, text: "hi", images: [file] }, failedUpload);
+  assert.equal(uploadFailed.outcome, "not_submitted");
+  assert.equal(uploadFailed.sent, false);
+  assert.equal(failedUpload.calls.post, null);
+});
+
 test("cleanup closes the space and reports an open failure", async () => {
   const live = session();
   const closed = await executeCleanup({ taskName: "x-post" }, {

@@ -2,7 +2,7 @@
 name: kuaishou-video
 description: Publish a local video to the Kuaishou creator platform (cp.kuaishou.com) with Ego Lite via ego-browser. Login-check first. Success means the work shows 审核中. Optional comment from the creator comment manager. The caller supplies a local video file and a description. This skill does not download video. Use when the user asks to post to 快手, 快手发视频, 发布到快手创作者平台, or comment on a Kuaishou work from the creator backend.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   requires:
     bins:
       - ego-browser
@@ -81,7 +81,7 @@ bash skills/kuaishou-video/scripts/comment.sh "评论内容" "标题片段" 4 1
 1. 打开 `https://cp.kuaishou.com/article/publish/video`。
 2. 用正文判断登录：出现「扫码登录 / 二维码登录 / 请登录」且没有创作者后台，则 exit 2 并 `handOff()`。
 3. 先 `waitForFileChooser`，再点 `loc=role:button[name='上传视频']`。
-4. 等到「重新上传」，再等到「上传中」消失并隔 2 秒复核。
+4. 等到「重新上传」，再等到「上传中」消失并隔 2 秒复核。超时、等待次数用尽、出现上传失败文案，或读不到稳定状态时退出码 `1`。这时**不会**打印「上传完成」，也**不会**点「发布」。
 5. 写入 contenteditable 描述，回读 `innerText`，必须和 `desc` 一致。
 6. 用元素**自身文本精确等于「发布」**定位（不是「立即发布 / 定时发布」），`scrollIntoView` 后坐标点击。
 7. 成功：URL 含 `article/manage/video`，且页面有「审核中」。
