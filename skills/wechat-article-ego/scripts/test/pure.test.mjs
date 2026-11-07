@@ -119,11 +119,14 @@ test("buildArticle clips the digest, rejects a long title, and hashes images", (
   assert.equal(built.segments[0].kind, "image");
   const html = built.segments.filter((segment) => segment.kind === "html").map((segment) => segment.html).join("");
   assert.match(html, /<strong style="[^"]*font-weight:700/);
-  assert.match(html, /<h2 style="[^"]*border-bottom:1px solid #e6e8eb/);
-  assert.match(html, /<blockquote style="[^"]*border-left:4px solid #2f6f4e/);
-  assert.match(html, /<a href="https:\/\/github\.blog\/post" style="[^"]*#576b95[^"]*"><span style="/);
+  assert.match(html, /<h2 style="[^"]*font-size:22px/);
+  assert.match(html, /<p style="[^"]*text-align:justify/);
+  assert.match(html, /<blockquote style="[^"]*border-left:6px solid #d0d0d0/);
+  assert.match(html, /<a href="https:\/\/github\.blog\/post" style="[^"]*text-decoration:underline[^"]*"><span style="/);
   assert.match(html, /text-align:center/);
-  assert.match(html, /<pre style="[^"]*border-radius:8px/);
+  assert.match(built.segments.find((segment) => segment.kind === "image").captionHtml, /text-align:center/);
+  assert.match(html, /<pre style="[^"]*border-radius:6px/);
+  assert.doesNotMatch(html, /font-family:"/);
   assert.doesNotMatch(html, /font-family:Menlo,Consolas,monospace;/);
   assert.equal(built.fidelity.some((note) => note.includes("light article")), true);
   assert.equal(built.fidelity.some((note) => note.includes("mermaid")), true);

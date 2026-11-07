@@ -39,6 +39,7 @@ async function compose(session, article) {
     if (segment.kind === "html") html.push(segment.html);
     if (segment.kind === "image") {
       html.push(`<p>WXIMG${images.length}</p>`);
+      if (segment.captionHtml) html.push(segment.captionHtml);
       images.push(segment);
     }
   }

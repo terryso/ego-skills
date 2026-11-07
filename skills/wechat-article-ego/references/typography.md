@@ -1,6 +1,8 @@
 # Typography
 
-The pasted article is a light page: 16px sans body, 22px headings with a bottom rule, a tinted quote, WeChat-blue links, and a quiet code block. Styles are inline on each element because the Official Account editor drops classes.
+The pasted article follows the light mobile column visible at `https://wechat.bmpi.dev/` after the same article is pasted with the default theme: airy justified paragraphs, a grey quote box with a thick left bar, grey centered image captions, and an underlined steel-blue link list. Styles are inline because the Official Account editor drops classes.
+
+The values in `scripts/lib/pure.mjs` are written for that look. They are not a copy of the site's CSS.
 
 ## What this is not
 
@@ -10,11 +12,11 @@ The pasted article is a light page: 16px sans body, 22px headings with a bottom 
 
 ## What WeChat is asked to keep
 
-- Body: PingFang / Hiragino / Microsoft YaHei, 16px, line-height 1.85, ink `#2b2f36`.
-- Heading 2: 22px, bottom border `#e6e8eb`. Heading 3: 18px.
-- Quote: paper background `#f6f7f9`, 4px green bar `#2f6f4e`.
-- Links: `#576b95`, which is the Official Account link blue, on both the `<a>` and an inner `<span>`.
-- A paragraph that is only emphasis is a caption: 14px, centered, muted.
+- Body: PingFang / Hiragino / Microsoft YaHei, 16px, line-height 1.75, `#333333`, justified, 16px side margin, 1.5em between paragraphs.
+- Heading 2: 22px, bold, generous vertical margin, no rule. Heading 3: 18px.
+- Quote: `#f7f7f7` box, 6px `#d0d0d0` left bar.
+- Links: `#576b95`, underlined, on both the `<a>` and an inner `<span>`.
+- An image alt becomes a 13px grey centered caption under that image. A paragraph that is only emphasis stays italic and grey.
 - Code: monospace on a paper block. There is no syntax highlighter.
 
 Images are still uploaded as files. The editor sizes them. A caption under an image is the italic line from the Markdown, not a burned-in picture.

@@ -200,27 +200,27 @@ function parseFrontmatter(raw) {
 // Original light-article inline styles. WeChat keeps inline styles and drops
 // classes. This is not a copy of the mdnice / TaleAi / wechat.bmpi.dev theme
 // (GPL-3.0) or of doocs/md theme files (WTFPL). See references/typography.md.
-const SANS = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
-const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
-const INK = "#1f2328";
-const BODY = "#2b2f36";
-const MUTED = "#5c6570";
+const SANS = "'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif";
+const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+const INK = "#333333";
+const BODY = "#333333";
+const MUTED = "#888888";
 const LINK = "#576b95";
-const RULE = "#e6e8eb";
-const PAPER = "#f6f7f9";
-const ACCENT = "#2f6f4e";
-const P = `margin:0 0 18px;font-size:16px;line-height:1.85;letter-spacing:0.4px;color:${BODY};font-family:${SANS};`;
-const CAPTION = `margin:6px 0 22px;font-size:14px;line-height:1.6;letter-spacing:0.2px;color:${MUTED};text-align:center;font-family:${SANS};`;
-const H2 = `margin:32px 0 14px;padding:0 0 8px;border-bottom:1px solid ${RULE};font-size:22px;line-height:1.35;font-weight:700;letter-spacing:0.4px;color:${INK};font-family:${SANS};`;
-const H3 = `margin:26px 0 10px;font-size:18px;line-height:1.4;font-weight:700;color:${INK};font-family:${SANS};`;
-const Q = `margin:18px 0;padding:12px 16px;background:${PAPER};border-left:4px solid ${ACCENT};font-size:15px;line-height:1.75;color:${MUTED};font-family:${SANS};`;
+const RULE = "#e5e5e5";
+const PAPER = "#f7f7f7";
+const QUOTE_BAR = "#d0d0d0";
+const P = `margin:0 16px 1.5em;font-size:16px;line-height:1.75;letter-spacing:0.5px;color:${BODY};text-align:justify;font-family:${SANS};`;
+const CAPTION = `margin:8px 16px 1.4em;font-size:13px;line-height:1.6;color:${MUTED};text-align:center;font-family:${SANS};`;
+const H2 = `margin:1.8em 16px 0.8em;padding:0.6em 0;font-size:22px;line-height:1.4;font-weight:700;color:${INK};font-family:${SANS};`;
+const H3 = `margin:1.5em 16px 0.6em;font-size:18px;line-height:1.45;font-weight:700;color:${INK};font-family:${SANS};`;
+const Q = `margin:1.2em 16px;padding:14px 16px 14px 18px;background:${PAPER};border-left:6px solid ${QUOTE_BAR};font-size:15px;line-height:1.75;color:#595959;text-align:justify;font-family:${SANS};`;
 const STRONG = `font-weight:700;color:${INK};`;
 const EM = `font-style:italic;color:${MUTED};`;
 const CODE = `font-family:${MONO};font-size:14px;line-height:1.5;background:${PAPER};padding:1px 5px;border-radius:4px;color:${INK};`;
-const PRE = `margin:0 0 18px;padding:14px 16px;background:${PAPER};border:1px solid ${RULE};border-radius:8px;overflow:auto;font-size:13px;line-height:1.65;color:${INK};font-family:${MONO};`;
-const LIST = `margin:0 0 18px;padding-left:1.4em;font-size:16px;line-height:1.85;color:${BODY};font-family:${SANS};`;
-const LI = "margin:6px 0;";
-const A = `color:${LINK};text-decoration:none;`;
+const PRE = `margin:0 16px 1.5em;padding:14px 16px;background:${PAPER};border:1px solid ${RULE};border-radius:6px;overflow:auto;font-size:13px;line-height:1.65;color:${INK};font-family:${MONO};`;
+const LIST = `margin:0 16px 1.5em;padding-left:1.4em;font-size:16px;line-height:1.75;color:${BODY};font-family:${SANS};`;
+const LI = "margin:0.6em 0;text-align:justify;";
+const A = `color:${LINK};text-decoration:underline;`;
 
 function renderInline(src) {
   let index = 0;
@@ -462,6 +462,7 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
         path: file.path,
         sha256: file.sha256,
         index: imageCursor - 1,
+        captionHtml: block.alt ? `<p style="${CAPTION}">${escapeHtml(block.alt)}</p>` : "",
       });
       continue;
     }
@@ -476,7 +477,7 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
     if (block.type === "code") fidelity.push("code highlighting is not available in the Official Account editor");
   }
   flush();
-  fidelity.push("light article inline styles (sans body, bordered headings, tinted quotes). WeChat may drop font-family");
+  fidelity.push("light article inline styles (justified 16px body, grey quote bar, underlined links). WeChat may drop font-family or text-align");
   fidelity.push("images are uploaded into the draft instead of left as remote hotlinks");
   fidelity.push("categories and tags are not copied; the editor has no safe equivalent field");
   const hash = crypto.createHash("sha256").update(JSON.stringify({
