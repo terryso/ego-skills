@@ -197,6 +197,31 @@ function parseFrontmatter(raw) {
   return data;
 }
 
+// Original light-article inline styles. WeChat keeps inline styles and drops
+// classes. This is not a copy of the mdnice / TaleAi / wechat.bmpi.dev theme
+// (GPL-3.0) or of doocs/md theme files (WTFPL). See references/typography.md.
+const SANS = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+const INK = "#1f2328";
+const BODY = "#2b2f36";
+const MUTED = "#5c6570";
+const LINK = "#576b95";
+const RULE = "#e6e8eb";
+const PAPER = "#f6f7f9";
+const ACCENT = "#2f6f4e";
+const P = `margin:0 0 18px;font-size:16px;line-height:1.85;letter-spacing:0.4px;color:${BODY};font-family:${SANS};`;
+const CAPTION = `margin:6px 0 22px;font-size:14px;line-height:1.6;letter-spacing:0.2px;color:${MUTED};text-align:center;font-family:${SANS};`;
+const H2 = `margin:32px 0 14px;padding:0 0 8px;border-bottom:1px solid ${RULE};font-size:22px;line-height:1.35;font-weight:700;letter-spacing:0.4px;color:${INK};font-family:${SANS};`;
+const H3 = `margin:26px 0 10px;font-size:18px;line-height:1.4;font-weight:700;color:${INK};font-family:${SANS};`;
+const Q = `margin:18px 0;padding:12px 16px;background:${PAPER};border-left:4px solid ${ACCENT};font-size:15px;line-height:1.75;color:${MUTED};font-family:${SANS};`;
+const STRONG = `font-weight:700;color:${INK};`;
+const EM = `font-style:italic;color:${MUTED};`;
+const CODE = `font-family:${MONO};font-size:14px;line-height:1.5;background:${PAPER};padding:1px 5px;border-radius:4px;color:${INK};`;
+const PRE = `margin:0 0 18px;padding:14px 16px;background:${PAPER};border:1px solid ${RULE};border-radius:8px;overflow:auto;font-size:13px;line-height:1.65;color:${INK};font-family:${MONO};`;
+const LIST = `margin:0 0 18px;padding-left:1.4em;font-size:16px;line-height:1.85;color:${BODY};font-family:${SANS};`;
+const LI = "margin:6px 0;";
+const A = `color:${LINK};text-decoration:none;`;
+
 function renderInline(src) {
   let index = 0;
   let html = "";
@@ -209,7 +234,7 @@ function renderInline(src) {
       const end = source.indexOf(mark, index + 2);
       if (end !== -1) {
         const inner = renderInline(source.slice(index + 2, end));
-        html += `<strong>${inner.html}</strong>`;
+        html += `<strong style="${STRONG}">${inner.html}</strong>`;
         text += inner.text;
         links.push(...inner.links);
         index = end + 2;
@@ -220,7 +245,7 @@ function renderInline(src) {
       const end = source.indexOf("`", index + 1);
       if (end !== -1) {
         const code = source.slice(index + 1, end);
-        html += `<code>${escapeHtml(code)}</code>`;
+        html += `<code style="${CODE}">${escapeHtml(code)}</code>`;
         text += code;
         index = end + 1;
         continue;
@@ -230,7 +255,7 @@ function renderInline(src) {
       const end = source.indexOf("*", index + 1);
       if (end !== -1 && !source.slice(index + 1, end).includes("\n")) {
         const inner = renderInline(source.slice(index + 1, end));
-        html += `<em>${inner.html}</em>`;
+        html += `<em style="${EM}">${inner.html}</em>`;
         text += inner.text;
         links.push(...inner.links);
         index = end + 1;
@@ -244,7 +269,7 @@ function renderInline(src) {
         if (end !== -1) {
           const inner = renderInline(source.slice(index + 1, close));
           const href = source.slice(close + 2, end).trim();
-          html += `<a href="${escapeHtml(href)}">${inner.html}</a>`;
+          html += `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a>`;
           text += inner.text;
           links.push(...inner.links, { text: inner.text, href });
           index = end + 1;
@@ -361,36 +386,41 @@ export function parseMarkdown(markdown) {
   };
 }
 
-const P = "margin:0 0 16px;font-size:16px;line-height:1.8;letter-spacing:0.2px;color:#222222;font-family:Menlo,Consolas,monospace;";
-const H = "margin:28px 0 12px;font-size:18px;line-height:1.45;font-weight:700;color:#111111;font-family:Menlo,Consolas,monospace;";
-const Q = "margin:16px 0;padding:4px 0 4px 12px;border-left:3px solid #444444;color:#555555;font-size:14px;line-height:1.75;font-family:Menlo,Consolas,monospace;";
+function isCaption(block) {
+  return block.type === "paragraph"
+    && block.html.startsWith("<em ")
+    && block.html.endsWith("</em>")
+    && block.html.indexOf("<em ") === block.html.lastIndexOf("<em ");
+}
 
 function renderBlock(block) {
   if (block.type === "heading") {
     const level = Math.min(Math.max(block.level, 2), 3);
-    return { html: `<h${level} style="${H}">${block.html}</h${level}>`, text: block.text, links: block.links || [] };
+    const style = level === 2 ? H2 : H3;
+    return { html: `<h${level} style="${style}">${block.html}</h${level}>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "quote") {
     return { html: `<blockquote style="${Q}">${block.html}</blockquote>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "code") {
     return {
-      html: `<pre style="margin:0 0 16px;padding:12px;background:#f6f6f6;overflow:auto;font-size:13px;line-height:1.6;"><code>${escapeHtml(block.text)}</code></pre>`,
+      html: `<pre style="${PRE}"><code style="font-family:${MONO};font-size:13px;background:transparent;padding:0;color:${INK};">${escapeHtml(block.text)}</code></pre>`,
       text: block.text,
       links: [],
     };
   }
   if (block.type === "list") {
     const tag = block.ordered ? "ol" : "ul";
-    const items = block.items.map((item) => `<li>${item.html}</li>`).join("");
+    const items = block.items.map((item) => `<li style="${LI}">${item.html}</li>`).join("");
     return {
-      html: `<${tag} style="margin:0 0 16px;padding-left:1.2em;line-height:1.8;font-size:16px;">${items}</${tag}>`,
+      html: `<${tag} style="${LIST}">${items}</${tag}>`,
       text: block.items.map((item) => item.text).join("\n"),
       links: block.items.flatMap((item) => item.links || []),
     };
   }
   if (block.type === "paragraph") {
-    return { html: `<p style="${P}">${block.html}</p>`, text: block.text, links: block.links || [] };
+    const style = isCaption(block) ? CAPTION : P;
+    return { html: `<p style="${style}">${block.html}</p>`, text: block.text, links: block.links || [] };
   }
   return { html: "", text: "", links: [] };
 }
@@ -446,7 +476,7 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
     if (block.type === "code") fidelity.push("code highlighting is not available in the Official Account editor");
   }
   flush();
-  fidelity.push("body font is set toward the blog's monospace hierarchy; WeChat may strip font-family");
+  fidelity.push("light article inline styles (sans body, bordered headings, tinted quotes). WeChat may drop font-family");
   fidelity.push("images are uploaded into the draft instead of left as remote hotlinks");
   fidelity.push("categories and tags are not copied; the editor has no safe equivalent field");
   const hash = crypto.createHash("sha256").update(JSON.stringify({

@@ -12,7 +12,7 @@ The only page is the public Official Account console at `https://mp.weixin.qq.co
 ## Write
 
 - Title: `page.fill` on the title field, or the native value setter if fill cannot see it.
-- Body: focus the editable body and `page.keyboard.paste({ text, html })`. HTML keeps headings, paragraphs, quotes, lists, emphasis, and links. Inline styles ask for a 16px body, 18px headings, and a monospace family so the hierarchy is close to a terminal blog. WeChat may drop `font-family`.
+- Body: focus the editable body and `page.keyboard.paste({ text, html })`. HTML keeps headings, paragraphs, quotes, lists, emphasis, and links. Inline styles are a light article: 16px sans body, 22px ruled headings, tinted quotes, and WeChat-blue links. See `references/typography.md`. WeChat may drop `font-family`.
 - Images: split the body at each image. After the preceding HTML is pasted, open the image control (`title` 图片 or the insert-image button) and use `waitForFileChooser` or `setInputFiles`. Confirm 确定 / 确认 / 插入 only while an image dialog is open. The next paste continues after the image. The image count must increase before the next block.
 - Captions stay as the italic or normal paragraphs that follow the image in the markdown. They are text, not a burned-in picture.
 - Digest and 原文链接 are filled only when those fields exist.

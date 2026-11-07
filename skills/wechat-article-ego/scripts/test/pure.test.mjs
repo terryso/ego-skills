@@ -117,7 +117,15 @@ test("buildArticle clips the digest, rejects a long title, and hashes images", (
   assert.equal(built.ok, true);
   assert.equal(built.imageCount, 1);
   assert.equal(built.segments[0].kind, "image");
-  assert.equal(built.segments.some((segment) => segment.kind === "html" && segment.html.includes("<strong>")), true);
+  const html = built.segments.filter((segment) => segment.kind === "html").map((segment) => segment.html).join("");
+  assert.match(html, /<strong style="[^"]*font-weight:700/);
+  assert.match(html, /<h2 style="[^"]*border-bottom:1px solid #e6e8eb/);
+  assert.match(html, /<blockquote style="[^"]*border-left:4px solid #2f6f4e/);
+  assert.match(html, /<a href="https:\/\/github\.blog\/post" style="[^"]*#576b95[^"]*"><span style="/);
+  assert.match(html, /text-align:center/);
+  assert.match(html, /<pre style="[^"]*border-radius:8px/);
+  assert.doesNotMatch(html, /font-family:Menlo,Consolas,monospace;/);
+  assert.equal(built.fidelity.some((note) => note.includes("light article")), true);
   assert.equal(built.fidelity.some((note) => note.includes("mermaid")), true);
   assert.equal(built.hash.length, 64);
   const again = buildArticle({ parsed, images });

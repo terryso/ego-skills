@@ -10,7 +10,7 @@ description: >
   Never clicks 发表, 群发, 定时群发, or 发送预览. Use when the user asks for a
   公众号文章草稿, 图文草稿, or mp.weixin.qq.com article.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   requires:
     bins:
       - ego-browser
@@ -84,7 +84,7 @@ node skills/wechat-article-ego/scripts/cleanup.mjs
 
 `--json` 打出摘要 JSON。不加 `--json` 且保存成功时，stdout 是一行 `saved <标题>`。
 
-正文用编辑器的粘贴（`keyboard.paste` 的 text + html）和文件选择（`waitForFileChooser` / `setInputFiles`）。图片从 Markdown 引用的本地文件或该文自己的 http(s) 图片下载后上传，不把外链留在正文里。细节见 `references/editor.md`。输入见 `references/inputs.md`。登录见 `references/login.md`。
+正文用编辑器的粘贴（`keyboard.paste` 的 text + html）和文件选择（`waitForFileChooser` / `setInputFiles`）。粘贴的 HTML 是浅色正文排版：无衬线正文、带下边线的标题、浅底引用、公众号链接蓝。样式是本技能自己写的行内样式，不内置 mdnice / wechat.bmpi.dev 的 GPL 主题，也不依赖在线编辑器。出处见 `references/typography.md`。图片从 Markdown 引用的本地文件或该文自己的 http(s) 图片下载后上传，不把外链留在正文里。细节见 `references/editor.md`。输入见 `references/inputs.md`。登录见 `references/login.md`。
 
 ## 测试
 
