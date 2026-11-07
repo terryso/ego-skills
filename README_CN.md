@@ -60,12 +60,12 @@ cd ego-skills
 |------|--------|
 | [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。可选 `--min-width` / `--min-height`。 |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
-| [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。 |
-| [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。 |
+| [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。描述回读、上传等待或封面预览没确认时也不点「保存草稿」。 |
+| [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。上传超时、失败或一直没就绪时不会点发布。 |
 | [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
 | [`douyin-video`](./skills/douyin-video/) | 把本地视频发到抖音创作者中心。先检查登录。标题最多 30 字。默认公开、允许保存、立即发布。成功标准是进入内容管理或出现「发布成功」。 |
 | [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。Phase 2a 还能新建、改标题/前置/步骤、改状态，以及把一条用例移到回收站（`delete --yes`）。只走浏览器会话，不用 Open API token。 |
-| [`x-post`](./skills/x-post/) | 用已登录的 Ego 会话，通过 `page.fetch` CreateTweet 往 X 发帖。先检查登录。没有 `--yes` 不发送。可选 `--image`（最多 4 张 png/jpeg/webp，每张 ≤ 5 MiB）只在 `--yes` 之后上传。成功标准是 `https://x.com/<screen_name>/status/<id>`。 |
+| [`x-post`](./skills/x-post/) | 用已登录的 Ego 会话，通过 `page.fetch` CreateTweet 往 X 发帖。先检查登录。没有 `--yes` 不发送。可选 `--image`（最多 4 张 png/jpeg/webp，每张 ≤ 5 MiB）只在 `--yes` 之后上传。成功标准是 `https://x.com/<screen_name>/status/<id>`。响应丢失或无法确认时结果是 `unknown`：先核对时间线，脚本不会自动重发。 |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | 在小红书创作者平台发一条视频笔记。先检查登录。没有 `--yes` 不上传。笔记不能带链接，先从文案里删掉，或加 `--strip-links`。传 `--cover`（例如 `cover-3x4.png`）走「选择图片上传」，换成主封面。只传 PK 槽时缩略图会在大约 72 小时内一直是首帧。不传则平台用首帧。成功标准是 `https://www.xiaohongshu.com/explore/<noteId>`。 |
 
 ```bash

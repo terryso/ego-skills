@@ -82,6 +82,19 @@ Same CreateTweet URL and body, plus:
 
 The shape is from the client bundle. A live `page.fetch` reply on 2026-11-04 returned HTTP 200 with GraphQL **226** (`AuthorizationError`, request looked automated). No UI reply was driven. Treat `--reply-to` as best-effort. On 226, stop. Do not click the reply composer and do not retry.
 
+## Outcome after the POST
+
+`page.fetch` is one shot. The script does not call CreateTweet again in the same run.
+
+| Result | `outcome` | `sent` | `definitely_unsent` |
+|--------|-----------|--------|---------------------|
+| `rest_id` present | `sent` | `true` | `false` |
+| Request never built (login, transaction, media) | `not_submitted` | `false` | `true` |
+| Structured refusal (`errors`, 401, 429, other 4xx JSON) | `rejected` | `false` | `true` |
+| Throw, timeout, status 0, non-JSON, 5xx without `errors`, or 200 without `rest_id` | `unknown` | `null` | `false` |
+
+`unknown` includes `verify_before_retry`: check the profile timeline for this text before any manual retry. Do not treat `sent: null` as `sent: false`. Media INIT/APPEND/FINALIZE retries are unchanged and still happen only before this POST.
+
 ## DeleteTweet — verified, not called
 
 Captured and verified the same day, then left unwired. `cleanup` only closes the local Ego task space. It does not delete a post. Do not call this from `post.mjs`.

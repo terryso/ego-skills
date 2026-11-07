@@ -98,6 +98,12 @@ export const LOGIN_TIP =
 export const LOGIN_TIP_ZH =
   "请告诉用户：在 Ego Lite 里登录 x.com 之后才能发帖。发帖走浏览器会话的 page.fetch CreateTweet，不用 X API key。若 login-check 退出码是 2，请人在 Ego Lite 打开 x.com 登录后再跑。先展示草稿，等人确认后再加 --yes。不要代填密码，不要粘贴 Cookie。";
 
+export const VERIFY_BEFORE_RETRY =
+  "CreateTweet may already have been submitted. Verify the existing post on the profile timeline before any retry. Do not resend automatically.";
+
+export const VERIFY_BEFORE_RETRY_ZH =
+  "这条 CreateTweet 可能已经发出。重试前先到个人主页时间线核对是否已有相同帖文。不要自动重发。";
+
 export const USAGE = `x-post — post on X via the logged-in Ego Lite session (page.fetch CreateTweet, or CreateNoteTweet when the weighted length is over 280)
 
 Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fails (exit 2).
@@ -117,6 +123,7 @@ Reply (--reply-to) is best-effort: a live page.fetch reply returned GraphQL 226 
 check-login exits 0 when x.com is signed in, 2 when login is required or ego-browser is missing.
 post without --yes prints the draft and exits 3. post --yes prints https://x.com/<screen_name>/status/<id>.
 A missing, empty, oversized, or unsupported image exits 1 before any network call.
+After CreateTweet is attempted, sent:false means the server refused it or the request never left. sent:null and outcome:"unknown" mean the response was lost or unusable: verify the timeline before any retry. This command does not resend.
 Default finish({ keep: [] }). --keep leaves the page.
 cleanup closes the x-post browser space. It does not delete a post.
 `;
@@ -239,6 +246,9 @@ export function confirmationSummary(args) {
     command: "post",
     ok: false,
     sent: false,
+    outcome: "not_submitted",
+    definitely_unsent: true,
+    retry: false,
     confirmation_required: true,
     exitCode: 3,
     draft: draftOf(args),
@@ -278,9 +288,13 @@ export function formatDraftText(summary) {
 
 export function formatResult(summary, { asJson = false } = {}) {
   if (!summary || typeof summary !== "object") return "";
-  if (!asJson && summary.exitCode === 0 && summary.sent && summary.url) return `${summary.url}\n`;
+  if (!asJson && summary.exitCode === 0 && summary.sent === true && summary.url) return `${summary.url}\n`;
   if (!asJson && summary.confirmation_required) return formatDraftText(summary);
-  return `${JSON.stringify(summary, null, 2)}\n`;
+  const body = `${JSON.stringify(summary, null, 2)}\n`;
+  if (!asJson && summary.outcome === "unknown") {
+    return `${summary.verify_before_retry || VERIFY_BEFORE_RETRY}\n${body}`;
+  }
+  return body;
 }
 
 export function isLoginWall({ url = "", title = "", text = "" } = {}) {
@@ -381,6 +395,9 @@ export function egoMissingSummary(command = "check-login") {
     logged_in: false,
     login_required: true,
     exitCode: 2,
+    outcome: command === "post" ? "not_submitted" : undefined,
+    definitely_unsent: command === "post" ? true : undefined,
+    retry: command === "post" ? false : undefined,
     error: "ego-browser not found on PATH",
     login_tip: LOGIN_TIP,
     login_tip_zh: LOGIN_TIP_ZH,
@@ -677,34 +694,73 @@ export function statusUrl(screenName, restId) {
 }
 
 export function interpretCreateTweetResponse(status, body, { replyTo = "", note = false, hadTransactionId = false } = {}) {
+  const code = Number(status) || 0;
   const payload = typeof body === "string" || body == null ? parseLooseJson(body) : body;
-  if (!payload || typeof payload !== "object") {
-    return { ok: false, error: `non-JSON response (HTTP ${status || 0})` };
-  }
-  const errors = graphqlErrors(payload);
-  if (errors.length || Number(status) === 401) {
+  const structured = Boolean(payload && typeof payload === "object");
+  const errors = structured ? graphqlErrors(payload) : [];
+  const explained = explainGraphqlFailure({ status, errors, replyTo, note, hadTransactionId });
+  if (code === 401) {
     return {
       ok: false,
-      loginRequired: Number(status) === 401,
+      ambiguous: false,
+      loginRequired: true,
       automated: isAutomatedBlock(errors),
       tooLong: isTooLong(errors),
-      error: explainGraphqlFailure({ status, errors, replyTo, note, hadTransactionId }),
+      error: explained,
     };
   }
-  if (status && Number(status) !== 200) return { ok: false, error: `HTTP ${status}` };
+  if (code === 429) {
+    return {
+      ok: false,
+      ambiguous: false,
+      loginRequired: false,
+      automated: isAutomatedBlock(errors),
+      tooLong: isTooLong(errors),
+      error: explained,
+    };
+  }
+  if (!structured) {
+    return { ok: false, ambiguous: true, loginRequired: false, error: `non-JSON response (HTTP ${code})` };
+  }
+  if (errors.length) {
+    return {
+      ok: false,
+      ambiguous: false,
+      loginRequired: false,
+      automated: isAutomatedBlock(errors),
+      tooLong: isTooLong(errors),
+      error: explained,
+    };
+  }
+  if (code && code !== 200) {
+    const clientError = code >= 400 && code < 500;
+    return { ok: false, ambiguous: !clientError, loginRequired: false, error: `HTTP ${code}` };
+  }
   const result = tweetResult(payload);
   const id = restIdFromResult(result);
-  if (!id) return { ok: false, error: `response had no rest_id (HTTP ${status || 0})` };
+  if (!id) return { ok: false, ambiguous: true, error: `response had no rest_id (HTTP ${code})` };
   const screenName = screenNameFromResult(result);
   const fullText = fullTextFromResult(result);
   return {
     ok: true,
+    ambiguous: false,
     id,
     screenName,
     url: statusUrl(screenName, id),
     note: Boolean(result?.note_tweet) || note,
     fullText,
   };
+}
+
+export function submissionVerdict(status, body, context = {}) {
+  const parsed = interpretCreateTweetResponse(status, body, context);
+  if (parsed.ok) {
+    return { ...parsed, outcome: "sent", sent: true, definitely_unsent: false, retry: false };
+  }
+  if (parsed.ambiguous) {
+    return { ...parsed, outcome: "unknown", sent: null, definitely_unsent: false, retry: false };
+  }
+  return { ...parsed, outcome: "rejected", sent: false, definitely_unsent: true, retry: false };
 }
 
 export function extractTaggedJson(combined, tag = RESULT_TAG) {

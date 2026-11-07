@@ -8,7 +8,7 @@ description: >
   uploads up to 4 png/jpeg/webp files only after --yes. Reply is best-effort.
   Use when the user asks to tweet, post, reply, or attach images on X or Twitter from Ego.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   requires:
     bins:
       - ego-browser
@@ -78,9 +78,20 @@ node skills/x-post/scripts/cleanup.mjs
 | `0` | 已登录，或已发出并打印状态链接，或 cleanup 关掉了本机空间 |
 | `3` | 草稿已打印，拒绝发送 |
 | `2` | 未登录，或没有 `ego-browser` |
-| `1` | 参数、HTTP、GraphQL 或浏览器错误 |
+| `1` | 参数、上传、HTTP、GraphQL 或浏览器错误。先看 JSON 的 `outcome`，不要只看退出码 |
 
 `--json` 打出摘要 JSON。不加 `--json` 且发送成功时，stdout 只有状态链接。
+
+`outcome` 决定能不能再发。脚本自己不会发第二次 CreateTweet。
+
+| `outcome` | `sent` | 含义 | Agent 做什么 |
+|-----------|--------|------|----------------|
+| `sent` | `true` | 响应里有 `rest_id` | 把状态链接给人。不要再发 |
+| `not_submitted` | `false` | 请求没发出（缺 `--yes` 时是退出码 `3`；缺 transaction、图片不合格、上传失败也算） | 确定没发出。修原因之后才可以重新 `--yes` |
+| `rejected` | `false` | 服务端明确拒绝（401、429、226、186、带 `errors` 的响应，以及其它 4xx JSON） | `definitely_unsent: true`。不要自动重试 |
+| `unknown` | `null` | 超时、连接中断、空响应、非 JSON、没有 `errors` 的 5xx，或 HTTP 成功但没有 `rest_id` | **不是** `sent: false`。先按 `verify_before_retry` 到时间线核对是否已有这条帖。不要自动重发 |
+
+`definitely_unsent: false` 且 `outcome` 为 `unknown` 时，退出码 `1` 只表示没确认成功，不表示没发出。
 
 `cleanup` 只对任务空间 `x-post` 执行 `finish({ keep: [] })`。它不删帖。
 
@@ -133,4 +144,5 @@ npm test
 
 ## Changelog
 
+- **0.2.1** — CreateTweet 发出之后如果超时、响应丢失或成功体不完整，`outcome` 是 `unknown`，`sent` 是 `null`。先核对时间线，不要自动重发。上传失败和请求没发出仍是 `not_submitted` / `sent: false`。图片上传自己的重试不变。
 - **0.2.0** — `--image` 可附最多 4 张 png/jpeg/webp（每张 ≤ 5 MiB）。上传按 2026-11-04 捕获的 upload.x.com INIT → APPEND → FINALIZE，在 `page.evaluate` 里执行。没有 `--yes` 不上传。GIF 不支持。
