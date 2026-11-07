@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/) 和 [`xiaohongshu-ego`](./skills/xiaohongshu-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`wechat-article-ego`](./skills/wechat-article-ego/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/) 和 [`xiaohongshu-ego`](./skills/xiaohongshu-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -61,6 +61,7 @@ cd ego-skills
 | [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。可选 `--min-width` / `--min-height`。 |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。 |
+| [`wechat-article-ego`](./skills/wechat-article-ego/) | 在微信公众平台把一篇 Markdown 存成一篇图文草稿。先检查登录。没有 `--yes` 不上传。`--yes` 只点「保存」。不点「发表」「群发」或「发送预览」。 |
 | [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。 |
 | [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
 | [`douyin-video`](./skills/douyin-video/) | 把本地视频发到抖音创作者中心。先检查登录。标题最多 30 字。默认公开、允许保存、立即发布。成功标准是进入内容管理或出现「发布成功」。 |
@@ -80,6 +81,12 @@ node skills/instagram-saved-download/scripts/download.mjs \
 
 ```bash
 node skills/wechat-channels-video/scripts/check-login.mjs
+```
+
+```bash
+node skills/wechat-article-ego/scripts/check-login.mjs
+node skills/wechat-article-ego/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md
 ```
 
 ```bash
@@ -115,7 +122,7 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布）。说明见各技能的 `references/login.md`。
+如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布；公众号图文要在 Ego 里登录 mp.weixin.qq.com，计划确认后才加 `--yes`，看到多个公众号就先停下让人选择）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
 
