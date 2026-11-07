@@ -2,7 +2,7 @@
   "name": "ego-skills",
   "version": "0.6.0",
   "private": true,
-  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video, teambition-ego, x-post, xiaohongshu-ego. Not published to npm.",
+  "description": "Community Agent Skills for ego-browser. Skills: pinterest-download, instagram-saved-download, wechat-channels-video, kuaishou-video, youtube-video, douyin-video, teambition-ego, x-post, xiaohongshu-ego, plus unverified portable x-bookmark-export and x-bookmark-review (no Ego backend). Not published to npm.",
   "license": "MIT",
   "keywords": [
     "ego-browser",

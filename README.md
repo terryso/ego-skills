@@ -67,6 +67,8 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`teambition-ego`](./skills/teambition-ego/) | Read Teambition test plans and test cases through the Ego session. Login-check first. Phase 2a also creates, updates, sets status, and archives one case (`delete --yes`). Browser session only, not an Open API token. |
 | [`x-post`](./skills/x-post/) | Post on X from the logged-in Ego session with `page.fetch` CreateTweet. Login-check first. Nothing is sent without `--yes`. Optional `--image` (up to 4 png/jpeg/webp, each ≤ 5 MiB) uploads only with `--yes`. Success is `https://x.com/<screen_name>/status/<id>`. |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | Publish one Xiaohongshu video note on the creator site. Login-check first. Nothing uploads without `--yes`. Notes must not contain links: remove them from the copy or pass `--strip-links`. Pass `--cover` (for example `cover-3x4.png`) through 选择图片上传 so it becomes the main cover. PK slots alone leave the thumbnail as the first frame for about 72 hours. Without `--cover` the platform keeps the first frame. Success is `https://www.xiaohongshu.com/explore/<noteId>`. |
+| [`x-bookmark-export`](./skills/x-bookmark-export/) | Archive bookmark page files for one account. Portable core and tests only. The runtime read path is the Grok Bot X connector `get_users_bookmarks`. Ego is **unverified** and is not invoked. A connector recipe is not a live-proven Ego skill. |
+| [`x-bookmark-review`](./skills/x-bookmark-review/) | Structured suggestions (at most 3) and an unbookmark **preview**. `--yes` plus owner opt-in is required before any removal plan is issued. The script does not call X. Ego is **unverified**. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -114,6 +116,8 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --video /absolute/path/to/video.mp4 --title "Title" --desc "Description" \
   --cover /absolute/path/to/cover-3x4.png
 ```
+
+`x-bookmark-export` and `x-bookmark-review` do not use `ego-browser`. `node skills/x-bookmark-export/scripts/check-deps.mjs` reports `ego_backend: unverified` and does not launch a browser. Offline steps for a later Pro checkout are in [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). Do not treat that document as live acceptance, and do not publish these skills from an unmerged branch.
 
 If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布). See each skill's `references/login.md`.
 

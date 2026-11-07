@@ -1,0 +1,4 @@
+interface:
+  display_name: "X bookmark export"
+  short_description: "Archive connector bookmark pages. Ego backend unverified. No live X calls."
+  default_prompt: "Use x-bookmark-export only as a portable archive. The Grok Bot X connector get_users_bookmarks is the runtime read path. Do not call api.x.com, do not launch ego-browser, and do not copy cookies or tokens. Ego is unverified and this recipe is not a live-proven Ego skill. Ingest a saved page file, archive it before any review, and keep scan_complete false while a next token exists. Never pass --yes or delete bookmarks from this skill."

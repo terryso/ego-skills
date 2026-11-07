@@ -58,6 +58,16 @@ export function frontmatterName(frontmatter) {
   return match ? unquote(match[1]) : null;
 }
 
+// Connector-only skills must say so in frontmatter. They do not get a free
+// pass for a missing name, tests, personal paths, or secrets. Ego-browser
+// skills keep the original bins requirement.
+export function skillOmitsEgoBrowser(frontmatter) {
+  if (typeof frontmatter !== "string") return false;
+  const runtime = /^[ \t]*runtime:[ \t]*grok-x-connector[ \t]*$/m.test(frontmatter);
+  const unsupported = /^[ \t]*ego_browser:[ \t]*unsupported[ \t]*$/m.test(frontmatter);
+  return runtime && unsupported;
+}
+
 export function frontmatterBins(frontmatter) {
   if (typeof frontmatter !== "string") return [];
   const lines = frontmatter.split(/\r?\n/);
@@ -172,7 +182,25 @@ export function auditSkillDir(dir, id, fsImpl = fs) {
         message: `skills/${id}/SKILL.md frontmatter name is ${name == null ? "missing" : JSON.stringify(name)}; expected ${JSON.stringify(id)}`,
       }));
     }
-    if (!frontmatterBins(frontmatter).includes("ego-browser")) {
+    const bins = frontmatterBins(frontmatter);
+    if (skillOmitsEgoBrowser(frontmatter)) {
+      if (bins.includes("ego-browser")) {
+        findings.push(finding({
+          skill: id,
+          file: `skills/${id}/SKILL.md`,
+          code: "unexpected-ego-browser",
+          message: `skills/${id}/SKILL.md marks ego-browser unsupported but still requires it`,
+        }));
+      }
+      if (!bins.includes("node")) {
+        findings.push(finding({
+          skill: id,
+          file: `skills/${id}/SKILL.md`,
+          code: "missing-node",
+          message: `skills/${id}/SKILL.md metadata.requires.bins does not include node`,
+        }));
+      }
+    } else if (!bins.includes("ego-browser")) {
       findings.push(finding({
         skill: id,
         file: `skills/${id}/SKILL.md`,
@@ -244,7 +272,8 @@ function usage() {
 
 Checks each skills/* directory except scaffolds (names starting with _).
 Fails when SKILL.md is missing, frontmatter name differs from the directory,
-metadata.requires.bins omits ego-browser, the tree contains a personal path
+metadata.requires.bins omits ego-browser (unless runtime is grok-x-connector
+and ego_browser is unsupported), the tree contains a personal path
 (/Users/, /home/<name>/, or a /Podcasts/ or ~/Podcasts/ directory) or a
 secret-shaped file, or scripts/test/ has no *.test.mjs file.
 Does not scan docs/ or README files.

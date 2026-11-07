@@ -18,6 +18,12 @@
 
 Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not committed).
 
+## x-bookmark workflow (not live acceptance)
+
+`npm test` on 2026-11-07 (Node v22.23.4, c8), including this workflow: **427 passed**, line coverage **97.76%**. `x-bookmark-export` lib lines **98.76%**. `x-bookmark-review` lib lines **93.54%**. Threshold remains lines ≥ 80%.
+
+These two skills are portable cores. Ego is unverified. The connector recipe is not an Ego backend. No live X read or unbookmark was run. Do not publish from the branch. Offline commands for a later Pro checkout are in [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). The table above is the 2026-11-04 snapshot of the other skills. It is not a claim that this workflow passed on Mini or Pro.
+
 ## Mini smoke (ego-browser 0.6.0.12)
 
 Default login gate, `wallpaper`, count 2, out `/tmp/ego-skills-smoke/login-required`:

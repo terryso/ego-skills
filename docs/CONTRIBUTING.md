@@ -10,6 +10,8 @@ Shipped skills today: `pinterest-download`, `instagram-saved-download`, `wechat-
 
 **ego-browser skills only.** The primary path talks to a real Chromium through documented `ego-browser` APIs (`ego-browser nodejs` or the wrappers already in this repo).
 
+`x-bookmark-export` and `x-bookmark-review` are a narrow exception, not a completed ego-browser skill. Their frontmatter sets `runtime: grok-x-connector` and `ego_browser: unsupported`, and hygiene allows them to omit `ego-browser` only when both markers are present. They must not call `api.x.com`, cookies, or a browser session. Unit tests do not prove Ego. A connector recipe is not equivalent to a live Ego backend. Do not add further non-Ego skills under this exception.
+
 If the skill is a plain CLI, a pure MCP wrapper, or a cloud-browser automation that does not need Ego, we will not merge it. Publish that somewhere else:
 
 - [terryso/claw-skills](https://github.com/terryso/claw-skills), or
@@ -19,7 +21,7 @@ One skill (or one bugfix to one skill) per pull request. Docs-only pull requests
 
 ## Acceptance criteria
 
-1. **Runtime.** `metadata.requires.bins` includes `ego-browser` (and usually `node`). Do not use Playwright, Puppeteer, or a cloud-browser MCP as the primary path.
+1. **Runtime.** `metadata.requires.bins` includes `ego-browser` (and usually `node`), except `x-bookmark-export` and `x-bookmark-review`, which set `runtime: grok-x-connector` and `ego_browser: unsupported` and must not invoke Ego. Do not use Playwright, Puppeteer, or a cloud-browser MCP as the primary path.
 2. **Login.** Missing `ego-browser`, or a logged-out site, is a soft-fail: exit `2` plus `how_to_login` / `how_to_login_zh`. Never type a password, never automate a QR scan, never paste or print cookies. Do not clear cookies unless the skill cites the product's own clearing steps and says so in `SKILL.md`.
 3. **Tests.** Add `scripts/test/*.test.mjs`. `npm test` stays green. Line coverage for the c8 include set stays at or above **80%**. `skills/_template/` is a scaffold, not a shipped skill.
 4. **Paths.** `SKILL.md`, scripts, references, and examples must not contain a contributor's machine path or a product directory. Use `/tmp/...` or `/absolute/path/to/video.mp4`.

@@ -16,6 +16,7 @@ import {
   isSecretFileName,
   isSkillTestFile,
   main,
+  skillOmitsEgoBrowser,
 } from "../check-skill-hygiene.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -191,9 +192,50 @@ test("shipped skills pass, even though docs name the banned prefixes", () => {
   for (const id of fs.readdirSync(path.join(repo, "skills"))) {
     if (id.startsWith("_")) continue;
     const text = fs.readFileSync(path.join(repo, "skills", id, "SKILL.md"), "utf8");
-    assert.equal(frontmatterName(extractFrontmatter(text)), id);
-    assert.ok(frontmatterBins(extractFrontmatter(text)).includes("ego-browser"));
+    const frontmatter = extractFrontmatter(text);
+    assert.equal(frontmatterName(frontmatter), id);
+    if (skillOmitsEgoBrowser(frontmatter)) {
+      assert.equal(frontmatterBins(frontmatter).includes("ego-browser"), false);
+      assert.ok(frontmatterBins(frontmatter).includes("node"));
+    } else {
+      assert.equal(skillOmitsEgoBrowser(frontmatter), false);
+      assert.ok(frontmatterBins(frontmatter).includes("ego-browser"));
+    }
   }
+});
+
+test("grok connector skills may omit ego-browser only with both markers", () => {
+  const marked = `---
+name: x-bookmark-export
+metadata:
+  runtime: grok-x-connector
+  ego_browser: unsupported
+  requires:
+    bins:
+      - node
+---
+# x-bookmark-export
+`;
+  const frontmatter = extractFrontmatter(marked);
+  assert.equal(skillOmitsEgoBrowser(frontmatter), true);
+  assert.equal(skillOmitsEgoBrowser("runtime: grok-x-connector\n"), false);
+  assert.equal(skillOmitsEgoBrowser("ego_browser: unsupported\n"), false);
+  assert.equal(skillOmitsEgoBrowser(null), false);
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ego-hygiene-connector-"));
+  writeSkill(root, "x-bookmark-export", {
+    md: marked,
+    files: { "scripts/test/pure.test.mjs": "test\n" },
+  });
+  assert.deepEqual(auditSkillDir(path.join(root, "skills", "x-bookmark-export"), "x-bookmark-export"), []);
+
+  const both = marked.replace("      - node\n", "      - node\n      - ego-browser\n");
+  writeSkill(root, "x-bookmark-both", {
+    md: both.replace("name: x-bookmark-export", "name: x-bookmark-both"),
+    files: { "scripts/test/pure.test.mjs": "test\n" },
+  });
+  const findings = auditSkillDir(path.join(root, "skills", "x-bookmark-both"), "x-bookmark-both");
+  assert.ok(codes(findings).includes("unexpected-ego-browser"));
 });
 
 test("main prints help, rejects unknown args, and reports a dirty tree", () => {
