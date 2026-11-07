@@ -96,8 +96,10 @@ export function runExport(argv, io = {}) {
         remove_tool: REMOVE_TOOL_NAME,
         live_call: false,
         ego_backend: "unverified",
+        standalone_ego_bookmark_backend: "unsupported",
         live_proven_ego_skill: false,
         connector_recipe_equals_ego_backend: false,
+        pro_runtime_smoke_proves_bookmarks: false,
         live_cleanup: false,
       };
     } else if (command === "ingest") {

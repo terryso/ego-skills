@@ -26,9 +26,13 @@ metadata:
 
 Archive a connector page into an account-scoped directory. The script does not contact X and does not launch Ego.
 
-**状态：** 可移植核心和单元测试。Ego 后端未验证。连接器编排配方不等于已经在 Ego 里跑通的技能。
+**独立 Ego 书签后端：不支持。** Pro 上的只读烟测只看到 `ego-browser nodejs` 里的 `taskSpace`。宿主 Node 里没有这些全局对象。烟测没有读到书签，也没有取消书签。连接器技能不等于 Ego 技能。
 
-**Status:** portable core and unit tests. The Ego backend is unverified. The connector recipe is not a live-proven Ego skill.
+**Standalone Ego bookmark backend: unsupported.** A Pro read-only smoke saw `taskSpace` only inside `ego-browser nodejs`. Host Node does not have those globals. That smoke did not read or remove bookmarks. The connector skill is not an Ego skill.
+
+**状态：** 可移植核心和单元测试。Ego 书签后端未实现。连接器编排配方不等于已经在 Ego 里跑通的技能。
+
+**Status:** portable core and unit tests. An Ego bookmark backend is not implemented. The connector recipe is not a live-proven Ego skill.
 
 ## 不要用 Ego 当 X 后端
 

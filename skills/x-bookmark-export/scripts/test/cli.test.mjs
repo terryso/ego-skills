@@ -33,8 +33,10 @@ test("check-deps soft-fails Ego and connector requests without invoking them", (
   assert.equal(runDeps([], ok), 0);
   const report = parseOut(ok.buffers);
   assert.equal(report.ego_backend, "unverified");
+  assert.equal(report.standalone_ego_bookmark_backend, "unsupported");
   assert.equal(report.live_proven_ego_skill, false);
   assert.equal(report.connector_recipe_equals_ego_backend, false);
+  assert.equal(report.pro_runtime_smoke_proves_bookmarks, false);
   assert.equal(report.ego_browser_invoked, false);
   const ego = capture();
   assert.equal(runDeps(["--require-ego"], ego), 2);
@@ -69,7 +71,9 @@ test("export CLI archives a fixture page and refuses removal flags", () => {
   const recipeJson = parseOut(recipe.buffers);
   assert.equal(recipeJson.live_call, false);
   assert.equal(recipeJson.ego_backend, "unverified");
+  assert.equal(recipeJson.standalone_ego_bookmark_backend, "unsupported");
   assert.equal(recipeJson.connector_recipe_equals_ego_backend, false);
+  assert.equal(recipeJson.pro_runtime_smoke_proves_bookmarks, false);
   assert.equal(recipeJson.list.arguments.pagination_token, "NEXTTOKEN123");
   assert.equal(recipeJson.remove_tool, "delete_users_bookmark");
 

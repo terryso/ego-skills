@@ -26,9 +26,13 @@ metadata:
 
 Read an archive from `x-bookmark-export`, accept a structured analysis file, and plan cleanup. The default command does not unbookmark anything.
 
-**状态：** 可移植核心和单元测试。Ego 后端未验证。这里的连接器步骤不是已经证明可用的 Ego 技能。现有只读分析例程不会被本技能自动切换。
+**独立 Ego 书签后端：不支持。** 连接器步骤不是 Ego 书签后端。Pro 运行时烟测没有证明书签读取或取消。
 
-**Status:** portable core and unit tests. The Ego backend is unverified. Connector steps are not a live-proven Ego skill. An existing read-only analysis routine is left untouched.
+**Standalone Ego bookmark backend: unsupported.** Connector steps are not an Ego bookmark backend. The Pro runtime smoke did not prove bookmark read or remove.
+
+**状态：** 可移植核心和单元测试。现有只读分析例程不会被本技能自动切换。
+
+**Status:** portable core and unit tests. An existing read-only analysis routine is left untouched.
 
 两个技能要装在相邻目录。只有 review、没有 export 时，退出码 `2`。
 

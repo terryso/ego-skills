@@ -1,13 +1,32 @@
 # X bookmark workflow — acceptance notes
 
-This branch is **not** a completed Ego skill. Unit tests cover the portable core. They do not prove Ego Lite, a Pro browser, or a live X account.
+## Standalone Ego bookmark backend: unsupported
+
+A Pro read-only runtime smoke does **not** make an Ego bookmark backend. The connector skills are not equivalent to one. X access stays on the Grok Bot connector (`get_users_bookmarks` / `delete_users_bookmark`). No private X endpoints. No browser session against X. No real cleanup. Do not publish.
+
+Pro smoke recorded 2026-11-07. Do not upgrade the app from this note.
+
+| Check | Result |
+|-------|--------|
+| Binary | `/Users/nick/.local/bin/ego-browser`, effective v0.6.2.8 |
+| App plist | 0.6.2.9. Leave it. Do not upgrade. |
+| Skill guide | v2.2.0 |
+| Host Node | v26.12.1. `taskSpace` and `listTaskSpaces` are undefined. |
+| `ego-browser nodejs` | Those two globals are present only in that runtime. |
+| Fixture task | Create, evaluate, then `finish({ keep: [] })`. Zero task spaces left. |
+| Pro `main` | `4ebbaf5`. Nine skills. No bookmark implementation. |
+| `learnings/x-com` | Timeline, search-users, and post scripts only. None executed. No proven bookmark read or remove. |
+| `skills/bilibili-video/` | Untracked on that machine. This branch does not touch it. |
+
+This branch is **not** a completed Ego skill. Unit tests cover the portable core. They do not prove a live X account.
 
 | Fact | Value |
 |------|--------|
 | Branch | `cursor/x-bookmark-workflow-3736` |
 | Base | `main` |
-| Ego backend | `unverified` |
+| Standalone Ego bookmark backend | `unsupported` |
 | Connector recipe equals an Ego backend | no |
+| Pro runtime smoke proves bookmarks | no |
 | Live X read or unbookmark in the coding run | no |
 | Publish to SkillHub / ClawHub | do not |
 
@@ -87,6 +106,6 @@ A parent who later investigates whether any supported Ego API can see bookmarks 
 
 ## Coverage
 
-`npm test` on 2026-11-07 (Node v22.23.4): **427 passed**, c8 lines **97.76%** (gate 80%). `x-bookmark-export` lib lines 98.76%. `x-bookmark-review` lib lines 93.54%. Report path: `coverage/coverage-summary.json` (not committed).
+`npm test` on 2026-11-07 (Node v22.23.4): **427 passed**, c8 lines **97.76%** (gate 80%). `x-bookmark-export` lib lines 98.77%. `x-bookmark-review` lib lines 93.59%. Report path: `coverage/coverage-summary.json` (not committed).
 
 That run did not start Ego and did not call X. The historical table in `ACCEPTANCE.md` is an older snapshot of other skills.

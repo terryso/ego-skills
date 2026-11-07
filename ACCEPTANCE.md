@@ -20,9 +20,9 @@ Reproduce: `npm test`. The report is `coverage/coverage-summary.json` (not commi
 
 ## x-bookmark workflow (not live acceptance)
 
-`npm test` on 2026-11-07 (Node v22.23.4, c8), including this workflow: **427 passed**, line coverage **97.76%**. `x-bookmark-export` lib lines **98.76%**. `x-bookmark-review` lib lines **93.54%**. Threshold remains lines ≥ 80%.
+`npm test` on 2026-11-07 (Node v22.23.4, c8), including this workflow: **427 passed**, line coverage **97.76%**. `x-bookmark-export` lib lines **98.77%**. `x-bookmark-review` lib lines **93.59%**. Threshold remains lines ≥ 80%.
 
-These two skills are portable cores. Ego is unverified. The connector recipe is not an Ego backend. No live X read or unbookmark was run. Do not publish from the branch. Offline commands for a later Pro checkout are in [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). The table above is the 2026-11-04 snapshot of the other skills. It is not a claim that this workflow passed on Mini or Pro.
+These two skills are portable cores. **Standalone Ego bookmark backend: unsupported.** A Pro read-only smoke (ego-browser effective v0.6.2.8, plist 0.6.2.9, guide v2.2.0, host Node v26.12.1) showed `taskSpace` only inside `ego-browser nodejs` and a fixture task space cleaned with `finish({ keep: [] })`. It did not read or remove bookmarks. The connector recipe is not an Ego backend. Do not upgrade the app from this note. Do not publish from the branch. Details: [docs/x-bookmark-acceptance.md](./docs/x-bookmark-acceptance.md). The table above is the 2026-11-04 snapshot of the other skills.
 
 ## Mini smoke (ego-browser 0.6.0.12)
 

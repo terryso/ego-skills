@@ -7,6 +7,9 @@ import path from "node:path";
 
 export const SKILL = "x-bookmark-export";
 export const RUNTIME = "grok-x-connector";
+export const STANDALONE_EGO_BOOKMARK_BACKEND = "unsupported";
+export const EGO_BOOKMARK_GAP =
+  "Standalone Ego is not an X bookmark backend. A runtime smoke inside ego-browser nodejs does not prove bookmark read or remove. The Grok Bot X connector is the runtime route. This recipe is not that backend.";
 export const LIST_TOOL = "get_users_bookmarks";
 export const REMOVE_TOOL = "delete_users_bookmark";
 export const MAX_PAGE_RESULTS = 100;
@@ -515,7 +518,7 @@ export function dependencyReport({ requireConnector = false, requireEgo = false 
   if (requireEgo) {
     throw new WorkflowError(
       "ego_unsupported",
-      "Ego Lite / ego-browser is not the X access path for this skill and was not invoked.",
+      `${EGO_BOOKMARK_GAP} This process did not invoke ego-browser.`,
     );
   }
   if (requireConnector) {
@@ -531,8 +534,11 @@ export function dependencyReport({ requireConnector = false, requireEgo = false 
     ego_browser: "unsupported",
     ego_browser_invoked: false,
     ego_backend: "unverified",
+    standalone_ego_bookmark_backend: STANDALONE_EGO_BOOKMARK_BACKEND,
     live_proven_ego_skill: false,
     connector_recipe_equals_ego_backend: false,
+    pro_runtime_smoke_proves_bookmarks: false,
+    gap: EGO_BOOKMARK_GAP,
     live_x: false,
     live_cleanup: false,
     bins: ["node"],
