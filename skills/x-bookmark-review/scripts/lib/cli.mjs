@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { dependencyReport, WorkflowError } from "../../../x-bookmark-export/scripts/lib/pure.mjs";
 import { readConsent, writeConsent } from "../../../x-bookmark-export/scripts/lib/store.mjs";
 import { acceptAnalysis, deliverRecommendations } from "./analysis.mjs";
-import { buildPlan, commitRemoval, prepareApply, reconcilePresence } from "./cleanup.mjs";
+import { buildPlan, commitRemoval, mapConnectorUnbookmarkReceipt, prepareApply, reconcilePresence } from "./cleanup.mjs";
 import { applyOnboarding, mergeConsent, nextOnboardingQuestion } from "./onboard.mjs";
 import { siblingStatus } from "./sibling.mjs";
 
@@ -44,6 +44,24 @@ function readJsonFile(file) {
   } catch {
     throw new WorkflowError("invalid_schema", "JSON file is unreadable");
   }
+}
+
+export function readRemovalResults(file, accountId, tweetId) {
+  const raw = fs.readFileSync(file, "utf8");
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = null;
+  }
+  if (parsed && Array.isArray(parsed.results)) return parsed;
+  if (!tweetId) {
+    throw new WorkflowError(
+      "receipt_missing_id",
+      "connector receipt does not name a post id; pass --tweet-id for an id already dispatched by apply --yes",
+    );
+  }
+  return mapConnectorUnbookmarkReceipt(parsed || raw, { accountId, tweetId });
 }
 
 function boolWord(value, name) {
@@ -122,7 +140,11 @@ export function runReview(argv, io = {}) {
       return finish(stdout, prepareApply(archive, account, requireFlag(flags, "plan"), { yes: flags.yes === true }));
     }
     if (command === "commit-removal") {
-      return finish(stdout, commitRemoval(archive, account, readJsonFile(requireFlag(flags, "results"))));
+      return finish(stdout, commitRemoval(
+        archive,
+        account,
+        readRemovalResults(requireFlag(flags, "results"), account, flags["tweet-id"] || null),
+      ));
     }
     if (command === "reconcile") {
       return finish(stdout, reconcilePresence(archive, account, readJsonFile(requireFlag(flags, "presence"))));

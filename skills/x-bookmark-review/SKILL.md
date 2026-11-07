@@ -72,8 +72,11 @@ node skills/x-bookmark-review/scripts/review.mjs recommend \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive
 node skills/x-bookmark-review/scripts/review.mjs plan \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive
-node skills/x-bookmark-review/scripts/review.mjs apply \
+  node skills/x-bookmark-review/scripts/review.mjs apply \
   --account 1000000000000000001 --archive /tmp/x-bookmark-archive --plan <planId>
+node skills/x-bookmark-review/scripts/review.mjs commit-removal \
+  --account 1000000000000000001 --archive /tmp/x-bookmark-archive \
+  --results /tmp/connector-receipt.json --tweet-id 2000000000000000001
 ```
 
 引导问题一次只问一个。见 `references/onboarding.md`。清理细节见 `references/cleanup.md`。

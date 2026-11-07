@@ -245,7 +245,7 @@ function deliverLocked(root, accountId, paths, deps) {
   const seen = new Set((index.entries || []).map((entry) => entry.key));
   const chosen = [];
   for (const record of records) {
-    if (record.status !== "analyzed" || record.notified || record.content_status !== "complete") continue;
+    if (record.status !== "analyzed" || record.notified || record.content_status === "incomplete") continue;
     if (!record.analysis_id) continue;
     const analysis = readJson(containedFile(paths.analysis, `${record.analysis_id}.json`), deps);
     const item = analysis.items.find((candidate) => candidate.post_id === record.post_id);

@@ -104,8 +104,35 @@ Do not:
 
 A parent who later investigates whether any supported Ego API can see bookmarks should do that on a separate change. This branch leaves that backend unimplemented on purpose.
 
+## Real connector files (redacted)
+
+One authorized account's saved connector page was run through this branch's CLI in a private temp directory. The page, post text, account ids, and audit narrative were not committed and are not copied here.
+
+| Check | Result |
+|-------|--------|
+| Page size | 25 posts. `meta.next_token` present. |
+| Ingest | exit 0. `complete: false`. `incomplete_reason: has_next_token`. 25 new. |
+| Same page again | 0 new, 25 duplicates. Still not complete. |
+| Markdown | `scan_complete: false`. Pagination token not copied into the export. |
+| Long post | Archived text matched `note_tweet.text` (852). It did not keep the shorter `text` field (324). |
+| Quote | Resolved from `includes.posts`, not left missing. |
+| Media | Metadata only. `media_downloaded: false`. |
+| External link | `external_text_status: unavailable`, so `content_status: uncertain`. |
+| Bookmark time | Unknown. `created_at` was not copied into it. |
+| Single-item wrapper file | exit 1, `invalid_page`. It is not a page. The script did not pretend otherwise. |
+| External audit file | exit 1, `invalid_schema`. It is not `x-bookmark-analysis/1` and is not a delivery receipt. |
+| Local structured decision | One actionable item. `recommend` notified that one id. This is the script's own receipt, not the earlier host delivery. |
+| Plan before consent | 0 items. Reason `no_consent`. `connector_ops` empty. |
+| `apply` without `--yes` | exit 3. `issue: false`. |
+| `apply --yes` | exit 0. `issue: true`. Tool `delete_users_bookmark`. `live_call: false`. `deletes_post: false`. The process did not call it. |
+| Raw connector receipt | exit 1, `receipt_missing_id`. Body is only `data.bookmarked: false`. |
+| Receipt plus the already dispatched id | Local `cleanup_succeeded`. Archive file kept. No X call. |
+| Two-page readback supplied beside the files | 50 rows, target not in those rows, next token still present. This script ingested one page and does not claim the bookmark is absent from the whole account. |
+
+Standalone Ego bookmark backend remains unsupported. No further unbookmark was performed.
+
 ## Coverage
 
-`npm test` on 2026-11-07 (Node v22.23.4): **427 passed**, c8 lines **97.76%** (gate 80%). `x-bookmark-export` lib lines 98.77%. `x-bookmark-review` lib lines 93.59%. Report path: `coverage/coverage-summary.json` (not committed).
+`npm test` on 2026-11-07 (Node v22.23.4): **428 passed**, c8 lines **97.76%** (gate 80%). `x-bookmark-export` lib lines 98.77%. `x-bookmark-review` lib lines 93.74%. Report path: `coverage/coverage-summary.json` (not committed).
 
 That run did not start Ego and did not call X. The historical table in `ACCEPTANCE.md` is an older snapshot of other skills.

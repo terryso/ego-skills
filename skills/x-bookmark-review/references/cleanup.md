@@ -15,7 +15,11 @@ If the connector removed a bookmark and the local commit did not land, the row s
 - `present: true` after 2 attempts stays `cleanup_failed`.
 - Missing or non-boolean presence stays unresolved and does not remove.
 
-Unhelpful rows need `discard_unhelpful: true`, a stored reason, complete content, and the archived post. Incomplete or uncertain content is blocked even when that flag is true.
+Unhelpful rows need `discard_unhelpful: true`, a stored reason, complete content, and the archived post. Incomplete or uncertain content is blocked for that discard even when the flag is true.
+
+A post can stay `uncertain` because a link has no separate article body. That still blocks unhelpful discard. It does not block an actionable suggestion once the post text is archived and a delivery receipt exists.
+
+`commit-removal` accepts the script result list, or a connector body `{ "data": { "bookmarked": false } }`. The connector body does not name a post. Pass `--tweet-id` for an id `apply --yes` already dispatched. The command records that local result. It does not call X. `bookmarked: true` is not success. A non-boolean value is rejected.
 
 Actionable rows need `cleanup_processed: true`, `notified: true`, and a receipt whose HMAC matches the rendered suggestion body. A boolean on the analysis file is not a receipt. Expired or edited receipts are blocked.
 

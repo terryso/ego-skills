@@ -6,6 +6,7 @@ import {
   WorkflowError,
   accountPaths,
   archiveHash,
+  assertAccountId,
   assertPostId,
   containedFile,
   removeBookmarkCall,
@@ -30,6 +31,42 @@ import { PLAN_TTL_MS, receiptProblem, signPayload, verifyPayload } from "./recei
 export const MAX_CLEANUP_ATTEMPTS = 2;
 export const DEFAULT_CAP = 10;
 export const MAX_CAP = 25;
+export function mapConnectorUnbookmarkReceipt(payload, { accountId, tweetId } = {}) {
+  assertAccountId(accountId);
+  assertPostId(tweetId);
+  const body = connectorReceiptBody(payload);
+  const bookmarked = body && body.data ? body.data.bookmarked : undefined;
+  if (typeof bookmarked !== "boolean") {
+    throw new WorkflowError(
+      "invalid_schema",
+      "connector receipt must contain data.bookmarked as a boolean and does not name a post id",
+    );
+  }
+  return {
+    account_id: accountId,
+    results: [{
+      tweet_id: tweetId,
+      removed: bookmarked === false,
+      error: bookmarked === false ? null : "still_bookmarked",
+    }],
+    mapped_from: "connector-data-bookmarked",
+    receipt_names_post: false,
+  };
+}
+
+function connectorReceiptBody(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload;
+  if (typeof payload !== "string") return null;
+  const start = payload.indexOf("{");
+  const end = payload.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(payload.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
 export const UNBOOKMARK_NOTICE = "Removing a bookmark does not delete the original post. Bookmarking it again may not restore the previous order or folder.";
 export const UNBOOKMARK_NOTICE_ZH = "取消书签不会删除原帖。重新加入书签不一定能恢复原来的顺序或文件夹。";
 
@@ -69,11 +106,12 @@ export function classifyRecord(root, accountId, record, { consent, keyHex, nowMs
     return block(postId, "archive_missing");
   }
   if (archiveHash(post) !== record.archive_sha256) return block(postId, "hash_mismatch");
-  if (post.content_status !== "complete") return block(postId, "content_not_complete");
+  if (post.content_status === "incomplete") return block(postId, "content_not_complete");
   const item = analysisItem(root, accountId, record, deps);
   if (!item) return block(postId, "missing_analysis");
   if (item.disposition === "keep" || item.disposition === "uncertain") return block(postId, "not_cleanup");
   if (item.disposition === "unhelpful") {
+    if (post.content_status !== "complete") return block(postId, "content_not_complete");
     if (!item.unhelpful_reason) return block(postId, "missing_reason");
     if (consent.discard_unhelpful !== true) return block(postId, "no_consent");
     return {

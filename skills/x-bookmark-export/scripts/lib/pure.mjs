@@ -322,7 +322,7 @@ export function normalizePost(raw, includes = {}) {
   const id = raw.id == null ? "" : String(raw.id);
   assertPostId(id);
   const users = indexBy(includes.users, "id");
-  const tweets = indexBy(includes.tweets, "id");
+  const tweets = indexBy([...(includes.tweets || []), ...(includes.posts || [])], "id");
   const media = indexBy(includes.media, "media_key");
   const author = normalizeAuthor(raw, users);
   const textInfo = normalizeText(raw);

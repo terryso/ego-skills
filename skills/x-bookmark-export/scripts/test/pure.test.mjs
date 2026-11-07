@@ -152,6 +152,22 @@ test("normalization keeps bookmark time, quotes, and uncertainty distinct", () =
   assert.equal(missingQuote.media_status, "missing");
   assert.equal(missingQuote.content_status, "incomplete");
 
+  const fromPosts = normalizePost({
+    id: "2000000000000000013",
+    text: "wrapper",
+    created_at: "2026-01-01T00:00:00.000Z",
+    author: { id: "3000000000000000001", username: "example_author", name: "Example" },
+    referenced_tweets: [{ type: "quoted", id: "2000000000000000014" }],
+    entities: { urls: [{ url: "https://t.co/example", expanded_url: "https://example.com/story" }] },
+  }, {
+    posts: [{ id: "2000000000000000014", text: "quoted from posts", author_id: "3000000000000000001" }],
+    users: [{ id: "3000000000000000001", username: "example_author", name: "Example" }],
+  });
+  assert.equal(fromPosts.quote.status, "present");
+  assert.equal(fromPosts.quote.text, "quoted from posts");
+  assert.equal(fromPosts.external_text_status, "unavailable");
+  assert.equal(fromPosts.content_status, "uncertain");
+
   const longQuote = normalizePost({
     id: "2000000000000000006",
     text: "wrapper",

@@ -12,10 +12,12 @@ import {
   MAX_CAP,
   buildPlan,
   commitRemoval,
+  mapConnectorUnbookmarkReceipt,
   prepareApply,
   reconcilePresence,
   runAdapterApply,
 } from "../lib/cleanup.mjs";
+import { readRemovalResults } from "../lib/cli.mjs";
 import { applyOnboarding, mergeConsent, nextOnboardingQuestion } from "../lib/onboard.mjs";
 import { issueReceipt, receiptProblem, signPayload, verifyPayload } from "../lib/receipts.mjs";
 import { siblingStatus } from "../lib/sibling.mjs";
@@ -165,6 +167,55 @@ test("receipts reject forged, expired, and self-declared delivery", () => {
     postId: "2000000000000000099",
   }), "receipt_mismatch");
   assert.equal(receiptProblem(key, null, { accountId: ACCOUNT, nowMs: 0, body }), "receipt_forged");
+});
+
+test("connector delete receipts do not name a post and uncertain rows are not unhelpful discards", () => {
+  assert.throws(() => mapConnectorUnbookmarkReceipt({ data: { bookmarked: false } }, {}), /account id/);
+  const mapped = mapConnectorUnbookmarkReceipt(
+    "ignore this wrapper {\"data\":{\"bookmarked\":false}}",
+    { accountId: ACCOUNT, tweetId: "2000000000000000001" },
+  );
+  assert.equal(mapped.receipt_names_post, false);
+  assert.equal(mapped.results[0].removed, true);
+  assert.equal(mapConnectorUnbookmarkReceipt(
+    { data: { bookmarked: true } },
+    { accountId: ACCOUNT, tweetId: "2000000000000000001" },
+  ).results[0].removed, false);
+  assert.throws(() => mapConnectorUnbookmarkReceipt(
+    { data: { bookmarked: "false" } },
+    { accountId: ACCOUNT, tweetId: "2000000000000000001" },
+  ), (error) => error.code === "invalid_schema");
+  const wrapped = path.join(tempRoot(), "receipt.txt");
+  fs.writeFileSync(wrapped, "note {\"data\":{\"bookmarked\":false}} trailing");
+  assert.throws(() => readRemovalResults(wrapped, ACCOUNT, null), (error) => error.code === "receipt_missing_id");
+  assert.equal(readRemovalResults(wrapped, ACCOUNT, "2000000000000000001").results[0].tweet_id, "2000000000000000001");
+
+  const time = clock();
+  const id = "2000000000000000031";
+  const { root } = archiveWith([post(id, "linked post", {
+    entities: { urls: [{ url: "https://t.co/example", expanded_url: "https://example.com/story" }] },
+  })], null, time);
+  assert.equal(readPost(root, ACCOUNT, id).content_status, "uncertain");
+  acceptAnalysis(root, ACCOUNT, analysisDoc([
+    itemFor(root, id, "unhelpful"),
+  ]), time.deps);
+  writeConsent(root, ACCOUNT, {
+    schema: 1,
+    account_id: ACCOUNT,
+    cleanup_processed: true,
+    discard_unhelpful: true,
+  }, time.deps);
+  const blocked = buildPlan(root, ACCOUNT, { deps: time.deps });
+  assert.ok(blocked.blocked.some((row) => row.post_id === id && row.reason === "content_not_complete"));
+  acceptAnalysis(root, ACCOUNT, analysisDoc([
+    itemFor(root, id, "actionable", { title: "Read the link" }),
+  ]), time.deps);
+  const delivered = deliverRecommendations(root, ACCOUNT, time.deps);
+  assert.equal(delivered.silent, false);
+  assert.deepEqual(delivered.notified, [id]);
+  const plan = buildPlan(root, ACCOUNT, { deps: time.deps });
+  assert.deepEqual(plan.items.map((row) => row.post_id), [id]);
+  assert.equal(plan.connector_ops.length, 0);
 });
 
 test("onboarding asks one question at a time and does not inherit consent", () => {

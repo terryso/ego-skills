@@ -31,6 +31,8 @@ Normalized:
 
 `next_token` must be present. A missing key means the page end is unknown. The scan stays incomplete. `null` means the connector reported no further page. A non-empty string means continue. `""` is invalid.
 
+The live connector names referenced posts `includes.posts`. Older payloads use `includes.tweets`. Both are read. A quoted id that appears in neither stays `incomplete`.
+
 X API v2 envelope:
 
 ```json
