@@ -41,7 +41,7 @@ FINALIZE `original_md5` is the md5 of the original file, lowercase hex. The capt
 
 Images in the capture returned 201 with no `processing_info`. Do not call STATUS in that case. A manual STATUS on a finalized image returned 404 code 34. If FINALIZE does include `processing_info`, poll STATUS after `check_after_secs` (default 10) while `state` is `pending` or `in_progress`. `succeeded` is done. `failed` uses `error.code` 0..4: INTERNAL_ERROR, INVALID_MEDIA, FILE_TOO_LARGE, UNSUPPORTED_MEDIA, TIMEOUT. This branch is for video/GIF and was not hit by the image capture. This skill stops after 30 polls.
 
-INIT and FINALIZE are tried twice (one retry). APPEND is tried up to 5 times. HTTP 401 and 429 are not retried. 401 is exit 2 (login). Other upload failures are exit 1 and the tweet is not sent.
+INIT and FINALIZE are tried twice (one retry). APPEND is tried up to 5 times. HTTP 401 and 429 are not retried. 401 is exit 2 (login). Other upload failures are exit 1, `outcome: "not_submitted"`, `sent: false`, and CreateTweet is not called. Those upload retries are not a second post.
 
 ## Headers
 

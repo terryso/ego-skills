@@ -14,10 +14,10 @@ import {
   loginRequiredBody,
   publishClickPoint,
   publishSuccessBody,
-  uploadSignals,
   validatePublishInput,
   verifyPublished,
 } from "./lib/pure.mjs";
+import { waitForKuaishouUpload } from "./lib/upload-wait.mjs";
 
 let spaceId;
 const fail = (msg, extra = {}) => {
@@ -89,20 +89,9 @@ const picked = await chooser.setFiles(video);
 if (picked && picked.dialog) await page.acceptDialog();
 console.error("文件已交给浏览器,等待上传…");
 
-await page.waitForFunction(
-  () => (document.body.innerText || "").includes("重新上传"),
-  undefined,
-  { timeout: 120000 },
-);
-for (let i = 0; i < 60; i++) {
-  await page.waitForFunction(
-    () => !(document.body.innerText || "").includes("上传中"),
-    undefined,
-    { timeout: 60000 },
-  );
-  await page.waitForTimeout(2000);
-  const mid = await page.evaluate(() => document.body.innerText || "");
-  if (!uploadSignals(mid).uploading) break;
+const upload = await waitForKuaishouUpload(page);
+if (!upload.ok || !upload.mayPublish) {
+  fail(upload.error || "上传未完成，停止发布");
 }
 console.error("上传完成");
 

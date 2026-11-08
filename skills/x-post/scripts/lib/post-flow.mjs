@@ -23,19 +23,24 @@ import {
   extractWebBearer,
   graphqlUrl,
   orderScriptUrls,
-  interpretCreateTweetResponse,
   isScreenName,
   needsNoteTweet,
   needsRepaint,
   normalizeLanguage,
   screenNameFromPath,
   statusUrl,
+  submissionVerdict,
+  VERIFY_BEFORE_RETRY,
+  VERIFY_BEFORE_RETRY_ZH,
 } from "./pure.mjs";
 
-function loginStop(message) {
+function loginStop(message, outcome = "not_submitted") {
   return {
     ok: false,
     sent: false,
+    outcome,
+    definitely_unsent: true,
+    retry: false,
     logged_in: false,
     login_required: true,
     exitCode: 2,
@@ -44,6 +49,47 @@ function loginStop(message) {
     how_to_login_zh: HOW_TO_LOGIN_ZH,
     login_tip: LOGIN_TIP,
     login_tip_zh: LOGIN_TIP_ZH,
+  };
+}
+
+function notSubmitted(fields) {
+  return {
+    ok: false,
+    sent: false,
+    outcome: "not_submitted",
+    definitely_unsent: true,
+    retry: false,
+    exitCode: 1,
+    ...fields,
+  };
+}
+
+function rejectedResult(fields) {
+  return {
+    ok: false,
+    sent: false,
+    outcome: "rejected",
+    definitely_unsent: true,
+    retry: false,
+    exitCode: 1,
+    ...fields,
+  };
+}
+
+function unknownResult(fields) {
+  const detail = String(fields.error || "CreateTweet response was lost").trim();
+  const error = detail.includes(VERIFY_BEFORE_RETRY) ? detail : `${detail} ${VERIFY_BEFORE_RETRY}`;
+  return {
+    ...fields,
+    ok: false,
+    sent: null,
+    outcome: "unknown",
+    definitely_unsent: false,
+    retry: false,
+    exitCode: 1,
+    verify_before_retry: VERIFY_BEFORE_RETRY,
+    verify_before_retry_zh: VERIFY_BEFORE_RETRY_ZH,
+    error,
   };
 }
 
@@ -136,12 +182,9 @@ export async function performPost(config, session) {
     try {
       prepared = await describeImages(imagePaths);
     } catch (error) {
-      return {
-        ok: false,
-        sent: false,
-        exitCode: 1,
+      return notSubmitted({
         error: error && error.message ? error.message : String(error),
-      };
+      });
     }
   }
   await session.ensureSite();
@@ -177,24 +220,18 @@ export async function performPost(config, session) {
   const discovered = await resolveOperationQuery(session, operation, config.queryId);
   const url = graphqlUrl(discovered.queryId, operation);
   if (!url) {
-    return {
-      ok: false,
-      sent: false,
-      exitCode: 1,
+    return notSubmitted({
       error: `${operation} query id is not usable`,
       query_id_source: discovered.source,
       operation,
       page,
-    };
+    });
   }
   const language = normalizeLanguage(detected.lang);
   const pathname = new URL(url).pathname;
   const transaction = await requireTransaction(session, pathname, config);
   if (!transaction.id) {
-    return {
-      ok: false,
-      sent: false,
-      exitCode: 1,
+    return notSubmitted({
       error: transaction.error,
       operation,
       note,
@@ -202,7 +239,7 @@ export async function performPost(config, session) {
       query_id: discovered.queryId,
       query_id_source: discovered.source,
       page,
-    };
+    });
   }
   if (note && typeof session.paceCompose === "function") {
     try {
@@ -214,10 +251,7 @@ export async function performPost(config, session) {
   let media = [];
   if (prepared.length) {
     if (typeof session.uploadImages !== "function") {
-      return {
-        ok: false,
-        sent: false,
-        exitCode: 1,
+      return notSubmitted({
         error: "Image upload is unavailable in this session",
         operation,
         note,
@@ -225,7 +259,7 @@ export async function performPost(config, session) {
         query_id: discovered.queryId,
         query_id_source: discovered.source,
         page,
-      };
+      });
     }
     try {
       media = await session.uploadImages({
@@ -240,10 +274,7 @@ export async function performPost(config, session) {
         }
         return { ...loginStop(error.message || "X login required in Ego Lite"), page };
       }
-      return {
-        ok: false,
-        sent: false,
-        exitCode: 1,
+      return notSubmitted({
         error: `Image upload failed: ${error && error.message ? error.message : error}`,
         operation,
         note,
@@ -251,7 +282,7 @@ export async function performPost(config, session) {
         query_id: discovered.queryId,
         query_id_source: discovered.source,
         page,
-      };
+      });
     }
   }
   const headers = buildHeaders({ bearer: discovered.bearer, csrfToken, language, note });
@@ -268,28 +299,48 @@ export async function performPost(config, session) {
       mediaIds: media.map((item) => item.media_id),
     }),
   };
-  const response = await session.postJson(request);
-  const parsed = interpretCreateTweetResponse(response.status, response.body, {
+  const context = {
+    operation,
+    note,
+    transaction_id_source: transaction.source,
+    query_id: discovered.queryId,
+    query_id_source: discovered.source,
+    reply_best_effort: Boolean(config.replyTo) || undefined,
+    page,
+  };
+  let response;
+  try {
+    response = await session.postJson(request);
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    return unknownResult({
+      ...context,
+      error: `CreateTweet request outcome is unknown (${message}).`,
+    });
+  }
+  const httpStatus = response && Number.isInteger(response.status) ? response.status : 0;
+  const body = response && Object.prototype.hasOwnProperty.call(response, "body") ? response.body : undefined;
+  const parsed = submissionVerdict(httpStatus, body, {
     replyTo: config.replyTo,
     note,
     hadTransactionId: Boolean(transaction.id),
   });
+  if (parsed.outcome === "unknown") {
+    return unknownResult({
+      ...context,
+      http_status: httpStatus,
+      error: `CreateTweet request outcome is unknown (${parsed.error}).`,
+    });
+  }
   if (!parsed.ok) {
-    if (parsed.loginRequired) return { ...loginStop(parsed.error), page, http_status: response.status };
-    return {
-      ok: false,
-      sent: false,
-      exitCode: 1,
+    if (parsed.loginRequired) {
+      return { ...loginStop(parsed.error, "rejected"), page, http_status: httpStatus || undefined };
+    }
+    return rejectedResult({
+      ...context,
       error: parsed.error,
-      http_status: response.status || undefined,
-      operation,
-      note,
-      transaction_id_source: transaction.source,
-      query_id: discovered.queryId,
-      query_id_source: discovered.source,
-      reply_best_effort: Boolean(config.replyTo) || undefined,
-      page,
-    };
+      http_status: httpStatus || undefined,
+    });
   }
   let screen = parsed.screenName;
   if (!isScreenName(screen) && typeof session.screenName === "function") {
@@ -303,6 +354,9 @@ export async function performPost(config, session) {
   return {
     ok: true,
     sent: true,
+    outcome: "sent",
+    definitely_unsent: false,
+    retry: false,
     logged_in: true,
     login_required: false,
     exitCode: 0,
@@ -345,10 +399,15 @@ export async function executePost(config, { browser } = {}) {
     summary.spaceId = session.spaceId;
     Object.assign(summary, await performPost(config, session));
   } catch (error) {
-    summary.error = String(error && error.message ? error.message : error);
-    summary.exitCode = 1;
-    summary.ok = false;
-    summary.sent = false;
+    if (!summary.outcome) {
+      summary.error = String(error && error.message ? error.message : error);
+      summary.exitCode = 1;
+      summary.ok = false;
+      summary.sent = false;
+      summary.outcome = "not_submitted";
+      summary.definitely_unsent = true;
+      summary.retry = false;
+    }
   } finally {
     if (session) {
       try {
