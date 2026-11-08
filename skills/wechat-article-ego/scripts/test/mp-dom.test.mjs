@@ -209,6 +209,36 @@ test("the 2026 editor uses the visible title, body, save draft, and draft card",
   assert.equal(drafts.clicked, 1);
 });
 
+test("reference fixes keep a 5px caption, coral quote, and heading ribbon", () => {
+  const img = h("img", { attrs: { src: "https://mmbiz.example/a.jpg" } });
+  img.style = {};
+  img.getBoundingClientRect = () => ({ top: 10, bottom: 110, width: 300, height: 100 });
+  const caption = h("figcaption", { text: "图注" });
+  caption.style = {};
+  caption.getBoundingClientRect = () => ({ top: 160, bottom: 180, width: 300, height: 20 });
+  const figure = h("figure", {}, [img, caption]);
+  figure.style = {};
+  img.nextElementSibling = caption;
+  const quote = h("blockquote", { text: "引用" });
+  quote.style = {};
+  const heading = h("h2", { text: "参考链接" });
+  heading.style = {};
+  heading.appendChild = (child) => { heading.childNodes.push(child); };
+  const body = h("div", { className: "ProseMirror" }, [figure, quote, heading]);
+  createDocument(h("div", { className: "rich_media_content" }, [body]));
+  globalThis.document.createElement = (tag) => h(tag);
+  const fixed = mpAct({ op: "apply-reference-fixes" });
+  assert.equal(fixed.ok, true);
+  assert.equal(caption.style.marginTop, "5px");
+  assert.equal(caption.style.padding, "0");
+  assert.equal(fixed.gaps[0].paddingTop, "0");
+  assert.match(quote.style.borderLeft, /rgb\(239,112,96\)/);
+  assert.match(quote.style.background, /#fff9f9/);
+  assert.equal(heading.childNodes.filter((node) => node.tagName === "SPAN").length, 2);
+  assert.match(heading.childNodes[0].getAttribute("style"), /background:rgb\(239,112,96\)/);
+  assert.match(heading.childNodes[1].getAttribute("style"), /border-bottom:36px solid #efebe9/);
+});
+
 test("a bad location and a query failure stay inside the probe", () => {
   createDocument(h("body"));
   globalThis.location = { href: "::::" };

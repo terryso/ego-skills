@@ -138,6 +138,9 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       }
       throw new Error(`image did not replace WXIMG${index} (${before} -> ${after})`);
     },
+    async applyReferenceFixes() {
+      return act("apply-reference-fixes");
+    },
     async uploadImage(file) {
       const before = await this.imageCount();
       await act("focus-body");

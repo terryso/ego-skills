@@ -1,8 +1,6 @@
 # Typography
 
-The pasted article follows the light mobile column visible at `https://wechat.bmpi.dev/` after the same article is pasted with the default theme: airy justified paragraphs, a grey quote box with a thick left bar, grey centered image captions, and an underlined steel-blue link list. Styles are inline because the Official Account editor drops classes.
-
-The values in `scripts/lib/pure.mjs` are written for that look. They are not a copy of the site's CSS.
+Three inline treatments follow the caller's exported HTML of the default theme. The numbers were re-typed into `scripts/lib/pure.mjs`. This file does not contain theme source from the GPL editor.
 
 ## What this is not
 
@@ -12,11 +10,13 @@ The values in `scripts/lib/pure.mjs` are written for that look. They are not a c
 
 ## What WeChat is asked to keep
 
-- Body: PingFang / Hiragino / Microsoft YaHei, 16px, line-height 1.75, `#333333`, justified, 16px side margin, 1.5em between paragraphs.
-- Heading 2: 22px, bold, generous vertical margin, no rule. Heading 3: 18px.
-- Quote: `#f7f7f7` box, 6px `#d0d0d0` left bar.
-- Links: `#576b95`, underlined, on both the `<a>` and an inner `<span>`.
-- An image alt becomes a 13px grey centered caption under that image. A paragraph that is only emphasis stays italic and grey.
-- Code: monospace on a paper block. There is no syntax highlighter.
+- Figure: `margin:0; margin-top:10px; margin-bottom:10px`, column flex, centered. The image is `display:block; margin:0 auto; max-width:100%`. The caption is a `figcaption` with `margin-top:5px`, `padding:0`, `color:#888`, `font-size:14px`. It is not a body paragraph, so it does not get the paragraph's 8px vertical padding.
+- Body paragraph: `font-size:16px; padding-top:8px; padding-bottom:8px; margin:0; line-height:26px; color:black`.
+- Quote: `border-left:3px solid rgb(239,112,96)`, `background:#fff9f9`, `color:#6a737d`, `padding:10px 10px 10px 20px`, `margin:20px 0`. The inner paragraph stays black, 16px, line-height 26px, padding 8px 0, margin 0.
+- Heading 2: `margin-top:30px; margin-bottom:15px; padding:0; font-size:1.3em; border-bottom:2px solid rgb(239,112,96)`. The words sit in a coral label (`background:rgb(239,112,96); color:#fff; padding:3px 10px 1px; border-top-left-radius:3px; border-top-right-radius:3px`). A following empty span draws the tail with `border-bottom:36px solid #efebe9; border-right:20px solid transparent`.
+- Links: bold `#ef7060`, `text-decoration:none`, `border-bottom:1px solid #ef7060`, repeated on an inner span.
+- After upload, the editor pass sets the caption's padding back to 0 and its top margin to 5px, and clears the image wrapper's bottom padding, because the Official Account editor may turn the caption into a padded paragraph.
+
+Code stays a plain block. There is no syntax highlighter.
 
 Images are still uploaded as files. The editor sizes them. A caption under an image is the italic line from the Markdown, not a burned-in picture.

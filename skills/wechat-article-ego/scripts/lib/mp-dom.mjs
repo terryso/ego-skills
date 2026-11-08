@@ -404,6 +404,95 @@ export function mpAct(payload) {
     return { ok: true, rows };
   }
 
+  if (op === "apply-reference-fixes") {
+    const root = editorRoot();
+    if (!root) return { ok: false, error: "editor body not found" };
+    const body = root.body;
+    const imgs = qsa(body, "img").filter((img) => {
+      const src = (img.getAttribute && img.getAttribute("src")) || "";
+      return src && src !== "about:blank";
+    });
+    const gaps = [];
+    for (const img of imgs) {
+      img.style.display = "block";
+      img.style.margin = "0 auto";
+      img.style.maxWidth = "100%";
+      let cursor = img;
+      let caption = null;
+      for (let depth = 0; depth < 6 && cursor && !caption; depth += 1) {
+        let sibling = cursor.nextElementSibling;
+        while (sibling && !caption) {
+          const tag = String(sibling.tagName || "").toUpperCase();
+          const style = (sibling.getAttribute && sibling.getAttribute("style")) || "";
+          if (tag === "FIGCAPTION" || style.includes("margin-top:5px")) caption = sibling;
+          sibling = sibling.nextElementSibling;
+        }
+        cursor = cursor.parentElement;
+      }
+      if (!caption) continue;
+      caption.style.margin = "0";
+      caption.style.marginTop = "5px";
+      caption.style.padding = "0";
+      caption.style.textAlign = "center";
+      caption.style.color = "#888";
+      caption.style.fontSize = "14px";
+      caption.style.lineHeight = "1.6";
+      let wrap = img.parentElement;
+      while (wrap && wrap !== body) {
+        if (!wrap.style) wrap.style = {};
+        wrap.style.marginBottom = "0";
+        wrap.style.paddingBottom = "0";
+        if (typeof wrap.contains === "function" && wrap.contains(caption)) break;
+        wrap = wrap.parentElement;
+      }
+      let gap = null;
+      if (typeof img.getBoundingClientRect === "function" && typeof caption.getBoundingClientRect === "function") {
+        gap = Math.round(caption.getBoundingClientRect().top - img.getBoundingClientRect().bottom);
+      }
+      gaps.push({
+        gap,
+        paddingTop: caption.style.paddingTop || "0",
+        marginTop: caption.style.marginTop,
+      });
+    }
+    for (const quote of qsa(body, "blockquote")) {
+      quote.style.display = "block";
+      quote.style.borderLeft = "3px solid rgb(239,112,96)";
+      quote.style.background = "#fff9f9";
+      quote.style.color = "#6a737d";
+      quote.style.padding = "10px 10px 10px 20px";
+      quote.style.margin = "20px 0";
+      quote.style.fontSize = "0.9em";
+      quote.style.overflow = "auto";
+    }
+    let badges = 0;
+    for (const heading of qsa(body, "h2")) {
+      heading.style.marginTop = "30px";
+      heading.style.marginBottom = "15px";
+      heading.style.padding = "0";
+      heading.style.fontWeight = "bold";
+      heading.style.color = "black";
+      heading.style.borderBottom = "2px solid rgb(239,112,96)";
+      heading.style.fontSize = "1.3em";
+      const spans = qsa(heading, "span");
+      const hasBadge = spans.some((span) => String((span.getAttribute && span.getAttribute("style")) || "").includes("239,112,96"));
+      if (!hasBadge) {
+        const label = normalize(heading.innerText || heading.textContent || "");
+        heading.textContent = "";
+        const badge = doc.createElement("span");
+        badge.setAttribute("style", "display:inline-block;font-weight:bold;background:rgb(239,112,96);color:#fff;padding:3px 10px 1px;border-top-right-radius:3px;border-top-left-radius:3px;margin-right:3px;");
+        badge.textContent = label;
+        const tail = doc.createElement("span");
+        tail.setAttribute("style", "display:inline-block;vertical-align:bottom;border-bottom:36px solid #efebe9;border-right:20px solid transparent;");
+        tail.textContent = "\u00a0";
+        heading.appendChild(badge);
+        heading.appendChild(tail);
+      }
+      badges += 1;
+    }
+    return { ok: true, gaps, quotes: qsa(body, "blockquote").length, headings: badges };
+  }
+
   if (op === "open-draft-list") {
     const names = qsa(doc, ".weui-desktop-menu__name");
     const menu = (label) => {

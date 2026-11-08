@@ -200,27 +200,27 @@ function parseFrontmatter(raw) {
 // Original light-article inline styles. WeChat keeps inline styles and drops
 // classes. This is not a copy of the mdnice / TaleAi / wechat.bmpi.dev theme
 // (GPL-3.0) or of doocs/md theme files (WTFPL). See references/typography.md.
-const SANS = "'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif";
+const SANS = "Optima-Regular,Optima,PingFangSC-light,PingFangTC-light,'PingFang SC',Cambria,Cochin,Georgia,Times,'Times New Roman',serif";
 const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
-const INK = "#333333";
-const BODY = "#333333";
-const MUTED = "#888888";
-const LINK = "#576b95";
-const RULE = "#e5e5e5";
-const PAPER = "#f7f7f7";
-const QUOTE_BAR = "#d0d0d0";
-const P = `margin:0 16px 1.5em;font-size:16px;line-height:1.75;letter-spacing:0.5px;color:${BODY};text-align:justify;font-family:${SANS};`;
-const CAPTION = `margin:8px 16px 1.4em;font-size:13px;line-height:1.6;color:${MUTED};text-align:center;font-family:${SANS};`;
-const H2 = `margin:1.8em 16px 0.8em;padding:0.6em 0;font-size:22px;line-height:1.4;font-weight:700;color:${INK};font-family:${SANS};`;
-const H3 = `margin:1.5em 16px 0.6em;font-size:18px;line-height:1.45;font-weight:700;color:${INK};font-family:${SANS};`;
-const Q = `margin:1.2em 16px;padding:14px 16px 14px 18px;background:${PAPER};border-left:6px solid ${QUOTE_BAR};font-size:15px;line-height:1.75;color:#595959;text-align:justify;font-family:${SANS};`;
-const STRONG = `font-weight:700;color:${INK};`;
-const EM = `font-style:italic;color:${MUTED};`;
-const CODE = `font-family:${MONO};font-size:14px;line-height:1.5;background:${PAPER};padding:1px 5px;border-radius:4px;color:${INK};`;
-const PRE = `margin:0 16px 1.5em;padding:14px 16px;background:${PAPER};border:1px solid ${RULE};border-radius:6px;overflow:auto;font-size:13px;line-height:1.65;color:${INK};font-family:${MONO};`;
-const LIST = `margin:0 16px 1.5em;padding-left:1.4em;font-size:16px;line-height:1.75;color:${BODY};font-family:${SANS};`;
-const LI = "margin:0.6em 0;text-align:justify;";
-const A = `color:${LINK};text-decoration:underline;`;
+const INK = "black";
+const CORAL = "rgb(239,112,96)";
+const CORAL_HEX = "#ef7060";
+const P = "font-size:16px;padding-top:8px;padding-bottom:8px;margin:0;line-height:26px;color:black;";
+const FIGURE = "margin:0;margin-top:10px;margin-bottom:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;";
+const FIGCAPTION = "margin-top:5px;margin-bottom:0;padding:0;text-align:center;color:#888;font-size:14px;line-height:1.6;";
+const H2 = `margin-top:30px;margin-bottom:15px;padding:0;font-weight:bold;color:black;border-bottom:2px solid ${CORAL};font-size:1.3em;`;
+const H2_BADGE = `display:inline-block;font-weight:bold;background:${CORAL};color:#fff;padding:3px 10px 1px;border-top-right-radius:3px;border-top-left-radius:3px;margin-right:3px;`;
+const H2_TAIL = "display:inline-block;vertical-align:bottom;border-bottom:36px solid #efebe9;border-right:20px solid transparent;";
+const H3 = "margin-top:24px;margin-bottom:12px;padding:0;font-weight:bold;color:black;font-size:1.15em;";
+const Q = `display:block;font-size:0.9em;overflow:auto;border-left:3px solid ${CORAL};color:#6a737d;padding:10px 10px 10px 20px;margin:20px 0;background:#fff9f9;`;
+const QP = "font-size:16px;line-height:26px;padding:8px 0;margin:0;color:black;";
+const STRONG = "font-weight:bold;color:black;";
+const EM = "font-style:italic;color:#888;";
+const CODE = `font-family:${MONO};font-size:14px;line-height:1.5;background:#f7f7f7;padding:1px 5px;border-radius:4px;color:black;`;
+const PRE = `margin:0;padding:14px 16px;background:#f7f7f7;border:1px solid #e5e5e5;border-radius:6px;overflow:auto;font-size:13px;line-height:1.65;color:black;font-family:${MONO};`;
+const LIST = "margin:0;padding-left:1.4em;font-size:16px;line-height:26px;color:black;";
+const LI = "margin:0;padding-top:8px;padding-bottom:8px;";
+const A = `color:${CORAL_HEX};font-weight:bold;text-decoration:none;border-bottom:1px solid ${CORAL_HEX};`;
 
 function renderInline(src) {
   let index = 0;
@@ -393,14 +393,34 @@ function isCaption(block) {
     && block.html.indexOf("<em ") === block.html.lastIndexOf("<em ");
 }
 
+export function imageCaptionHtml(alt) {
+  const text = normalizeText(alt);
+  if (!text) return "";
+  return `<figcaption style="${FIGCAPTION}">${escapeHtml(text)}</figcaption>`;
+}
+
+export function figureSlotHtml(index, captionHtml) {
+  return `<figure style="${FIGURE}"><p style="margin:0;padding:0;">WXIMG${index}</p>${captionHtml || ""}</figure>`;
+}
+
+export function articleShell(inner) {
+  return `<section style="font-size:16px;color:black;padding:0 10px;line-height:1.6;word-spacing:0;letter-spacing:0;word-break:break-word;word-wrap:break-word;text-align:left;font-family:${SANS};">${inner}</section>`;
+}
+
 function renderBlock(block) {
   if (block.type === "heading") {
     const level = Math.min(Math.max(block.level, 2), 3);
-    const style = level === 2 ? H2 : H3;
-    return { html: `<h${level} style="${style}">${block.html}</h${level}>`, text: block.text, links: block.links || [] };
+    if (level === 2) {
+      return {
+        html: `<h2 style="${H2}"><span style="${H2_BADGE}">${block.html}</span><span style="${H2_TAIL}">&nbsp;</span></h2>`,
+        text: block.text,
+        links: block.links || [],
+      };
+    }
+    return { html: `<h${level} style="${H3}">${block.html}</h${level}>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "quote") {
-    return { html: `<blockquote style="${Q}">${block.html}</blockquote>`, text: block.text, links: block.links || [] };
+    return { html: `<blockquote style="${Q}"><p style="${QP}">${block.html}</p></blockquote>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "code") {
     return {
@@ -419,7 +439,7 @@ function renderBlock(block) {
     };
   }
   if (block.type === "paragraph") {
-    const style = isCaption(block) ? CAPTION : P;
+    const style = isCaption(block) ? FIGCAPTION : P;
     return { html: `<p style="${style}">${block.html}</p>`, text: block.text, links: block.links || [] };
   }
   return { html: "", text: "", links: [] };
@@ -462,7 +482,7 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
         path: file.path,
         sha256: file.sha256,
         index: imageCursor - 1,
-        captionHtml: block.alt ? `<p style="${CAPTION}">${escapeHtml(block.alt)}</p>` : "",
+        captionHtml: imageCaptionHtml(block.alt),
       });
       continue;
     }
@@ -477,7 +497,7 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
     if (block.type === "code") fidelity.push("code highlighting is not available in the Official Account editor");
   }
   flush();
-  fidelity.push("light article inline styles (justified 16px body, grey quote bar, underlined links). WeChat may drop font-family or text-align");
+  fidelity.push("caption sits 5px under the image; quote bar is rgb(239,112,96); reference heading uses the coral label");
   fidelity.push("images are uploaded into the draft instead of left as remote hotlinks");
   fidelity.push("categories and tags are not copied; the editor has no safe equivalent field");
   const hash = crypto.createHash("sha256").update(JSON.stringify({

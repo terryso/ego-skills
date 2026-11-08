@@ -8,6 +8,8 @@ import {
   normalizeText,
   planOf,
   validateReadback,
+  figureSlotHtml,
+  articleShell,
 } from "./pure.mjs";
 import { createReceiptStore } from "./prepare.mjs";
 
@@ -38,15 +40,15 @@ async function compose(session, article) {
   for (const segment of article.segments) {
     if (segment.kind === "html") html.push(segment.html);
     if (segment.kind === "image") {
-      html.push(`<p>WXIMG${images.length}</p>`);
-      if (segment.captionHtml) html.push(segment.captionHtml);
+      html.push(figureSlotHtml(images.length, segment.captionHtml));
       images.push(segment);
     }
   }
-  if (html.length) await session.pasteHtml(html.join(""), images.map((_, index) => `WXIMG${index}`).join(" "));
+  if (html.length) await session.pasteHtml(articleShell(html.join("")), images.map((_, index) => `WXIMG${index}`).join(" "));
   for (let index = 0; index < images.length; index += 1) {
     await session.replaceSlot(index, images[index].path);
   }
+  if (typeof session.applyReferenceFixes === "function") await session.applyReferenceFixes();
   const coverResult = await session.ensureCover();
   if (!coverResult.ok) {
     const error = new Error(coverResult.error || "cover was not set");
