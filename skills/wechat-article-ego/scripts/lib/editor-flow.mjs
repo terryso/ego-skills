@@ -66,6 +66,7 @@ async function compose(session, article) {
   if (String(readback && readback.text || "").includes("WXIMG")) {
     throw new Error("image slot was not replaced");
   }
+  if (typeof session.stripRepeatedTitle === "function") await session.stripRepeatedTitle(article.title);
   return { ...readback, coverPending: !coverResult.ok };
 }
 
