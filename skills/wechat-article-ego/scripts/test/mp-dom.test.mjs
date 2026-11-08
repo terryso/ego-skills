@@ -261,6 +261,24 @@ test("reference fixes keep a 5px caption, coral quote, and heading ribbon", () =
   assert.match(heading.childNodes[1].getAttribute("style"), /border-bottom:36px solid #efebe9/);
 });
 
+test("a repeated article title is removed from the body and its caption", () => {
+  const title = h("section", { text: "题（封面）" });
+  const caption = h("figcaption", { text: "题" });
+  const keep = h("p", { text: "正文还在" });
+  const heading = h("h2", { text: "参考链接" });
+  const body = h("div", { className: "ProseMirror" }, [title, caption, keep, heading]);
+  body.removeChild = (child) => {
+    body.childNodes = body.childNodes.filter((item) => item !== child);
+  };
+  createDocument(h("div", { className: "rich_media_content" }, [body]));
+  const result = mpAct({ op: "strip-title", title: "题（封面）" });
+  assert.equal(result.removed, 2);
+  assert.equal(body.childNodes.includes(title), false);
+  assert.equal(body.childNodes.includes(caption), false);
+  assert.equal(body.childNodes.includes(keep), true);
+  assert.equal(body.childNodes.some((node) => node.tagName === "H2"), true);
+});
+
 test("the cover is the first body image, and an empty thumbnail is not success", () => {
   const open = h("div", { className: "select-cover__btn" });
   const choose = h("a", { className: "js_selectCoverFromContent" }, ["从正文选择"]);

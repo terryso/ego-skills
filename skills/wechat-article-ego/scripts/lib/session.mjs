@@ -152,6 +152,9 @@ export function createMpSession({ task, page, timings = {} } = {}) {
     async applyReferenceFixes() {
       return act("apply-reference-fixes");
     },
+    async stripRepeatedTitle(title) {
+      return act("strip-title", { title });
+    },
     async uploadImage(file) {
       const before = await this.imageCount();
       await act("focus-body");

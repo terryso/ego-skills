@@ -519,6 +519,28 @@ export function mpAct(payload) {
     return { ok: true, rows };
   }
 
+  if (op === "strip-title") {
+    const root = editorRoot();
+    if (!root) return { ok: false, error: "editor body not found" };
+    const key = normalize(input.title || "").replace(/（[^）]{1,16}）$/u, "").trim();
+    if (!key) return { ok: true, removed: 0 };
+    const same = (value) => {
+      const text = normalize(value).replace(/（[^）]{1,16}）$/u, "").trim();
+      return text === key;
+    };
+    let removed = 0;
+    const nodes = ["figcaption", "p", "h1", "h2", "h3", "section"].flatMap((tag) => qsa(root.body, tag));
+    for (const cap of nodes) {
+      const text = normalize(cap.innerText || cap.textContent || "");
+      const hasImage = cap.querySelector && cap.querySelector("img");
+      if (!hasImage && same(text) && text.length < key.length + 24 && cap.parentElement && typeof cap.parentElement.removeChild === "function") {
+        cap.parentElement.removeChild(cap);
+        removed += 1;
+      }
+    }
+    return { ok: true, removed };
+  }
+
   if (op === "apply-reference-fixes") {
     const root = editorRoot();
     if (!root) return { ok: false, error: "editor body not found" };

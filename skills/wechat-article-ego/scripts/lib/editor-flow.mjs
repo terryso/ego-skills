@@ -55,6 +55,7 @@ async function compose(session, article) {
     throw error;
   }
   await session.fillTitle(article.title);
+  if (typeof session.stripRepeatedTitle === "function") await session.stripRepeatedTitle(article.title);
   const coverResult = await session.ensureCover();
   if (!coverResult.ok && !coverResult.retryAfterSave) {
     const error = new Error(coverResult.error || "cover was not set");

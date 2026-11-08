@@ -269,13 +269,10 @@ function renderInline(src) {
         if (end !== -1) {
           const inner = renderInline(source.slice(index + 1, close));
           const href = source.slice(close + 2, end).trim();
-          const same = normalizeText(inner.text) === normalizeText(href);
-          const url = `<span style="display:block;${A};word-break:break-all;">${escapeHtml(href)}</span>`;
-          html += same
-            ? url
-            : `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a>${url}`;
-          text += same ? href : `${inner.text}\n${href}`;
-          links.push(...inner.links, { text: same ? href : `${inner.text} ${href}`, href });
+          const url = `<span style="display:block;${A}word-break:break-all;">${escapeHtml(href)}</span>`;
+          html += `<a href="${escapeHtml(href)}" style="${A}">${url}</a>`;
+          text += href;
+          links.push(...inner.links, { text: href, href });
           index = end + 1;
           continue;
         }
@@ -403,6 +400,16 @@ export function imageCaptionHtml(alt) {
   return `<figcaption style="${FIGCAPTION}">${escapeHtml(text)}</figcaption>`;
 }
 
+function titleKey(value) {
+  return normalizeText(value).replace(/（[^）]{1,16}）$/u, "").trim();
+}
+
+function repeatsTitle(text, titles) {
+  const key = titleKey(text);
+  if (!key) return false;
+  return titles.some((title) => titleKey(title) === key);
+}
+
 export function figureSlotHtml(index, captionHtml) {
   return `<figure style="${FIGURE}"><p style="margin:0;padding:0;">WXIMG${index}</p>${captionHtml || ""}</figure>`;
 }
@@ -462,6 +469,8 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
   if (imageBlocks.length !== images.length) {
     return { ok: false, error: "image count does not match resolved files" };
   }
+  const titles = [resolvedTitle, parsed.title].filter(Boolean);
+  const skipTitle = (text) => repeatsTitle(text, titles);
   const segments = [];
   let html = "";
   let text = "";
@@ -486,17 +495,18 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
         path: file.path,
         sha256: file.sha256,
         index: imageCursor - 1,
-        captionHtml: imageCaptionHtml(block.alt),
+        captionHtml: skipTitle(block.alt) ? "" : imageCaptionHtml(block.alt),
       });
       continue;
     }
+    if ((block.type === "heading" || block.type === "paragraph") && skipTitle(block.text)) continue;
     const rendered = renderBlock(block);
     html += rendered.html;
     text += `${rendered.text}\n`;
     if (block.type === "list") {
       for (const item of block.items || []) {
         const label = normalizeText(String(item.text || "").replace(/https?:\/\/\S+/g, ""));
-        if (label.length >= 2) snippets.push(label);
+        if (label.length >= 2 && !/^https?:\/\//.test(label)) snippets.push(label);
       }
     } else if (normalizeText(rendered.text)) {
       snippets.push(rendered.text);
