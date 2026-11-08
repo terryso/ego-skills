@@ -32,6 +32,8 @@ Install Ego Lite and put ego-browser on PATH first. Missing ego-browser soft-fai
 
   node scripts/check-login.mjs
   node scripts/check-login.mjs --keep
+  node scripts/save-draft.mjs --desc "描述" --tags "#话题" --yes
+  node scripts/save-draft.mjs --desc "描述" --tags "#话题" --cover /absolute/path/to/cover.jpg --yes
   node scripts/serve-file.mjs --file /path/to/video.mp4 --port 18765
 
 check-login:
@@ -43,8 +45,8 @@ serve-file:
   Serves one local file over http://127.0.0.1:<port>/ with CORS * for page.evaluate fetch + DataTransfer inject.
   Prints JSON { ok, url, file, bytes, port } then stays until SIGINT.
 
-The publish/draft UI flow (wujie form, cover chooser, location) stays in SKILL.md for the agent — too brittle for a full script.
-Before 保存草稿, run descriptionReadbackOk, uploadProbeDecision, and coverPreviewDecision. Unresolved, timeout, or mismatch returns save:false. Never click 发表. refClick stays false.
+The form fill stays in SKILL.md. The only supported 保存草稿 click is save-draft.mjs.
+It re-reads the description, upload, and cover, then calls maySaveDraft. Unresolved, timeout, or mismatch does not click. Never click 发表.
 `;
 
 export function strip(obj) {
@@ -52,6 +54,32 @@ export function strip(obj) {
     if (obj[key] === undefined || obj[key] === null || obj[key] === "") delete obj[key];
   }
   return obj;
+}
+
+export function parseSaveDraftArgs(argv) {
+  const out = {
+    help: false,
+    yes: false,
+    desc: "",
+    tags: "",
+    cover: "",
+    coverRequested: false,
+    taskName: "wechat-channels-save-draft",
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--help" || arg === "-h") out.help = true;
+    else if (arg === "--yes") out.yes = true;
+    else if (arg === "--desc") out.desc = String(argv[++i] || "");
+    else if (arg === "--tags") out.tags = String(argv[++i] || "");
+    else if (arg === "--cover") {
+      out.cover = String(argv[++i] || "");
+      out.coverRequested = true;
+    }
+    else if (arg === "--task-name") out.taskName = String(argv[++i] || out.taskName);
+    else throw new Error(`Unknown arg: ${arg}`);
+  }
+  return out;
 }
 
 export function parseCheckArgs(argv) {

@@ -185,7 +185,14 @@ await page.evaluate((p) => {
 
 ### 5. 保存草稿（终点）
 
-只有 `maySaveDraft({ description, upload, cover })` 的 `save === true` 才点「保存草稿」。三个字段都要传。没换封面时 `cover` 用 `coverPreviewDecision({ requested: false })`（`skip`）。描述回读、上传、封面任一不是 ok，或封面结果没传，函数返回 `save: false`，**停在点击之前**。这些函数的 `publish` 恒为 `false`：本技能不点「发表」。
+不要自己点「保存草稿」。唯一支持的保存是：
+
+```bash
+node skills/wechat-channels-video/scripts/save-draft.mjs --desc "描述" --tags "#话题" --yes
+node skills/wechat-channels-video/scripts/save-draft.mjs --desc "描述" --tags "#话题" --cover /absolute/path/to/cover.jpg --yes
+```
+
+脚本会重新读取描述、上传状态和封面预览，交给 `maySaveDraft`。没有 `--yes` 不点。描述不一致、上传没完成或失败、指定封面没换上、读不到编辑器，都在点击之前退出。脚本不点「发表」。
 
 点保存之后的成功信号不变：「已保存」+ 底部按钮变灰。再 goto 草稿箱核对。**草稿箱可见前不要离开编辑器**。草稿箱核对发生在保存成功之后，不能用来补一张没通过回读的草稿。
 
