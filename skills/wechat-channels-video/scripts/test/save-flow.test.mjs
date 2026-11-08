@@ -117,11 +117,82 @@ test("the page click only presses an exact 保存草稿 control", async () => {
   };
   assert.equal(clickChannelsSaveDraft(), true);
   assert.deepEqual(clicked, ["保存草稿"]);
+  const hidden = button("保存草稿");
+  hidden.getBoundingClientRect = () => ({ width: 0, height: 0 });
+  hidden.click = () => clicked.push("hidden");
+  const visible = button("保存草稿");
+  visible.getBoundingClientRect = () => ({ width: 88, height: 32 });
+  visible.click = () => clicked.push("visible");
+  root.querySelectorAll = () => [hidden, button("发表"), visible];
+  assert.equal(clickChannelsSaveDraft(), true);
+  assert.deepEqual(clicked, ["保存草稿", "visible"]);
   root.querySelectorAll = () => [button("发表")];
   assert.equal(clickChannelsSaveDraft(), false);
-  assert.deepEqual(clicked, ["保存草稿"]);
+  assert.deepEqual(clicked, ["保存草稿", "visible"]);
   globalThis.document = { querySelector() { return null; } };
   assert.equal(readChannelsEditorState().wujie, false);
+});
+
+test("the live reader uses the visible post surface, not stylesheet text", async () => {
+  const { readChannelsEditorState } = await import("../lib/run-save.mjs");
+  const attrs = {};
+  const cover = {
+    className: "vertical-img-size cover-img-vertical",
+    alt: "",
+    currentSrc: "https://example.test/custom-cover",
+    getAttribute(name) { return name === "src" ? this.currentSrc : ""; },
+    getBoundingClientRect() { return { width: 74, height: 98 }; },
+  };
+  const hint = {
+    className: "cover",
+    alt: "",
+    currentSrc: "https://example.test/short-title-hint",
+    getAttribute() { return this.currentSrc; },
+    getBoundingClientRect() { return { width: 0, height: 0 }; },
+  };
+  const video = { getBoundingClientRect() { return { width: 184, height: 327 }; } };
+  const wrap = {
+    getAttribute(name) { return attrs[name] || ""; },
+    setAttribute(name, value) { attrs[name] = value; },
+  };
+  const root = {
+    innerText: "",
+    textContent: "css width: 100%; .cover { background: url(hint) }",
+    querySelector(sel) {
+      if (sel === ".main-body") return { innerText: "转发 赞 评论 封面预览" };
+      if (sel === ".input-editor") return { innerText: "CHANNELS-SAVE-TEST" };
+      if (sel === ".cover-preview-wrap") return wrap;
+      return null;
+    },
+    querySelectorAll(sel) {
+      if (sel === "video") return [video];
+      if (sel === "img") return [hint, cover];
+      return [];
+    },
+  };
+  globalThis.document = { querySelector(sel) { return sel === "wujie-app" ? { shadowRoot: root } : null; } };
+  attrs["data-cover-baseline"] = "https://example.test/auto-frame";
+  const changed = readChannelsEditorState();
+  assert.equal(changed.upload.progress, 100);
+  assert.equal(changed.upload.hasPreview, true);
+  assert.equal(changed.cover.previewChanged, true);
+  assert.equal(changed.description.text, "CHANNELS-SAVE-TEST");
+  attrs["data-cover-baseline"] = cover.currentSrc;
+  const same = readChannelsEditorState();
+  assert.equal(same.cover.previewChanged, false);
+  delete attrs["data-cover-baseline"];
+  cover.currentSrc = "";
+  const hiddenOnly = readChannelsEditorState();
+  assert.equal(hiddenOnly.cover.previewChanged, false);
+  globalThis.document = { querySelector() { return null; } };
+});
+
+test("the command exit code follows the save result, not the browser process status", async () => {
+  const { exitCodeFromSaveOutput } = await import("../lib/launch-save.mjs");
+  const saved = "{\"ok\":true,\"clicked\":true,\"exitCode\":0}\n";
+  assert.equal(exitCodeFromSaveOutput(saved, 1), 0);
+  assert.equal(exitCodeFromSaveOutput("{\"exitCode\":1}\n", 0), 1);
+  assert.equal(exitCodeFromSaveOutput("", 1), 1);
 });
 
 test("the save command reaches the click only through saveDraftFlow", async () => {

@@ -24,7 +24,9 @@ export function renderSaveEntry({ config, runHref }) {
     `const page = task.page("p1");`,
     `const result = await executeChannelsSave(config, page);`,
     `console.log(JSON.stringify(result));`,
-    `try { await task.finish({ keep: [] }); } catch { /* closing must not hide the result */ }`,
+    `if (result && result.clicked === true) {`,
+    `  try { await task.finish({ keep: [] }); } catch { /* closing must not hide the result */ }`,
+    `}`,
     `if (result.exitCode) process.exitCode = result.exitCode;`,
     "",
   ].join("\n");
@@ -73,9 +75,19 @@ export async function runSaveCli(argv, deps = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";
+  let err = "";
   child.stdout.on("data", (chunk) => { out += chunk; io.stdout.write(chunk); });
-  child.stderr.on("data", (chunk) => { io.stderr.write(chunk); });
+  child.stderr.on("data", (chunk) => { err += chunk; io.stderr.write(chunk); });
   const code = await new Promise((resolve) => child.on("close", resolve));
-  if (!out.trim()) return code || 1;
-  return code || 0;
+  return exitCodeFromSaveOutput(`${out}\n${err}`, code);
+}
+
+export function exitCodeFromSaveOutput(out, code) {
+  const line = String(out || "").split("\n").map((item) => item.trim()).filter((item) => item.startsWith("{")).pop();
+  if (!line) return code || 1;
+  try {
+    const parsed = JSON.parse(line);
+    if (Number.isInteger(parsed.exitCode)) return parsed.exitCode;
+  } catch { /* the process status remains the result */ }
+  return code || 1;
 }

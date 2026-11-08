@@ -128,7 +128,7 @@ const r = await page.evaluate(async (p) => {
 验证只看 DOM，并且有次数上限。把每次探测交给 `scripts/lib/pure.mjs` 的 `uploadProbeDecision` / `wujieProbeDecision`（ego 脚本里 `await import("<本技能目录>/scripts/lib/pure.mjs")`）。不要另写一套更松的判断。
 
 - 文案出现「上传失败 / 上传出错 / 上传异常」，或 `failed: true`：`action: "stop"`，立刻停。
-- 进度是 `100` / `100%`，预览里同时有「转发」「赞」「评论」（或 `hasPreview: true`），并且 `stableCount >= 2`：`action: "proceed"`。
+- 进度是 `100` / `100%`，或上传完成后百分比已经消失、但可见 `<video>` 和「转发」「赞」「评论」同时在（`hasPreview: true`），并且 `stableCount >= 2`：`action: "proceed"`。样式表里的 `100%` 和隐藏节点不算。
 - 还没稳定：`action: "retry"`。最多 `8` 次（`CHANNELS_UPLOAD_WAIT_LIMIT`）。用尽仍不满足就是 `stop`，原因是 `timeout`。
 - `wujie` 为 null / `wujie: false`：`wujieProbeDecision`，最多 `8` 次。**不要刷新**。用尽就是 `stop` / `unresolved`。
 
@@ -216,7 +216,7 @@ node skills/wechat-channels-video/scripts/save-draft.mjs --desc "描述" --tags 
 换封面之后，每次探测交给 `coverPreviewDecision`，最多 `12` 次（`CHANNELS_COVER_WAIT_LIMIT`）：
 
 - 按钮还在转圈，或文案仍是「上传中」：继续等；次数用尽则 `stop`，原因 `spinning`。
-- `previewChanged !== true`：还没确认换掉默认帧。用尽次数则 `stop` / `unresolved`。
+- `previewChanged !== true`：可见封面图（`.cover-img`）还没换掉页面记下的第一帧。隐藏的 `.cover` 提示图不算。用尽次数则 `stop` / `unresolved`。
 - `revertedToDefault: true`：预览退回默认帧，立刻 `stop`，原因 `reverted`。
 - 不转圈且 `previewChanged: true`：`proceed`。
 - 这次没传封面：`requested: false`，结果是 `skip`，不挡后面的保存判断。
