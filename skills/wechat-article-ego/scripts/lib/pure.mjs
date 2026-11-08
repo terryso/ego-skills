@@ -493,7 +493,14 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
     const rendered = renderBlock(block);
     html += rendered.html;
     text += `${rendered.text}\n`;
-    if (normalizeText(rendered.text)) snippets.push(rendered.text);
+    if (block.type === "list") {
+      for (const item of block.items || []) {
+        const label = normalizeText(String(item.text || "").replace(/https?:\/\/\S+/g, ""));
+        if (label.length >= 2) snippets.push(label);
+      }
+    } else if (normalizeText(rendered.text)) {
+      snippets.push(rendered.text);
+    }
     links.push(...rendered.links);
     for (const link of rendered.links || []) {
       if (link.href && /^https?:\/\//.test(link.href)) snippets.push(link.href);

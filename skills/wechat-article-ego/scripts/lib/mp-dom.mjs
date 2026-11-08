@@ -339,7 +339,8 @@ export function mpAct(payload) {
   }
 
   if (op === "open-cover-menu") {
-    const area = doc.querySelector && doc.querySelector("#js_cover_area .select-cover__btn");
+    const tips = qsa(doc, ".js_share_type_none_image").filter((el) => shown(el));
+    const area = (tips[0] && tips[0].parentElement) || (doc.querySelector && doc.querySelector("#js_cover_area .select-cover__btn"));
     if (!area) return { ok: false, error: "cover control not found" };
     if (typeof area.scrollIntoView === "function") area.scrollIntoView({ block: "center" });
     area.click();
@@ -349,15 +350,38 @@ export function mpAct(payload) {
   if (op === "cover-menu-state") {
     const pop = doc.querySelector && doc.querySelector("#js_cover_null");
     const style = pop ? ((pop.getAttribute && pop.getAttribute("style")) || "") : "";
+    let open = Boolean(pop) && !/display:\s*none/.test(style);
+    if (pop && typeof pop.getBoundingClientRect === "function") {
+      const rect = pop.getBoundingClientRect();
+      open = rect.width > 20 && rect.height > 20;
+    }
     const dialog = doc.querySelector && doc.querySelector(".weui-desktop-dialog_img-picker");
     const items = dialog && dialog.querySelectorAll ? dialog.querySelectorAll(".appmsg_content_img_item").length : 0;
-    return { ok: true, open: Boolean(pop) && !/display:\s*none/.test(style), items };
+    return { ok: true, open, items };
+  }
+
+  if (op === "cover-debug") {
+    const pop = doc.querySelector && doc.querySelector("#js_cover_null");
+    const rect = pop && typeof pop.getBoundingClientRect === "function" ? pop.getBoundingClientRect() : null;
+    const dialog = doc.querySelector && doc.querySelector(".weui-desktop-dialog_img-picker");
+    const items = dialog && dialog.querySelectorAll ? dialog.querySelectorAll(".appmsg_content_img_item").length : 0;
+    const text = bodyText().replace(/\s+/g, " ");
+    const at = text.indexOf("选择图片");
+    return {
+      ok: true,
+      detail: `pop=${rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : "none"} items=${items} dialog=${dialog ? "yes" : "no"} ${at >= 0 ? text.slice(at, at + 80) : "no-picker"}`,
+    };
   }
 
   if (op === "cover-from-body") {
     const scoped = doc.querySelector && doc.querySelector("#js_cover_null .js_selectCoverFromContent");
     const button = scoped || findExact("从正文选择");
     if (!button) return { ok: false, error: "从正文选择 not found" };
+    try {
+      if (globalThis.jQuery) globalThis.jQuery(button).trigger("click");
+    } catch {
+      // The native click below still reaches the editor handler.
+    }
     button.click();
     return { ok: true };
   }
@@ -383,6 +407,27 @@ export function mpAct(payload) {
       }
     }
     return { ok: false, done: true };
+  }
+
+  if (op === "open-draft-editor") {
+    const want = normalize(input.title || "");
+    const title = qsa(doc, ".weui-desktop-publish__cover__title").find((el) => {
+      const text = normalize(el.innerText || el.textContent || "");
+      const flat = (value) => String(value || "").replace(/\u00a0/g, " ").replace(/\s+/g, "");
+      return text && (text === want || flat(text) === flat(want) || text.includes(want) || want.includes(text));
+    });
+    if (!title) return { ok: false, error: "draft row not found" };
+    let card = title;
+    for (let depth = 0; depth < 8 && card; depth += 1) {
+      const editWrap = qsa(card, ".weui-desktop-tooltip__wrp").find((el) => String(el.innerText || el.textContent || "").includes("编辑"));
+      if (editWrap) {
+        const anchor = editWrap.querySelector && editWrap.querySelector("a");
+        (anchor || editWrap).click();
+        return { ok: true };
+      }
+      card = card.parentElement;
+    }
+    return { ok: false, error: "edit control not found" };
   }
 
   if (op === "cover-thumb") {

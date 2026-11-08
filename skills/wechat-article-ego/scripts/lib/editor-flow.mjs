@@ -56,7 +56,7 @@ async function compose(session, article) {
   }
   await session.fillTitle(article.title);
   const coverResult = await session.ensureCover();
-  if (!coverResult.ok) {
+  if (!coverResult.ok && !coverResult.retryAfterSave) {
     const error = new Error(coverResult.error || "cover was not set");
     error.code = "cover";
     throw error;
@@ -65,7 +65,7 @@ async function compose(session, article) {
   if (String(readback && readback.text || "").includes("WXIMG")) {
     throw new Error("image slot was not replaced");
   }
-  return readback;
+  return { ...readback, coverPending: !coverResult.ok };
 }
 
 function draftRef(match) {
@@ -214,7 +214,7 @@ async function run(config, deps, command) {
       store.write(config.receiptDir, { ...pending, status: "aborted", readback: check });
       return base(command, {
         exitCode: 1,
-        error: `readback did not match the source (title=${readback && readback.title ? readback.title : ""})`,
+        error: `readback did not match the source (title=${readback && readback.title ? readback.title : ""}; missing=${(check.missing || []).slice(0, 2).join(" | ")})`,
         account: account.account,
         plan,
         readback: check,
@@ -261,7 +261,42 @@ async function run(config, deps, command) {
     const thumb = typeof session.coverThumb === "function"
       ? await session.coverThumb(want)
       : { filled: true, skipped: true };
-    if (!thumb.filled) {
+    let coverThumb = thumb;
+    if (!coverThumb.filled && typeof session.openDraftEditor === "function") {
+      try {
+        await session.openDraftEditor(want);
+        const cover = await session.ensureCover();
+        if (!cover.ok) {
+          return base(command, {
+            exitCode: 1,
+            error: cover.error || "cover is empty after save",
+            account: account.account,
+            plan,
+            saved: true,
+            confirmed,
+            cover: { filled: false, src: "" },
+            draftId: match.id || "",
+            draftTime: match.time || "",
+          });
+        }
+        await session.clickSave();
+        drafts = await session.listDrafts();
+        coverThumb = await session.coverThumb(want);
+      } catch (error) {
+        return base(command, {
+          exitCode: 1,
+          error: String(error.message || error),
+          account: account.account,
+          plan,
+          saved: true,
+          confirmed,
+          cover: { filled: false },
+          draftId: match.id || "",
+          draftTime: match.time || "",
+        });
+      }
+    }
+    if (!coverThumb.filled) {
       store.write(config.receiptDir, {
         ...pending,
         status: "uncertain",
@@ -277,7 +312,7 @@ async function run(config, deps, command) {
         plan,
         saved: true,
         confirmed,
-        cover: { filled: false, src: thumb.src || "" },
+        cover: { filled: false, src: coverThumb.src || "" },
         draftId: match.id || "",
         draftTime: match.time || "",
       });
@@ -317,7 +352,7 @@ async function run(config, deps, command) {
       draftId: saved.draftId,
       draftTime: saved.draftTime,
       imageCount: article.imageCount,
-      cover: { filled: true, src: thumb.src || "" },
+      cover: { filled: true, src: coverThumb.src || "" },
       fidelity: article.fidelity,
       differences: check.missingHrefs,
       readback: again || check,

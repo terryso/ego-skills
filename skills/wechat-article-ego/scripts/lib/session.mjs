@@ -5,6 +5,7 @@ import { mpAct } from "./mp-dom.mjs";
 export function createMpSession({ task, page, timings = {} } = {}) {
   if (!task || !page) throw new Error("createMpSession requires task and page");
   let current = page;
+  const consolePage = page;
   let finished = false;
   const attempts = timings.attempts ?? 8;
   const waitMs = timings.waitMs ?? 250;
@@ -194,7 +195,14 @@ export function createMpSession({ task, page, timings = {} } = {}) {
         picked = await act("cover-pick-first");
         if (!picked.ok) await pause(400);
       }
-      if (!picked.ok) return { ok: false, error: picked.error || "body image was not offered for the cover" };
+      if (!picked.ok) {
+        const diag = await act("cover-debug");
+        return {
+          ok: false,
+          retryAfterSave: true,
+          error: `${picked.error || "body image was not offered for the cover"} (${diag.detail || "no detail"})`,
+        };
+      }
       for (let index = 0; index < 6; index += 1) {
         await pause(400);
         const again = await act("cover-state");
@@ -232,7 +240,12 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       }
       return false;
     },
+    async useConsole() {
+      current = consolePage;
+      return current;
+    },
     async listDrafts() {
+      current = consolePage;
       const opened = await act("open-draft-list");
       if (!opened.ok) await act("click", { text: "草稿箱" });
       for (let index = 0; index < attempts; index += 1) {
@@ -242,6 +255,20 @@ export function createMpSession({ task, page, timings = {} } = {}) {
       }
       const listed = await act("draft-rows");
       return listed.rows || [];
+    },
+    async openDraftEditor(title) {
+      const popupPromise = typeof current.waitForEvent === "function"
+        ? current.waitForEvent("popup", { timeout: 8_000 }).catch(() => null)
+        : Promise.resolve(null);
+      const opened = await act("open-draft-editor", { title });
+      if (!opened.ok) throw new Error(opened.error || "edit control not found");
+      await adopt(await popupPromise);
+      for (let index = 0; index < attempts; index += 1) {
+        const probe = await act("probe");
+        if (probe.editorReady) return probe;
+        await pause(waitMs);
+      }
+      throw new Error("draft editor did not open");
     },
     async openDraft(title) {
       const opened = await act("click", { text: title, required: true });
