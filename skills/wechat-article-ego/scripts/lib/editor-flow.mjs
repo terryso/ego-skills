@@ -48,7 +48,12 @@ async function compose(session, article) {
   for (let index = 0; index < images.length; index += 1) {
     await session.replaceSlot(index, images[index].path);
   }
-  if (typeof session.applyReferenceFixes === "function") await session.applyReferenceFixes();
+  const fixed = typeof session.applyReferenceFixes === "function" ? await session.applyReferenceFixes() : { ok: true };
+  if (fixed && fixed.doubleRail) {
+    const error = new Error("quote still has a grey rail beside the coral line");
+    error.code = "quote";
+    throw error;
+  }
   await session.fillTitle(article.title);
   const coverResult = await session.ensureCover();
   if (!coverResult.ok) {
@@ -253,6 +258,30 @@ async function run(config, deps, command) {
       });
     }
     const match = matches[0] || {};
+    const thumb = typeof session.coverThumb === "function"
+      ? await session.coverThumb(want)
+      : { filled: true, skipped: true };
+    if (!thumb.filled) {
+      store.write(config.receiptDir, {
+        ...pending,
+        status: "uncertain",
+        saveClicked,
+        confirmed,
+        finishedAt: now(),
+        error: "cover is empty after save",
+      });
+      return base(command, {
+        exitCode: 1,
+        error: "cover is empty after save",
+        account: account.account,
+        plan,
+        saved: true,
+        confirmed,
+        cover: { filled: false, src: thumb.src || "" },
+        draftId: match.id || "",
+        draftTime: match.time || "",
+      });
+    }
     const saved = {
       ...pending,
       status: "saved",
@@ -288,6 +317,7 @@ async function run(config, deps, command) {
       draftId: saved.draftId,
       draftTime: saved.draftTime,
       imageCount: article.imageCount,
+      cover: { filled: true, src: thumb.src || "" },
       fidelity: article.fidelity,
       differences: check.missingHrefs,
       readback: again || check,

@@ -172,7 +172,7 @@ test("draft rows, cover upload, and missing controls", () => {
   createDocument(h("body", { text: "从正文选择 选择图片" }, [pick, editor, ok]));
   assert.equal(mpAct({ op: "cover-from-body" }).ok, true);
   assert.equal(pick.clicked, 1);
-  assert.equal(ok.clicked, 1);
+  assert.equal(ok.clicked, 0);
   const read = mpAct({ op: "read-editor" });
   assert.deepEqual(read.hrefs, ["https://example.com/a"]);
 });
@@ -218,25 +218,79 @@ test("reference fixes keep a 5px caption, coral quote, and heading ribbon", () =
   caption.getBoundingClientRect = () => ({ top: 160, bottom: 180, width: 300, height: 20 });
   const figure = h("figure", {}, [img, caption]);
   figure.style = {};
-  img.nextElementSibling = caption;
+  const blank = h("p", { text: "" });
+  figure.childNodes = [img, blank, caption];
+  blank.parentElement = figure;
+  img.nextElementSibling = blank;
+  blank.nextElementSibling = caption;
   const quote = h("blockquote", { text: "引用" });
   quote.style = {};
   const heading = h("h2", { text: "参考链接" });
   heading.style = {};
   heading.appendChild = (child) => { heading.childNodes.push(child); };
   const body = h("div", { className: "ProseMirror" }, [figure, quote, heading]);
+  body.replaceChild = (next, prev) => {
+    const index = body.childNodes.indexOf(prev);
+    body.childNodes[index] = next;
+    next.parentElement = body;
+  };
+  figure.removeChild = (child) => {
+    figure.childNodes = figure.childNodes.filter((node) => node !== child);
+  };
   createDocument(h("div", { className: "rich_media_content" }, [body]));
-  globalThis.document.createElement = (tag) => h(tag);
+  globalThis.document.createElement = (tag) => {
+    const node = h(tag);
+    node.style = {};
+    node.appendChild = (child) => { node.childNodes.push(child); child.parentElement = node; };
+    return node;
+  };
   const fixed = mpAct({ op: "apply-reference-fixes" });
   assert.equal(fixed.ok, true);
+  assert.equal(fixed.doubleRail, false);
   assert.equal(caption.style.marginTop, "5px");
   assert.equal(caption.style.padding, "0");
   assert.equal(fixed.gaps[0].paddingTop, "0");
-  assert.match(quote.style.borderLeft, /rgb\(239,112,96\)/);
-  assert.match(quote.style.background, /#fff9f9/);
+  assert.equal(figure.childNodes.includes(blank), false);
+  const section = body.childNodes.find((node) => node.tagName === "SECTION");
+  assert.ok(section);
+  assert.equal(body.childNodes.some((node) => node.tagName === "BLOCKQUOTE"), false);
+  assert.match(section.style.borderLeft, /rgb\(239,112,96\)/);
+  assert.match(section.style.background, /#fff9f9/);
   assert.equal(heading.childNodes.filter((node) => node.tagName === "SPAN").length, 2);
   assert.match(heading.childNodes[0].getAttribute("style"), /background:rgb\(239,112,96\)/);
   assert.match(heading.childNodes[1].getAttribute("style"), /border-bottom:36px solid #efebe9/);
+});
+
+test("the cover is the first body image, and an empty thumbnail is not success", () => {
+  const open = h("div", { className: "select-cover__btn" });
+  const choose = h("a", { className: "js_selectCoverFromContent" }, ["从正文选择"]);
+  const menu = h("div", { id: "js_cover_null" }, [choose]);
+  const first = h("li", { className: "appmsg_content_img_item" });
+  const next = h("button", {}, ["下一步"]);
+  const dialog = h("div", { className: "weui-desktop-dialog_img-picker" }, [first, next]);
+  const preview = h("div", { className: "js_cover_preview_new", attrs: { style: "display:none;background-image:url(\"\")" } });
+  const area = h("div", { id: "js_cover_area" }, [open, preview]);
+  const thumb = h("i", { className: "weui-desktop-publish__cover__thumb", attrs: { style: "background-image: url(\"\");" } });
+  const card = h("div", {}, [
+    thumb,
+    h("a", { className: "weui-desktop-publish__cover__title" }, ["正式标题"]),
+  ]);
+  createDocument(h("body", { text: "拖拽或选择封面" }, [area, menu, dialog, card]));
+  assert.equal(mpAct({ op: "cover-state" }).filled, false);
+  assert.equal(mpAct({ op: "open-cover-menu" }).ok, true);
+  assert.equal(open.clicked, 1);
+  assert.equal(mpAct({ op: "cover-from-body" }).ok, true);
+  assert.equal(choose.clicked, 1);
+  assert.equal(mpAct({ op: "cover-pick-first" }).ok, true);
+  assert.equal(first.clicked, 1);
+  assert.equal(mpAct({ op: "cover-advance" }).label, "下一步");
+  preview.setAttribute("style", "background-image:url(\"https://mmbiz.example/cover.jpg\")");
+  const state = mpAct({ op: "cover-state" });
+  assert.equal(state.filled, true);
+  assert.match(state.src, /mmbiz\.example\/cover\.jpg/);
+  assert.equal(mpAct({ op: "cover-thumb", title: "正式标题" }).filled, false);
+  thumb.setAttribute("style", "background-image: url(\"https://mmbiz.example/cover.jpg\");");
+  assert.equal(mpAct({ op: "cover-thumb", title: "正式标题" }).filled, true);
 });
 
 test("a bad location and a query failure stay inside the probe", () => {

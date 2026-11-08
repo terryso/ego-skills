@@ -311,10 +311,17 @@ export function mpAct(payload) {
 
   if (op === "cover-state") {
     const text = bodyText();
-    const present = /封面/.test(text);
-    const filled = /已选择封面|封面已设置/.test(text) || qsa(doc, ".cover-preview img").length > 0;
+    const present = /封面/.test(text) || Boolean(doc.querySelector && doc.querySelector("#js_cover_area"));
+    const preview = (doc.querySelector && (doc.querySelector("#js_cover_area .js_cover_preview_new") || doc.querySelector(".js_cover_preview_new"))) || null;
+    const style = preview ? ((preview.getAttribute && preview.getAttribute("style")) || "") : "";
+    const matched = style.match(/background-image:\s*url\((['"]?)(https?:[^'")]+)\1\)/i);
+    const hidden = (doc.querySelector && (doc.querySelector("#js_cover_area .js_cdn_url") || doc.querySelector("input.js_cdn_url"))) || null;
+    const fromInput = hidden && /^https?:/.test(hidden.value || "") ? hidden.value : "";
+    const legacy = qsa(doc, ".cover-preview img").find((img) => /^https?:/.test((img.getAttribute && img.getAttribute("src")) || ""));
+    const src = (matched && matched[2]) || fromInput || (legacy ? legacy.getAttribute("src") : "") || "";
+    const filled = Boolean(src) || /已选择封面|封面已设置/.test(text);
     const required = /必须选择封面|封面不能为空|请上传封面/.test(text);
-    const empty = required && !filled;
+    const empty = (required && !filled) || (present && !filled && Boolean(doc.querySelector && doc.querySelector("#js_cover_area")));
     const file = qsa(doc, "input").find((el) => (
       (el.getAttribute("type") || "") === "file"
       && /cover|封面/.test(`${el.getAttribute("accept") || ""} ${el.getAttribute("class") || ""} ${el.className || ""}`)
@@ -326,20 +333,66 @@ export function mpAct(payload) {
       filled,
       empty,
       required,
+      src,
       selector: file ? "input[data-wx-article-cover='1']" : "",
     };
   }
 
+  if (op === "open-cover-menu") {
+    const area = doc.querySelector && doc.querySelector("#js_cover_area .select-cover__btn");
+    if (!area) return { ok: false, error: "cover control not found" };
+    area.click();
+    return { ok: true };
+  }
+
   if (op === "cover-from-body") {
-    const button = findExact("从正文选择");
+    const scoped = doc.querySelector && doc.querySelector("#js_cover_null .js_selectCoverFromContent");
+    const button = scoped || findExact("从正文选择");
     if (!button) return { ok: false, error: "从正文选择 not found" };
     button.click();
-    const root = editorRoot();
-    const first = root && qsa(root.body, "img")[0];
-    if (first && typeof first.click === "function") first.click();
-    const confirm = findExact("确定") || findExact("确认");
-    if (confirm) confirm.click();
     return { ok: true };
+  }
+
+  if (op === "cover-pick-first") {
+    const dialog = doc.querySelector && doc.querySelector(".weui-desktop-dialog_img-picker");
+    const item = dialog && dialog.querySelector && dialog.querySelector(".appmsg_content_img_item");
+    if (!item) return { ok: false, error: "body image was not offered for the cover" };
+    item.click();
+    return { ok: true };
+  }
+
+  if (op === "cover-advance") {
+    const dialog = (doc.querySelector && (doc.querySelector(".weui-desktop-dialog_img-picker") || doc.querySelector(".weui-desktop-dialog"))) || null;
+    if (!dialog) return { ok: false, done: true };
+    const buttons = [...qsa(dialog, "button"), ...qsa(dialog, "a")];
+    for (const label of ["下一步", "确认", "完成", "确定"]) {
+      const found = buttons.find((el) => normalize(el.innerText || el.textContent || "") === label && visible(el));
+      if (found) {
+        found.click();
+        return { ok: true, label };
+      }
+    }
+    return { ok: false, done: true };
+  }
+
+  if (op === "cover-thumb") {
+    const want = normalize(input.title || "");
+    const titles = qsa(doc, ".weui-desktop-publish__cover__title");
+    const title = titles.find((el) => {
+      const text = normalize(el.innerText || el.textContent || "");
+      return text && (text === want || text.includes(want) || want.includes(text));
+    });
+    let node = title;
+    let thumb = null;
+    for (let depth = 0; depth < 8 && node && !thumb; depth += 1) {
+      thumb = node.querySelector && node.querySelector(".weui-desktop-publish__cover__thumb");
+      node = node.parentElement;
+    }
+    const style = thumb ? ((thumb.getAttribute && thumb.getAttribute("style")) || "") : "";
+    const matched = style.match(/background-image:\s*url\((['"]?)([^'")]+)\1\)/i);
+    const src = matched ? matched[2].replace(/&quot;/g, "") : "";
+    const filled = /^https?:/.test(src);
+    return { ok: filled, filled, src };
   }
 
   if (op === "click-save") {
@@ -444,6 +497,25 @@ export function mpAct(payload) {
       caption.style.color = "#888";
       caption.style.fontSize = "14px";
       caption.style.lineHeight = "1.6";
+      const blank = (el) => {
+        if (!el || el === caption) return false;
+        const tag = String(el.tagName || "").toUpperCase();
+        if (tag === "IMG" || tag === "FIGCAPTION") return false;
+        if (el.querySelector && el.querySelector("img")) return false;
+        return !normalize(el.innerText || el.textContent || "");
+      };
+      let host = img;
+      while (host && host !== caption && host.parentElement) {
+        let sibling = host.nextElementSibling;
+        while (sibling && sibling !== caption) {
+          const next = sibling.nextElementSibling;
+          if (blank(sibling) && sibling.parentElement && typeof sibling.parentElement.removeChild === "function") {
+            sibling.parentElement.removeChild(sibling);
+          }
+          sibling = next;
+        }
+        host = host.parentElement;
+      }
       let wrap = img.parentElement;
       while (wrap && wrap !== body) {
         if (!wrap.style) wrap.style = {};
@@ -462,15 +534,52 @@ export function mpAct(payload) {
         marginTop: caption.style.marginTop,
       });
     }
-    for (const quote of qsa(body, "blockquote")) {
-      quote.style.display = "block";
-      quote.style.borderLeft = "3px solid rgb(239,112,96)";
-      quote.style.background = "#fff9f9";
-      quote.style.color = "#6a737d";
-      quote.style.padding = "10px 10px 10px 20px";
-      quote.style.margin = "20px 0";
-      quote.style.fontSize = "0.9em";
-      quote.style.overflow = "auto";
+    const paintQuote = (el) => {
+      if (!el.style) el.style = {};
+      el.style.display = "block";
+      el.style.borderLeft = "3px solid rgb(239,112,96)";
+      el.style.borderRight = "0";
+      el.style.background = "#fff9f9";
+      el.style.color = "#6a737d";
+      el.style.padding = "10px 10px 10px 20px";
+      el.style.margin = "20px 0";
+      el.style.fontSize = "0.9em";
+      el.style.overflow = "auto";
+      el.style.position = "static";
+    };
+    for (const quote of [...qsa(body, "blockquote")]) {
+      const section = doc.createElement ? doc.createElement("section") : null;
+      if (!section || !quote.parentElement || typeof quote.parentElement.replaceChild !== "function") {
+        paintQuote(quote);
+        continue;
+      }
+      if (!section.style) section.style = {};
+      const kids = [...(quote.childNodes || [])];
+      for (const kid of kids) {
+        if (typeof section.appendChild === "function") section.appendChild(kid);
+      }
+      quote.parentElement.replaceChild(section, quote);
+      paintQuote(section);
+    }
+    for (const section of qsa(body, "section")) {
+      const style = (section.getAttribute && section.getAttribute("style")) || "";
+      if (/fff9f9|239,\s*112,\s*96/.test(style) || (section.style && String(section.style.background || "").includes("fff9f9"))) {
+        paintQuote(section);
+      }
+    }
+    const quoteNodes = qsa(body, "blockquote,section").filter((el) => {
+      const tag = String(el.tagName || "").toUpperCase();
+      const style = `${(el.getAttribute && el.getAttribute("style")) || ""} ${el.style && el.style.background || ""} ${el.style && el.style.borderLeft || ""}`;
+      return tag === "BLOCKQUOTE" || /fff9f9|239,\s*112,\s*96/.test(style);
+    });
+    let doubleRail = quoteNodes.some((el) => String(el.tagName || "").toUpperCase() === "BLOCKQUOTE");
+    if (typeof getComputedStyle === "function") {
+      for (const el of quoteNodes) {
+        const before = getComputedStyle(el, "::before");
+        const width = parseFloat(before && before.width) || 0;
+        const bg = (before && before.backgroundColor) || "";
+        if (width >= 2 && bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") doubleRail = true;
+      }
     }
     let badges = 0;
     for (const heading of qsa(body, "h2")) {
@@ -497,7 +606,7 @@ export function mpAct(payload) {
       }
       badges += 1;
     }
-    return { ok: true, gaps, quotes: qsa(body, "blockquote").length, headings: badges };
+    return { ok: true, gaps, quotes: qsa(body, "section,blockquote").length, headings: badges, doubleRail };
   }
 
   if (op === "open-draft-list") {

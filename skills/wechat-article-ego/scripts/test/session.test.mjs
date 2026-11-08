@@ -103,8 +103,9 @@ test("session fills, uploads, saves, and closes the space", async () => {
   const uploaded = await session.uploadImage("/absolute/path/cover.jpg");
   assert.equal(uploaded.after, 1);
   assert.equal(state.files, 1);
-  const cover = await session.ensureCover("/absolute/path/cover.jpg");
-  assert.equal(cover.ok, true);
+  const cover = await session.ensureCover();
+  assert.equal(cover.ok, false);
+  assert.match(cover.error, /cover/);
   await session.clickSave();
   assert.equal(await session.saveConfirmed(), true);
   const drafts = await session.listDrafts();

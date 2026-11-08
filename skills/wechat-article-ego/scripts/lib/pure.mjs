@@ -269,9 +269,13 @@ function renderInline(src) {
         if (end !== -1) {
           const inner = renderInline(source.slice(index + 1, close));
           const href = source.slice(close + 2, end).trim();
-          html += `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a>`;
-          text += inner.text;
-          links.push(...inner.links, { text: inner.text, href });
+          const same = normalizeText(inner.text) === normalizeText(href);
+          const url = `<span style="${A};word-break:break-all;">${escapeHtml(href)}</span>`;
+          html += same
+            ? url
+            : `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a> ${url}`;
+          text += same ? href : `${inner.text} ${href}`;
+          links.push(...inner.links, { text: same ? href : `${inner.text} ${href}`, href });
           index = end + 1;
           continue;
         }
@@ -420,7 +424,7 @@ function renderBlock(block) {
     return { html: `<h${level} style="${H3}">${block.html}</h${level}>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "quote") {
-    return { html: `<blockquote style="${Q}"><p style="${QP}">${block.html}</p></blockquote>`, text: block.text, links: block.links || [] };
+    return { html: `<section style="${Q}"><p style="${QP}">${block.html}</p></section>`, text: block.text, links: block.links || [] };
   }
   if (block.type === "code") {
     return {
@@ -491,13 +495,16 @@ export function buildArticle({ parsed, images, title, digest, sourceUrl }) {
     text += `${rendered.text}\n`;
     if (normalizeText(rendered.text)) snippets.push(rendered.text);
     links.push(...rendered.links);
+    for (const link of rendered.links || []) {
+      if (link.href && /^https?:\/\//.test(link.href)) snippets.push(link.href);
+    }
     if (block.type === "code" && block.lang === "mermaid") {
       fidelity.push("mermaid source was kept as text; the diagram was not rendered");
     }
     if (block.type === "code") fidelity.push("code highlighting is not available in the Official Account editor");
   }
   flush();
-  fidelity.push("caption sits 5px under the image; quote bar is rgb(239,112,96); reference heading uses the coral label");
+  fidelity.push("caption sits 5px under the image; one coral quote rail rgb(239,112,96); reference heading uses the coral label; links show the full URL");
   fidelity.push("images are uploaded into the draft instead of left as remote hotlinks");
   fidelity.push("categories and tags are not copied; the editor has no safe equivalent field");
   const hash = crypto.createHash("sha256").update(JSON.stringify({

@@ -177,12 +177,38 @@ export function createMpSession({ task, page, timings = {} } = {}) {
     },
     async ensureCover() {
       const state = await act("cover-state");
-      if (!state.required || state.filled) {
-        return { ok: true, skipped: true, reason: state.filled ? "cover already set" : "cover not required for a draft" };
-      }
+      if (state.filled) return { ok: true, via: "already", src: state.src || "" };
+      if (!state.present) return { ok: false, error: "cover control not found" };
+      const opened = await act("open-cover-menu");
+      if (!opened.ok) return { ok: false, error: opened.error || "cover control not found" };
+      await pause(400);
       const fromBody = await act("cover-from-body");
-      if (fromBody.ok) return { ok: true, via: "body" };
-      return { ok: false, error: "cover is required and was not set" };
+      if (!fromBody.ok) return { ok: false, error: fromBody.error || "从正文选择 not found" };
+      let picked = { ok: false, error: "body image was not offered for the cover" };
+      for (let index = 0; index < 6 && !picked.ok; index += 1) {
+        picked = await act("cover-pick-first");
+        if (!picked.ok) await pause(400);
+      }
+      if (!picked.ok) return { ok: false, error: picked.error || "body image was not offered for the cover" };
+      for (let index = 0; index < 4; index += 1) {
+        await pause(400);
+        const again = await act("cover-state");
+        if (again.filled) return { ok: true, via: "body", src: again.src || "" };
+        const step = await act("cover-advance");
+        if (!step.ok && step.done) break;
+      }
+      const again = await act("cover-state");
+      if (again.filled) return { ok: true, via: "body", src: again.src || "" };
+      return { ok: false, error: "cover is empty" };
+    },
+    async coverThumb(title) {
+      let last = { ok: false, filled: false, src: "" };
+      for (let index = 0; index < attempts; index += 1) {
+        last = await act("cover-thumb", { title });
+        if (last && last.filled) return last;
+        await pause(waitMs);
+      }
+      return last || { ok: false, filled: false, src: "" };
     },
     async readEditor() {
       return act("read-editor");

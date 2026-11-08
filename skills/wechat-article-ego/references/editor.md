@@ -16,7 +16,9 @@ The only page is the public Official Account console at `https://mp.weixin.qq.co
 - Images: split the body at each image. After the preceding HTML is pasted, open the image control (`title` 图片 or the insert-image button) and use `waitForFileChooser` or `setInputFiles`. Confirm 确定 / 确认 / 插入 only while an image dialog is open. The next paste continues after the image. The image count must increase before the next block.
 - Captions stay as the italic or normal paragraphs that follow the image in the markdown. They are text, not a burned-in picture.
 - Digest and 原文链接 are filled only when those fields exist.
-- Cover: if the page shows an empty 封面 control, choose 从正文选择 and the first uploaded image, which is the article's own first image. If that control is missing and a cover file input is labeled as a cover, upload that same first image. If the cover is required and neither control works, stop without 保存.
+- Cover: open 拖拽或选择封面, choose 从正文选择, pick the first body image, and confirm the crop if WeChat asks. A save is not success until the draft card thumbnail is that image. An empty cover stops the command.
+- Quotes are a section with one coral left border. A native blockquote is replaced, because the editor draws a grey `::before` rail beside it.
+- Each Markdown link keeps its label and then the full URL as visible text. A label that is already the URL is not repeated.
 
 ## Save and check
 

@@ -123,8 +123,12 @@ test("buildArticle clips the digest, rejects a long title, and hashes images", (
   assert.match(html, /background:rgb\(239,112,96\);color:#fff/);
   assert.match(html, /border-bottom:36px solid #efebe9;border-right:20px solid transparent/);
   assert.match(html, /<p style="font-size:16px;padding-top:8px;padding-bottom:8px;margin:0;line-height:26px;color:black;">/);
-  assert.match(html, /<blockquote style="[^"]*border-left:3px solid rgb\(239,112,96\)[^"]*background:#fff9f9/);
+  assert.match(html, /<section style="[^"]*border-left:3px solid rgb\(239,112,96\)[^"]*background:#fff9f9/);
+  assert.doesNotMatch(html, /<blockquote/);
+  assert.match(html, /原文[\s\S]*https:\/\/github\.blog\/post/);
+  assert.match(html, /word-break:break-all/);
   assert.match(html, /<a href="https:\/\/github\.blog\/post" style="[^"]*text-decoration:none;border-bottom:1px solid #ef7060/);
+  assert.ok(built.snippets.some((snippet) => snippet.includes("https://github.blog/post")));
   const caption = built.segments.find((segment) => segment.kind === "image").captionHtml;
   assert.match(caption, /<figcaption style="[^"]*margin-top:5px/);
   assert.match(caption, /padding:0/);
@@ -146,6 +150,20 @@ test("buildArticle clips the digest, rejects a long title, and hashes images", (
   assert.match(buildArticle({ parsed, images: [] }).error, /image count/);
   const plan = planOf(built, "加选");
   assert.equal(plan.account, "加选");
+  const sameLink = buildArticle({
+    parsed: parseMarkdown("# 题\n\n![封面](https://cdn.example/cover.jpg)\n\n[https://example.com/a](https://example.com/a)\n"),
+    images,
+  });
+  const sameHtml = sameLink.segments.filter((segment) => segment.kind === "html").map((segment) => segment.html).join("");
+  assert.equal(sameHtml.split("https://example.com/a").length, 2);
+  assert.ok(sameLink.snippets.includes("https://example.com/a"));
+  const refs = buildArticle({
+    parsed: parseMarkdown("# 题\n\n![封面](https://cdn.example/cover.jpg)\n\n- [原文：Inside GitHub's new Git storage architecture](https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/)\n- [Hacker News 讨论](https://news.ycombinator.com/item?id=50397099)\n"),
+    images,
+  });
+  const refText = refs.snippets.join("\n");
+  assert.match(refText, /https:\/\/github\.blog\/engineering\/architecture-optimization\/inside-githubs-new-git-storage-architecture\//);
+  assert.match(refText, /https:\/\/news\.ycombinator\.com\/item\?id=50397099/);
   assert.equal(plan.save, false);
 });
 

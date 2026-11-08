@@ -8,6 +8,9 @@ function matches(el, part) {
     rest = rest.slice(cut.length);
   }
   if (tag && el.tagName !== tag) return false;
+  if (rest.startsWith("#")) {
+    return String(el.id || "") === rest.slice(1);
+  }
   if (rest.startsWith(".")) {
     const cls = rest.slice(1).split("[")[0];
     rest = rest.slice(1 + cls.length);
@@ -55,6 +58,7 @@ export function h(tag, props = {}, children = []) {
   const node = {
     tagName: String(tag).toUpperCase(),
     className: props.className || "",
+    id: props.id || "",
     placeholder: props.placeholder || "",
     attrs: { ...(props.attrs || {}) },
     value: props.value ?? "",
