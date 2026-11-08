@@ -77,6 +77,16 @@ export function createMpSession({ task, page, timings = {} } = {}) {
     async fillTitle(title) {
       const marked = await act("focus-title");
       if (!marked.ok) throw new Error(marked.error || "title field not found");
+      if (marked.kind === "prosemirror") {
+        await act("select-title");
+        if (current.keyboard && typeof current.keyboard.press === "function") {
+          await current.keyboard.press("Backspace");
+        }
+        if (current.keyboard && typeof current.keyboard.insertText === "function") {
+          await current.keyboard.insertText(title);
+          return { ok: true, via: "insertText" };
+        }
+      }
       if (marked.kind !== "prosemirror" && typeof current.fill === "function") {
         try {
           await current.fill(marked.selector, title);

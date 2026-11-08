@@ -258,6 +258,13 @@ export function mpAct(payload) {
     return setValue(field, input.value || "");
   }
 
+  if (op === "select-title") {
+    const field = titleField();
+    if (!field) return { ok: false, error: "title field not found" };
+    selectInside(field);
+    return { ok: true };
+  }
+
   if (op === "select-slot") {
     const root = editorRoot();
     if (!root) return { ok: false, error: "editor body not found" };

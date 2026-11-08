@@ -49,6 +49,7 @@ async function compose(session, article) {
     await session.replaceSlot(index, images[index].path);
   }
   if (typeof session.applyReferenceFixes === "function") await session.applyReferenceFixes();
+  await session.fillTitle(article.title);
   const coverResult = await session.ensureCover();
   if (!coverResult.ok) {
     const error = new Error(coverResult.error || "cover was not set");
@@ -208,7 +209,7 @@ async function run(config, deps, command) {
       store.write(config.receiptDir, { ...pending, status: "aborted", readback: check });
       return base(command, {
         exitCode: 1,
-        error: "readback did not match the source",
+        error: `readback did not match the source (title=${readback && readback.title ? readback.title : ""})`,
         account: account.account,
         plan,
         readback: check,
