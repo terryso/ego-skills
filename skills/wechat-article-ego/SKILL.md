@@ -1,14 +1,9 @@
 ---
 name: wechat-article-ego
-description: >
-  Save one WeChat Official Account (公众号 / mp.weixin.qq.com) article draft
-  through the visible editor in Ego Lite. Not WeChat Channels. Login-check
-  first. Soft-fail with exit 2 when ego-browser is missing, the console is
-  logged out, or --expect-account does not match. If more than one Official
-  Account is visible, stop before saving and print the names. Nothing is
-  uploaded or saved without --yes, and --yes only clicks 保存 / 保存草稿.
-  Never clicks 发表, 群发, 定时群发, or 发送预览. Use when the user asks for a
-  公众号文章草稿, 图文草稿, or mp.weixin.qq.com article.
+slug: ego-wechat-article-ego
+displayName: Ego 微信公众号草稿
+summary: 用已登录的 Ego 浏览器把一篇 Markdown 存成一篇微信公众号图文草稿，只保存，不发表、不群发。
+description: "Save one WeChat Official Account (公众号 / mp.weixin.qq.com) article draft through the visible editor in Ego Lite. Not WeChat Channels. Login-check first. Soft-fail with exit 2 when ego-browser is missing, the console is logged out, or --expect-account does not match. If more than one Official Account is visible, stop before saving and print the names. Nothing is uploaded or saved without --yes, and --yes only clicks 保存 / 保存草稿. Never clicks 发表, 群发, 定时群发, or 发送预览. Use when the user asks for a 公众号文章草稿, 图文草稿, or mp.weixin.qq.com article."
 metadata:
   version: "0.2.0"
   requires:
