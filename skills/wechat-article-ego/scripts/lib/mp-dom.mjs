@@ -341,8 +341,17 @@ export function mpAct(payload) {
   if (op === "open-cover-menu") {
     const area = doc.querySelector && doc.querySelector("#js_cover_area .select-cover__btn");
     if (!area) return { ok: false, error: "cover control not found" };
+    if (typeof area.scrollIntoView === "function") area.scrollIntoView({ block: "center" });
     area.click();
     return { ok: true };
+  }
+
+  if (op === "cover-menu-state") {
+    const pop = doc.querySelector && doc.querySelector("#js_cover_null");
+    const style = pop ? ((pop.getAttribute && pop.getAttribute("style")) || "") : "";
+    const dialog = doc.querySelector && doc.querySelector(".weui-desktop-dialog_img-picker");
+    const items = dialog && dialog.querySelectorAll ? dialog.querySelectorAll(".appmsg_content_img_item").length : 0;
+    return { ok: true, open: Boolean(pop) && !/display:\s*none/.test(style), items };
   }
 
   if (op === "cover-from-body") {
@@ -357,7 +366,8 @@ export function mpAct(payload) {
     const dialog = doc.querySelector && doc.querySelector(".weui-desktop-dialog_img-picker");
     const item = dialog && dialog.querySelector && dialog.querySelector(".appmsg_content_img_item");
     if (!item) return { ok: false, error: "body image was not offered for the cover" };
-    item.click();
+    const face = (item.querySelector && item.querySelector(".appmsg_content_img")) || item;
+    face.click();
     return { ok: true };
   }
 
