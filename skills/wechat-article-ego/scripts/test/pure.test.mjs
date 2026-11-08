@@ -126,7 +126,7 @@ test("buildArticle clips the digest, rejects a long title, and hashes images", (
   assert.match(html, /<section style="[^"]*border-left:3px solid rgb\(239,112,96\)[^"]*background:#fff9f9/);
   assert.doesNotMatch(html, /<blockquote/);
   assert.match(html, /原文[\s\S]*https:\/\/github\.blog\/post/);
-  assert.match(html, /word-break:break-all/);
+  assert.match(html, /<\/a><span style="display:block;[^"]*word-break:break-all/);
   assert.match(html, /<a href="https:\/\/github\.blog\/post" style="[^"]*text-decoration:none;border-bottom:1px solid #ef7060/);
   assert.ok(built.snippets.some((snippet) => snippet.includes("https://github.blog/post")));
   const caption = built.segments.find((segment) => segment.kind === "image").captionHtml;

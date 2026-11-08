@@ -270,11 +270,11 @@ function renderInline(src) {
           const inner = renderInline(source.slice(index + 1, close));
           const href = source.slice(close + 2, end).trim();
           const same = normalizeText(inner.text) === normalizeText(href);
-          const url = `<span style="${A};word-break:break-all;">${escapeHtml(href)}</span>`;
+          const url = `<span style="display:block;${A};word-break:break-all;">${escapeHtml(href)}</span>`;
           html += same
             ? url
-            : `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a> ${url}`;
-          text += same ? href : `${inner.text} ${href}`;
+            : `<a href="${escapeHtml(href)}" style="${A}"><span style="${A}">${inner.html}</span></a>${url}`;
+          text += same ? href : `${inner.text}\n${href}`;
           links.push(...inner.links, { text: same ? href : `${inner.text} ${href}`, href });
           index = end + 1;
           continue;
