@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [Chinese](README_CN.md)
 
-> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`kuaishou-video`](./skills/kuaishou-video/), [`youtube-video`](./skills/youtube-video/), [`douyin-video`](./skills/douyin-video/), [`teambition-ego`](./skills/teambition-ego/), [`x-post`](./skills/x-post/), and [`xiaohongshu-ego`](./skills/xiaohongshu-ego/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`wechat-article-ego`](./skills/wechat-article-ego/), [`kuaishou-video`](./skills/kuaishou-video/), [`youtube-video`](./skills/youtube-video/), [`douyin-video`](./skills/douyin-video/), [`teambition-ego`](./skills/teambition-ego/), [`x-post`](./skills/x-post/), and [`xiaohongshu-ego`](./skills/xiaohongshu-ego/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -61,6 +61,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. Optional `--min-width` / `--min-height`. |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | Save a WeChat Channels video draft. Login-check first. Does not click Publish. Does not save the draft when the description readback, upload wait, or cover preview is unresolved. |
+| [`wechat-article-ego`](./skills/wechat-article-ego/) | Save one WeChat Official Account article draft on mp.weixin.qq.com. Login-check first. Nothing uploads without `--yes`. `--yes` only clicks 保存. It does not click 发表, 群发, or 发送预览. |
 | [`kuaishou-video`](./skills/kuaishou-video/) | Publish a local video to the Kuaishou creator platform. Login-check first. Success means the work shows as under review. An upload that times out, fails, or never becomes ready does not publish. |
 | [`youtube-video`](./skills/youtube-video/) | Publish a local video to YouTube Studio. Login-check first. Default visibility is private and Made for kids is No. Success is a video URL plus a processing status. |
 | [`douyin-video`](./skills/douyin-video/) | Publish a local video to the Douyin creator center. Login-check first. Title is at most 30 characters. Defaults stay public, allow save, and publish immediately. Success is content management or a publish-success message. |
@@ -80,6 +81,12 @@ node skills/instagram-saved-download/scripts/download.mjs \
 
 ```bash
 node skills/wechat-channels-video/scripts/check-login.mjs
+```
+
+```bash
+node skills/wechat-article-ego/scripts/check-login.mjs
+node skills/wechat-article-ego/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md
 ```
 
 ```bash
@@ -115,7 +122,7 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布). See each skill's `references/login.md`.
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布; WeChat Official Account articles save one draft only after mp.weixin.qq.com is signed in and the plan is confirmed with `--yes`, and a visible account switcher with more than one name stops before that save). See each skill's `references/login.md`.
 
 ## Why ego
 
