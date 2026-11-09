@@ -589,19 +589,24 @@ if (requestedType && typeState.chip !== requestedType) {
   }`);
   if (!opener) fail(`分区「${requestedType}」无法打开人选列表,已停止,没有沿用「${typeState.chip || "空"}」`);
   await page.mouse.click(opener.x, opener.y, { label: "打开分区列表" });
-  await page.waitForTimeout(800);
-  const optionNames = await ev(`function(){
+  const readOptionNames = () => ev(`function(){
     var names=[];
     for(const el of __all()){
       if(String(el.className).indexOf("item-cont-main")<0 || !__visible(el)) continue;
       var name=(__own(el)||"").trim();
-      if(name) names.push(name);
+      if(name && names.indexOf(name)<0) names.push(name);
     }
     return names;
   }`);
+  let optionNames = [];
+  for (let i = 0; i < 8; i += 1) {
+    await page.waitForTimeout(300);
+    optionNames = await readOptionNames();
+    if (optionNames.includes(requestedType)) break;
+  }
   const choice = partitionChoice({ requested: requestedType, current: typeState.chip, options: optionNames });
   if (choice.action !== "select") {
-    fail(`分区「${requestedType}」不在人选列表里,已停止,没有沿用「${typeState.chip || "空"}」`);
+    fail(`分区「${requestedType}」不在人选列表里,已停止,没有沿用「${typeState.chip || "空"}」。看到:${optionNames.join("、") || "空"}`);
   }
   const optionPt = await ev(`function(arg){
     var item=__all().find(function(el){
