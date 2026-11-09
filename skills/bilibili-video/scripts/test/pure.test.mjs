@@ -361,6 +361,19 @@ test("cover identity uses the spatial grid, not the average color", () => {
   });
   assert.equal(matched.status, "ok");
   assert.equal(matched.evidence.height, 375);
+  const staleHidesOverwrite = judgeCoverIdentity({
+    samples: [
+      { w: 80, h: 60, grid: same.full },
+      { w: 500, h: 375, grid: otherLayout.full },
+    ],
+    target: 4 / 3,
+    source,
+    other: otherLayout,
+    slot: "editor_4_3",
+    requireRatio: true,
+  });
+  assert.equal(staleHidesOverwrite.status, "identity");
+  assert.equal(staleHidesOverwrite.width, 500);
 });
 
 function crc32(buf) {

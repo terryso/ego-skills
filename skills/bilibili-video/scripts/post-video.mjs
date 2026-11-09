@@ -376,37 +376,47 @@ if (cover43 && cover169) {
         if(grid) out.push({w:w,h:h,grid:grid});
     }
   `;
-  const readSlotSamples = (slot) => ev(`function(arg){
+  // 右侧「首页推荐 / 个人空间」只切换手机预览。上传落点是中间两块编辑画布，
+  // 父级 class 为 active 的那块才是当前目标。panel 下任意 canvas 会把 4:3 画布误当成 16:9。
+  const readEditorSamples = (kind) => ev(`function(arg){
     var out=[];
-    for(const el of __all()){
-      if(String(el.className||"").indexOf(arg.slot)<0) continue;
-      var imgs=el.tagName==="IMG"?[el]:Array.from(el.querySelectorAll("img"));
-      for(const node of imgs){ ${sampleNode} }
-    }
-    return out;
-  }`, { slot });
-  // 16:9 的 cover-phone-view-space-video-img 在上传后仍可能是视频画面,
-  // 它的尺寸本来就是 16:9,不能当作封面已换上。当前编辑画布才是刚上传的图。
-  const readCanvasSamples = () => ev(`function(){
-    var out=[];
-    var panel=__all().find(function(el){return String(el.className||"").indexOf("cover-editor-panel-canvas")>=0;});
-    if(!panel) return out;
-    var nodes=[];
-    if(panel.tagName==="CANVAS" || panel.tagName==="IMG") nodes.push(panel);
-    nodes.push.apply(nodes, Array.from(panel.querySelectorAll("canvas,img")));
+    var marker=arg.kind==="4x3"?"editor_4_3":"editor_16_9";
+    var root=__all().find(function(el){return String(el.className||"").split(" ").indexOf(marker)>=0;});
+    if(!root) return out;
+    var nodes=Array.from(root.querySelectorAll("canvas")).filter(function(node){
+      return String(node.className||"").indexOf("lower-canvas")>=0;
+    });
+    if(!nodes.length) nodes=Array.from(root.querySelectorAll("canvas,img"));
     for(const node of nodes){ ${sampleNode} }
     return out;
-  }`);
+  }`, { kind });
+  const selectEditor = async (kind) => {
+    const marker = kind === "4x3" ? "editor_4_3" : "editor_16_9";
+    for (let i = 0; i < 4; i += 1) {
+      const state = await ev(`function(arg){
+        function info(name){
+          var el=__all().find(function(node){return String(node.className||"").split(" ").indexOf(name)>=0;});
+          if(!el) return null;
+          var parent=el.parentElement;
+          var r=el.getBoundingClientRect();
+          return {
+            active: !!(parent && String(parent.className||"").split(" ").indexOf("active")>=0),
+            x: r.x+r.width/2,
+            y: r.y+r.height/2
+          };
+        }
+        return {mine: info(arg.marker)};
+      }`, { marker });
+      if (state.mine && state.mine.active) return;
+      if (!state.mine || !state.mine.x) fail(`封面编辑区没有${kind}画布`);
+      await page.mouse.click(state.mine.x, state.mine.y, { label: `选中${kind}画布` });
+      await page.waitForTimeout(300);
+    }
+    fail(`${kind}画布没有成为当前上传目标，已停止，避免文件进到另一个槽`);
+  };
 
-  const uploadCover = async (ratioButton, file, kind, source, other) => {
-    const rBtn = await ev(`function(name){
-      var btn=__all().find(function(el){return __own(el)===name && String(el.className).indexOf("button")===0;});
-      if(!btn) return null;
-      return __pointInView(btn);
-    }`, ratioButton);
-    if (!rBtn) fail(`封面弹窗里找不到「${ratioButton}」比例按钮`);
-    await page.mouse.click(rBtn.x, rBtn.y, { label: `切换到${ratioButton}` });
-    await page.waitForTimeout(400);
+  const uploadCover = async (file, kind, source, other) => {
+    await selectEditor(kind);
     await ensureSyncOff(`上传${kind}前`);
 
     const upPt = await ev(`function(){
@@ -418,18 +428,18 @@ if (cover43 && cover169) {
     const chooser2 = await cp;
     await chooser2.setFiles(file);
     // 等对应槽位的缩略图出现且比例正确(naturalWidth/Height 来自上传图)。
-    const slotSel = kind === "4x3" ? "cover-phone-view-home-video-img" : "cover-editor-panel-canvas";
+    const slotSel = kind === "4x3" ? "editor_4_3" : "editor_16_9";
     let last = { status: "unread" };
     for (let i = 0; i < 15; i++) {
       await page.waitForTimeout(500);
-      const samples = kind === "4x3" ? await readSlotSamples("cover-phone-view-home-video-img") : await readCanvasSamples();
+      const samples = await readEditorSamples(kind);
       last = judgeCoverIdentity({
         samples,
         target: RATIO_4_3,
         source,
         other,
         slot: slotSel,
-        requireRatio: kind === "4x3",
+        requireRatio: false,
       });
       if (last.status === "ok") return last.evidence;
     }
@@ -456,22 +466,22 @@ if (cover43 && cover169) {
   const source169 = fingerprintFile(cover169);
   if (!source43 || !source169) fail("无法计算封面指纹，不能确认槽位里是哪张图");
 
-  const cover43Evidence = await uploadCover("首页推荐", cover43, "4x3", source43, source169);
+  const cover43Evidence = await uploadCover(cover43, "4x3", source43, source169);
   if (!cover43Evidence) fail("4:3 封面上传后未确认,放弃投稿");
-  const cover169Evidence = await uploadCover("个人空间", cover169, "16x9", source169, source43);
+  const cover169Evidence = await uploadCover(cover169, "16x9", source169, source43);
   if (!cover169Evidence) fail("16:9 封面上传后未确认,放弃投稿");
-  // 同一个 class 下会有还没解码的空节点。只拿已解码的图判断;
-  // 比例或主色不对立即失败,读不到最多再等 4 次,不把「没读到」说成「被覆盖」。
+  // 16:9 文件若进了 4:3 画布，或同步把 4:3 换成了 16:9，这里看的是 4:3 画布本身。
+  // 不拿另一块较小的残留图充数。
   let still43 = { status: "unread" };
   for (let i = 0; i < 4; i += 1) {
-    const samples = await readSlotSamples("cover-phone-view-home-video-img");
+    const samples = await readEditorSamples("4x3");
     still43 = judgeCoverIdentity({
       samples,
       target: RATIO_4_3,
       source: source43,
       other: source169,
-      slot: "cover-phone-view-home-video-img",
-      requireRatio: true,
+      slot: "editor_4_3",
+      requireRatio: false,
     });
     if (still43.status !== "unread") break;
     await page.waitForTimeout(400);
@@ -593,11 +603,13 @@ if (declareDecision.action !== "keep") {
     if(!opt) return null;
     opt.scrollIntoView({block:"center"});
     var r=opt.getBoundingClientRect();
-    var top=document.elementFromPoint(r.x+r.width/2, r.y+Math.min(r.height/2, 8));
+    var x=r.x+Math.min(r.width/2, 36);
+    var y=r.y+Math.min(r.height/2, 10);
+    var top=document.elementFromPoint(x, y);
     var hit=top;
     while(hit && hit!==opt) hit=hit.parentElement || (hit.getRootNode && hit.getRootNode().host) || null;
     if(hit!==opt) return null;
-    return {x:r.x+r.width/2,y:r.y+r.height/2};
+    return {x:x, y:y};
   }`, { text: declareText });
   if (!optPt) fail(`创作声明「${declareText}」可见但点不到,当前值是「${declareFinal || "空"}」`);
   await page.mouse.click(optPt.x, optPt.y, { label: "选择创作声明" });

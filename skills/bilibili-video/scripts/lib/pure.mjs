@@ -443,12 +443,15 @@ export function judgeCoverIdentity({ samples, target, source, other, slot, requi
   if (requireRatio && !pool.length) {
     return { status: "mismatch", width: decoded[0].w, height: decoded[0].h };
   }
+  // A smaller leftover can still match the original after the visible preview was replaced.
+  // The largest decoded sample is the one on screen.
   let best = null;
   for (const sample of pool) {
     const own = bestFingerprintScore(sample.grid, source);
     if (!Number.isFinite(own)) continue;
     const againstOther = other ? bestFingerprintScore(sample.grid, other) : null;
-    if (!best || own > best.own) best = { own, againstOther, sample };
+    const area = Number(sample.w) * Number(sample.h);
+    if (!best || area > best.area) best = { own, againstOther, sample, area };
   }
   if (!best) return { status: "unconfirmed" };
   if (best.own < COVER_MATCH_MIN) {
