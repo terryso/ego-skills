@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { deflateSync } from "node:zlib";
 import {
+  averagePngColor,
   classifyLogin,
+  colorFamily,
   coverSlotEvidence,
   declareChoice,
   egoMissingSummary,
   flowErrorBody,
   imageDimsFromBuffer,
+  judgeCoverSlot,
   loginRequiredBody,
   manuscriptFromText,
   mayClickSubmit,
@@ -243,6 +247,86 @@ test("the submit click stays behind the stop gate", async () => {
   const click = source.indexOf("点击立即投稿");
   assert.ok(gate > 0 && click > gate);
 });
+
+test("an unloaded cover node is not treated as an overwritten 4:3 slot", () => {
+  const unread = judgeCoverSlot({
+    samples: [{ w: 0, h: 0 }, { w: 8, h: 8 }],
+    target: 4 / 3,
+    expectFamily: "red",
+    slot: "cover-phone-view-home-video-img",
+  });
+  assert.equal(unread.status, "unread");
+  const ok = judgeCoverSlot({
+    samples: [
+      { w: 0, h: 0 },
+      { w: 500, h: 375, sample: { r: 190, g: 30, b: 40 } },
+    ],
+    target: 4 / 3,
+    expectFamily: "red",
+    slot: "cover-phone-view-home-video-img",
+  });
+  assert.equal(ok.status, "ok");
+  assert.equal(ok.evidence.height, 375);
+  const overwritten = judgeCoverSlot({
+    samples: [{ w: 500, h: 281, sample: { r: 40, g: 160, b: 100 } }],
+    target: 4 / 3,
+    expectFamily: "red",
+    slot: "cover-phone-view-home-video-img",
+  });
+  assert.equal(overwritten.status, "mismatch");
+  const wrongColor = judgeCoverSlot({
+    samples: [{ w: 500, h: 375, sample: { r: 40, g: 160, b: 100 } }],
+    target: 4 / 3,
+    expectFamily: "red",
+    slot: "cover-phone-view-home-video-img",
+  });
+  assert.equal(wrongColor.status, "identity");
+});
+
+test("png average distinguishes the red and green cover families", () => {
+  function solidPng(r, g, b) {
+    const width = 8;
+    const height = 8;
+    const row = Buffer.alloc(1 + width * 3);
+    for (let x = 0; x < width; x += 1) {
+      row[1 + x * 3] = r;
+      row[2 + x * 3] = g;
+      row[3 + x * 3] = b;
+    }
+    const raw = Buffer.concat(Array.from({ length: height }, () => row));
+    const idat = deflateSync(raw);
+    const chunk = (kind, body) => {
+      const type = Buffer.from(kind);
+      const length = Buffer.alloc(4);
+      length.writeUInt32BE(body.length);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(Buffer.concat([type, body])));
+      return Buffer.concat([length, type, body, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    return Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk("IHDR", ihdr),
+      chunk("IDAT", idat),
+      chunk("IEND", Buffer.alloc(0)),
+    ]);
+  }
+  assert.equal(colorFamily(averagePngColor(solidPng(191, 29, 41))), "red");
+  assert.equal(colorFamily(averagePngColor(solidPng(41, 163, 106))), "green");
+});
+
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (const byte of buf) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 test("cover slots keep their own measurements and a BV id is read from text", () => {
   assert.deepEqual(coverSlotEvidence({ slot: "cover-phone-view-home-video-img", width: 1280, height: 960, target: 4 / 3 }).height, 960);

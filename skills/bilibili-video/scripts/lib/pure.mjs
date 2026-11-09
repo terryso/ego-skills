@@ -1,4 +1,5 @@
 // Pure logic for bilibili-video. No ego imports, fully unit-testable.
+import { inflateSync } from "node:zlib";
 
 export const BASE = "https://member.bilibili.com";
 export const FRAME_URL = `${BASE}/platform/upload/video/frame`;
@@ -265,6 +266,123 @@ export function coverSlotEvidence({ slot, width, height, target } = {}) {
   const h = Number(height);
   if (!slot || !w || !h || !ratioWithin(w, h, target)) return null;
   return { slot, width: w, height: h };
+}
+
+export function colorFamily(avg) {
+  if (!avg || avg.length < 3) return "unknown";
+  const r = Number(avg[0]);
+  const g = Number(avg[1]);
+  const b = Number(avg[2]);
+  if (r > g + 40 && r > b + 40 && r > 80) return "red";
+  if (g > r + 40 && g > b + 20 && g > 80) return "green";
+  return "other";
+}
+
+function paeth(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const dl = Math.abs(estimate - left);
+  const du = Math.abs(estimate - up);
+  const dul = Math.abs(estimate - upLeft);
+  if (dl <= du && dl <= dul) return left;
+  if (du <= dul) return up;
+  return upLeft;
+}
+
+// Average an 8-bit non-interlaced PNG. Returns null when the file is not one of those.
+export function averagePngColor(buf) {
+  if (!buf || buf.length < 8 || buf[0] !== 0x89 || buf[1] !== 0x50) return null;
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = -1;
+  let interlace = 1;
+  const idat = [];
+  while (offset + 8 <= buf.length) {
+    const length = buf.readUInt32BE(offset);
+    const kind = buf.slice(offset + 4, offset + 8).toString("latin1");
+    const start = offset + 8;
+    const body = buf.subarray(start, start + length);
+    offset = start + length + 4;
+    if (kind === "IHDR") {
+      width = body.readUInt32BE(0);
+      height = body.readUInt32BE(4);
+      const bitDepth = body[8];
+      colorType = body[9];
+      interlace = body[12];
+      if (bitDepth !== 8 || interlace !== 0 || (colorType !== 2 && colorType !== 6)) return null;
+    } else if (kind === "IDAT") {
+      idat.push(body);
+    } else if (kind === "IEND") {
+      break;
+    }
+  }
+  if (!width || !height || !idat.length) return null;
+  const channels = colorType === 6 ? 4 : 3;
+  const stride = width * channels;
+  let raw;
+  try {
+    raw = inflateSync(Buffer.concat(idat));
+  } catch {
+    return null;
+  }
+  if (raw.length < height * (stride + 1)) return null;
+  let cursor = 0;
+  const previous = new Uint8Array(stride);
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[cursor];
+    cursor += 1;
+    const row = Uint8Array.from(raw.subarray(cursor, cursor + stride));
+    cursor += stride;
+    for (let x = 0; x < stride; x += 1) {
+      const left = x >= channels ? row[x - channels] : 0;
+      const up = previous[x];
+      const upLeft = x >= channels ? previous[x - channels] : 0;
+      if (filter === 1) row[x] = (row[x] + left) & 255;
+      else if (filter === 2) row[x] = (row[x] + up) & 255;
+      else if (filter === 3) row[x] = (row[x] + ((left + up) >> 1)) & 255;
+      else if (filter === 4) row[x] = (row[x] + paeth(left, up, upLeft)) & 255;
+      else if (filter !== 0) return null;
+    }
+    previous.set(row);
+    if (y % 8 !== 0) continue;
+    for (let x = 0; x < width; x += 8) {
+      const pixel = x * channels;
+      red += row[pixel];
+      green += row[pixel + 1];
+      blue += row[pixel + 2];
+      count += 1;
+    }
+  }
+  if (!count) return null;
+  return [Math.round(red / count), Math.round(green / count), Math.round(blue / count)];
+}
+
+// Several DOM nodes share one slot class. An unloaded first node is not proof
+// that the 4:3 image was replaced. A decoded image with the wrong ratio or color is.
+export function judgeCoverSlot({ samples, target, expectFamily, slot } = {}) {
+  const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => sample && Number(sample.w) >= 20 && Number(sample.h) >= 20);
+  if (!decoded.length) return { status: "unread" };
+  const matched = decoded.filter((sample) => ratioWithin(sample.w, sample.h, target));
+  if (!matched.length) {
+    return { status: "mismatch", width: decoded[0].w, height: decoded[0].h, sample: decoded[0].sample || null };
+  }
+  const identified = matched.find((sample) => sample.sample && colorFamily([sample.sample.r, sample.sample.g, sample.sample.b]) === expectFamily);
+  if (!identified) {
+    return { status: "identity", width: matched[0].w, height: matched[0].h, sample: matched[0].sample || null };
+  }
+  return {
+    status: "ok",
+    evidence: {
+      slot,
+      width: identified.w,
+      height: identified.h,
+      color: [identified.sample.r, identified.sample.g, identified.sample.b],
+    },
+  };
 }
 
 export function declareChoice({ requested, current, options } = {}) {

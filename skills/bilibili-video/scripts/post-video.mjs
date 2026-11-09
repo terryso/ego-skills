@@ -5,17 +5,19 @@
 // B 站创作中心是 micro-app (shadow DOM):所有交互都用 shadow-walk 定位元素,
 // 拿到坐标后 page.mouse.click。文件选择走 waitForFileChooser。
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readConfigSync } from "./lib/config-file.mjs";
 import {
   DECLARE_OPTIONS,
   PUBLISH_CONFIG_PATH,
   PUBLISH_OK_RE,
+  averagePngColor,
   classifyLogin,
-  coverSlotEvidence,
+  colorFamily,
   flowErrorBody,
   loginRequiredBody,
   declareChoice,
+  judgeCoverSlot,
   manuscriptFromText,
   mayClickSubmit,
   partitionChoice,
@@ -306,17 +308,47 @@ if (cover43 && cover169) {
   if (!dlgOpen) fail("「封面制作」弹窗没有出现");
   await page.waitForTimeout(1000);
 
-  // 关掉「双比例同步改动」,让 4:3 / 16:9 各自独立上传。
+  // 关掉「双比例同步改动」。只点写着这句话的那一枚,不点页面上别的勾选。
   const syncToggle = await ev(`function(){
-    var cb=__all().find(function(el){return String(el.className).indexOf("bcc-checkbox")>=0 && __visible(el);});
-    if(!cb) return {ok:false,error:"未找到双比例同步开关"};
-    return {ok:true,point:__point(cb)};
+    var label=__all().find(function(el){return __own(el)==="双比例同步改动" && __visible(el);});
+    if(!label) return {ok:false,error:"未找到双比例同步开关"};
+    var box=label;
+    for(var i=0;i<5 && box;i++){
+      if(String(box.className||"").indexOf("bcc-checkbox")>=0) break;
+      box=box.parentElement;
+    }
+    var target=box && String(box.className||"").indexOf("bcc-checkbox")>=0 ? box : label;
+    return {ok:true,point:__point(target)};
   }`);
   if (!syncToggle.ok) fail(syncToggle.error);
   await page.mouse.click(syncToggle.point.x, syncToggle.point.y, { label: "关闭双比例同步改动" });
   await page.waitForTimeout(800);
 
-  const uploadCover = async (ratioButton, file, kind) => {
+  const readSlotSamples = (slot) => ev(`function(arg){
+    var out=[];
+    for(const el of __all()){
+      if(String(el.className||"").indexOf(arg.slot)<0) continue;
+      var imgs=el.tagName==="IMG"?[el]:Array.from(el.querySelectorAll("img"));
+      for(const img of imgs){
+        if(!img.naturalWidth || img.naturalWidth<20) continue;
+        var sample=null;
+        try {
+          var canvas=document.createElement("canvas");
+          canvas.width=4; canvas.height=4;
+          var ctx=canvas.getContext("2d");
+          ctx.drawImage(img,0,0,4,4);
+          var data=ctx.getImageData(0,0,4,4).data;
+          var r=0,g=0,b=0,n=0;
+          for(var i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; n++; }
+          sample={r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)};
+        } catch(error) { sample=null; }
+        out.push({w:img.naturalWidth,h:img.naturalHeight,sample:sample});
+      }
+    }
+    return out;
+  }`, { slot });
+
+  const uploadCover = async (ratioButton, file, kind, expectFamily) => {
     const rBtn = await ev(`function(name){
       var btn=__all().find(function(el){return __own(el)===name && String(el.className).indexOf("button")===0;});
       if(!btn) return null;
@@ -339,40 +371,57 @@ if (cover43 && cover169) {
     const target = kind === "4x3" ? RATIO_4_3 : RATIO_16_9;
     for (let i = 0; i < 30; i++) {
       await page.waitForTimeout(2000);
-      const okSlot = await ev(`function(arg){
-        var wrap=__all().find(function(el){return String(el.className).indexOf(arg.slot)>=0;});
-        if(!wrap) return {ok:false};
-        var img=wrap.tagName==="IMG"?wrap:wrap.querySelector("img");
-        if(!img||!img.naturalWidth) return {ok:false};
-        return {ok:true,w:img.naturalWidth,h:img.naturalHeight};
-      }`, { slot: slotSel });
-      if (okSlot.ok) {
-        const evidence = coverSlotEvidence({ slot: slotSel, width: okSlot.w, height: okSlot.h, target });
-        if (evidence) return evidence;
+      const samples = await readSlotSamples(slotSel);
+      const verdict = judgeCoverSlot({ samples, target, expectFamily, slot: slotSel });
+      if (verdict.status === "ok") return verdict.evidence;
+      if (verdict.status === "mismatch" || verdict.status === "identity") {
+        fail(`${kind} 封面槽确认失败(${verdict.status}): ${JSON.stringify(verdict)}`);
       }
     }
     return null;
   };
 
-  const cover43Evidence = await uploadCover("首页推荐", cover43, "4x3");
+  const familyOf = (file) => {
+    const avg = averagePngColor(readFileSync(file));
+    const family = colorFamily(avg);
+    if (family !== "red" && family !== "green") {
+      fail(`无法从封面上读出可区分的红/绿身份: ${file}`);
+    }
+    return family;
+  };
+  const family43 = familyOf(cover43);
+  const family169 = familyOf(cover169);
+  if (family43 === family169) fail("两张封面的主色相同,无法证明它们分别进了两个槽");
+
+  const cover43Evidence = await uploadCover("首页推荐", cover43, "4x3", family43);
   if (!cover43Evidence) {
-    fail("4:3 封面上传后未确认(槽位缩略图比例不符),放弃投稿");
+    fail("4:3 封面上传后未确认(槽位缩略图未可读),放弃投稿");
   }
-  const cover169Evidence = await uploadCover("个人空间", cover169, "16x9");
+  const cover169Evidence = await uploadCover("个人空间", cover169, "16x9", family169);
   if (!cover169Evidence) {
-    fail("16:9 封面上传后未确认(槽位缩略图比例不符),放弃投稿");
+    fail("16:9 封面上传后未确认(槽位缩略图未可读),放弃投稿");
   }
-  // 同步开关若没关掉,第二张会覆盖两张:复核 4:3 槽仍是 4:3。
-  const still43 = await ev(`function(){
-    var wrap=__all().find(function(el){return String(el.className).indexOf("cover-phone-view-home-video-img")>=0;});
-    if(!wrap) return {ok:false};
-    var img=wrap.tagName==="IMG"?wrap:wrap.querySelector("img");
-    if(!img||!img.naturalWidth) return {ok:false};
-    return {ok:true,w:img.naturalWidth,h:img.naturalHeight};
-  }`);
-  if (!still43.ok || Math.abs(still43.w / still43.h - 4 / 3) / (4 / 3) > 0.08) {
-    fail("上传 16:9 后 4:3 槽位被覆盖(双比例同步没有关掉),放弃投稿");
+  // 同一个 class 下会有还没解码的空节点。只拿已解码的图判断;
+  // 比例或主色不对立即失败,读不到最多再等 4 次,不把「没读到」说成「被覆盖」。
+  let still43 = { status: "unread" };
+  for (let i = 0; i < 4; i += 1) {
+    const samples = await readSlotSamples("cover-phone-view-home-video-img");
+    still43 = judgeCoverSlot({
+      samples,
+      target: RATIO_4_3,
+      expectFamily: family43,
+      slot: "cover-phone-view-home-video-img",
+    });
+    if (still43.status !== "unread") break;
+    await page.waitForTimeout(400);
   }
+  if (still43.status !== "ok") {
+    const why = still43.status === "mismatch"
+      ? "上传 16:9 后 4:3 槽位比例变了(双比例同步可能没关掉)"
+      : `上传 16:9 后未能确认 4:3 槽仍是原图(${still43.status})`;
+    fail(`${why}: ${JSON.stringify(still43)}`);
+  }
+  coverApplied = { "4x3": still43.evidence, "16x9": cover169Evidence };
 
   // 完成可能需要多轮:点「完成」后若弹「检测到个人空间封面(16:9)未修改」,
   // 必须选「不同步,手动编辑」保住分开上传的 16:9(绝不点「确认同步」),
@@ -422,7 +471,6 @@ if (cover43 && cover169) {
     return {ok: bg.indexOf("url(")>=0, bg: bg.slice(0,120)};
   }`);
   if (!formCover.ok) fail("封面未落到投稿表单(.cover-img 背景为空)");
-  coverApplied = { "4x3": cover43Evidence, "16x9": cover169Evidence };
 }
 
 // --- 创作声明 ---
