@@ -245,11 +245,11 @@ test("the partition list is polled before an unknown name is refused", async () 
   const { readFile } = await import("node:fs/promises");
   const { fileURLToPath } = await import("node:url");
   const source = await readFile(fileURLToPath(new URL("../post-video.mjs", import.meta.url)), "utf8");
-  const dismiss = source.indexOf("收起创作声明");
   const open = source.indexOf("打开分区列表");
-  const wait = source.indexOf("optionNames.includes(requestedType)");
+  const apply = source.indexOf("await applyDeclare()");
+  const finalRead = source.indexOf("停投前创作声明回读");
   const refuse = source.indexOf("不在人选列表里");
-  assert.ok(dismiss > 0 && open > dismiss && wait > open && refuse > wait);
+  assert.ok(open > 0 && refuse > open && apply > refuse && finalRead > apply);
 });
 
 test("the submit click stays behind the stop gate", async () => {

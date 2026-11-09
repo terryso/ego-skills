@@ -508,10 +508,16 @@ if (cover43 && cover169) {
 // 只有回读不一致才点下拉右侧箭头,并等选项高度大于 0。
 const declareText = DECLARE_OPTIONS[cfg.declare] || DECLARE_OPTIONS.none;
 const readDeclare = () => ev(`function(){
-  var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
+  var input=__all().find(function(el){
+    if(el.tagName!=="INPUT" || !/创作声明/.test(el.placeholder||"")) return false;
+    var r=el.getBoundingClientRect();
+    return r.width>20 && r.height>10;
+  });
   return input ? String(input.value||"").trim() : "";
 }`);
-let declareFinal = await readDeclare();
+let declareFinal = "";
+const applyDeclare = async () => {
+declareFinal = await readDeclare();
 if (!declareFinal && declareFinal !== "") fail("未找到创作声明下拉");
 let declareDecision = declareChoice({ requested: declareText, current: declareFinal, options: [] });
 if (declareDecision.action !== "keep") {
@@ -578,6 +584,7 @@ if (declareDecision.action === "select") {
     fail(`收起创作声明后回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
   }
 }
+};
 
 // --- 分区 ---
 // The remembered chip lives in .video-human-type .select-item-cont-inserted.
@@ -651,6 +658,24 @@ if (requestedType && typeState.chip !== requestedType) {
 const kept = partitionChoice({ requested: requestedType, current: typeState.chip, options: requestedType ? [requestedType] : [] });
 if (kept.action === "fail") {
   fail("分区为空:B 站投稿必须选分区。请传 --type,或先在创作中心留下一个分区。");
+}
+if (page.keyboard && typeof page.keyboard.press === "function") {
+  try { await page.keyboard.press("Escape"); } catch {}
+}
+await page.waitForTimeout(300);
+typeState = await readPartition();
+if (requestedType && typeState.chip !== requestedType) {
+  fail(`收起分区列表后回读不是「${requestedType}」(实际「${typeState.chip || "空"}」)`);
+}
+// 分区点击会盖住仍开着的声明列表,并把声明打回默认值。分区定下来后再改声明。
+await applyDeclare();
+declareFinal = await readDeclare();
+typeState = await readPartition();
+if (declareFinal !== declareText) {
+  fail(`停投前创作声明回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
+}
+if (requestedType && typeState.chip !== requestedType) {
+  fail(`停投前分区回读不是「${requestedType}」(实际「${typeState.chip || "空"}」)`);
 }
 
 // --- 立即投稿 ---
