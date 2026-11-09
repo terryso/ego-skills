@@ -492,6 +492,16 @@ export function syncGate({ readings, clicks } = {}) {
   return "wait";
 }
 
+// The declaration menu keeps moving after scrollIntoView. A click taken during
+// that move misses the row, and a second click at a still-moving point misses too.
+// Click only after the option row's vertical position has stayed still.
+export function optionClickReady({ previousY, y, height } = {}) {
+  if (!Number.isFinite(y) || !(Number(height) >= 12)) return "wait";
+  if (!Number.isFinite(previousY)) return "wait";
+  if (Math.abs(y - previousY) > 1) return "wait";
+  return "click";
+}
+
 export function declareChoice({ requested, current, options } = {}) {
   const want = String(requested || "").trim();
   const now = String(current || "").trim();

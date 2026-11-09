@@ -19,6 +19,7 @@ import {
   parseCheckArgs,
   parsePublishArgs,
   parseTags,
+  optionClickReady,
   partitionChoice,
   syncGate,
   planBody,
@@ -248,6 +249,13 @@ test("the sync checkbox stays off only after two consecutive readings", () => {
   assert.equal(syncGate({ readings: [true, false, false], clicks: 1 }), "ready");
   assert.equal(syncGate({ readings: [false, true], clicks: 1 }), "click");
   assert.equal(syncGate({ readings: [true, true, true, true], clicks: 4 }), "fail");
+});
+
+test("a declaration option is clicked only after its row stops moving", () => {
+  assert.equal(optionClickReady({ y: 540, height: 36 }), "wait");
+  assert.equal(optionClickReady({ previousY: 520, y: 540, height: 36 }), "wait");
+  assert.equal(optionClickReady({ previousY: 540, y: 540.4, height: 36 }), "click");
+  assert.equal(optionClickReady({ previousY: 540, y: 540, height: 8 }), "wait");
 });
 
 test("the 4:3 phone check reads the visible home preview", async () => {

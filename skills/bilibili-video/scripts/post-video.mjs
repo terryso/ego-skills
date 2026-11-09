@@ -18,6 +18,7 @@ import {
   imageDimsFromBuffer,
   loginRequiredBody,
   declareChoice,
+  optionClickReady,
   judgeCoverIdentity,
   lumaGridFromRgba,
   pngFingerprint,
@@ -652,7 +653,7 @@ if (declareDecision.action !== "keep") {
     var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
     if(!input) return null;
     var wrap=input.closest(".bcc-select") || input;
-    wrap.scrollIntoView({block:"center"});
+    wrap.scrollIntoView({block:"center", behavior:"instant"});
     var r=wrap.getBoundingClientRect();
     return {x:r.x+r.width-18, y:r.y+r.height/2};
   }`);
@@ -677,69 +678,45 @@ if (declareDecision.action !== "keep") {
   if (declareDecision.action !== "select") {
     fail(`创作声明下拉里没有「${declareText}」,当前值是「${declareFinal || "空"}」`);
   }
-  const optPt = await ev(`function(arg){
-    var rows=__all().filter(function(el){
-      if((__own(el)||"").trim()!==arg.text) return false;
-      var r=el.getBoundingClientRect();
-      return r.width>40 && r.height>=12 && r.height<=40;
-    });
-    rows.sort(function(a,b){return a.getBoundingClientRect().height-b.getBoundingClientRect().height;});
-    var opt=rows[0];
-    if(!opt) return null;
-    opt.scrollIntoView({block:"center"});
-    var r=opt.getBoundingClientRect();
-    var x=r.x+Math.min(r.width/2, 48);
+  const readOptionRow = () => ev(`function(arg){
+    var span=__all().find(function(el){return (__own(el)||"").trim()===arg.text;});
+    var option=span && span.closest(".bcc-option");
+    if(!option) return {found:false};
+    if(option.getBoundingClientRect().height<12) option.scrollIntoView({block:"center", behavior:"instant"});
+    var r=option.getBoundingClientRect();
+    var x=r.x+Math.min(80, r.width/2);
     var y=r.y+r.height/2;
     var top=document.elementFromPoint(x, y);
     var hit=top;
-    while(hit && hit!==opt) hit=hit.parentElement || (hit.getRootNode && hit.getRootNode().host) || null;
-    if(hit!==opt) return null;
-    return {x:x, y:y};
+    while(hit && hit!==option) hit=hit.parentElement || (hit.getRootNode && hit.getRootNode().host) || null;
+    return {found:true, y:r.y, height:r.height, x:x, cy:y, onRow:hit===option};
   }`, { text: declareText });
-  if (!optPt) fail(`创作声明「${declareText}」可见但点不到,当前值是「${declareFinal || "空"}」`);
-  await page.mouse.click(optPt.x, optPt.y, { label: "选择创作声明" });
-  await page.waitForTimeout(400);
-  declareFinal = await readDeclare();
-}
-if (declareFinal !== declareText && declareDecision.action === "select") {
-  console.error("创作声明第一次点击没有改到目标值，再点一次选项");
-  const again = await ev(`function(arg){
-    var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
-    if(!input) return null;
-    var wrap=input.closest(".bcc-select") || input;
-    var wr=wrap.getBoundingClientRect();
-    var rows=__all().filter(function(el){
-      if((__own(el)||"").trim()!==arg.text) return false;
-      var r=el.getBoundingClientRect();
-      return r.width>40 && r.height>=12 && r.height<=40;
-    });
-    var opt=rows[0];
-    if(opt){
-      var r=opt.getBoundingClientRect();
-      return {open:false, x:r.x+Math.min(r.width/2, 48), y:r.y+r.height/2};
+  let optionPoint = null;
+  let previousY = null;
+  for (let i = 0; i < 8; i += 1) {
+    const row = await readOptionRow();
+    const plan = optionClickReady({ previousY, y: row.y, height: row.height });
+    if (plan === "click" && row.onRow) {
+      optionPoint = { x: row.x, y: row.cy };
+      break;
     }
-    return {open:true, x:wr.x+wr.width-18, y:wr.y+wr.height/2};
-  }`, { text: declareText });
-  if (again && again.open) {
-    await page.mouse.click(again.x, again.y, { label: "再次打开创作声明" });
-    await page.waitForTimeout(400);
-    const optPt2 = await ev(`function(arg){
-      var rows=__all().filter(function(el){
-        if((__own(el)||"").trim()!==arg.text) return false;
-        var r=el.getBoundingClientRect();
-        return r.width>40 && r.height>=12 && r.height<=40;
-      });
-      var opt=rows[0];
-      if(!opt) return null;
-      var r=opt.getBoundingClientRect();
-      return {x:r.x+Math.min(r.width/2, 48), y:r.y+r.height/2};
-    }`, { text: declareText });
-    if (optPt2) await page.mouse.click(optPt2.x, optPt2.y, { label: "再次选择创作声明" });
-  } else if (again) {
-    await page.mouse.click(again.x, again.y, { label: "再次选择创作声明" });
+    previousY = Number.isFinite(row.y) ? row.y : previousY;
+    await page.waitForTimeout(80);
   }
+  if (!optionPoint) fail(`创作声明「${declareText}」的选项行还没停稳,已停止,没有改选`);
+  await page.mouse.click(optionPoint.x, optionPoint.y, { label: "选择创作声明" });
   await page.waitForTimeout(400);
   declareFinal = await readDeclare();
+  const selectedText = await ev(`function(){
+    var selected=__all().find(function(el){
+      var parts=String(el.className||"").split(" ");
+      return parts.indexOf("bcc-option")>=0 && parts.indexOf("selected")>=0;
+    });
+    return selected ? String(selected.textContent||"").trim() : "";
+  }`);
+  if (selectedText && selectedText !== declareText) {
+    fail(`创作声明列表勾选的是「${selectedText}」,不是「${declareText}」`);
+  }
 }
 if (declareFinal !== declareText) {
   fail(`创作声明回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
