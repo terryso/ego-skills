@@ -2,16 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deflateSync } from "node:zlib";
 import {
-  averagePngColor,
+  COVER_MATCH_MIN,
+  bestFingerprintScore,
   classifyLogin,
-  colorFamily,
   coverSlotEvidence,
   declareChoice,
   egoMissingSummary,
   flowErrorBody,
   imageDimsFromBuffer,
-  judgeCoverColor,
-  judgeCoverSlot,
+  judgeCoverIdentity,
+  lumaGridFromRgba,
+  pngFingerprint,
   loginRequiredBody,
   manuscriptFromText,
   mayClickSubmit,
@@ -249,94 +250,97 @@ test("the submit click stays behind the stop gate", async () => {
   assert.ok(gate > 0 && click > gate);
 });
 
-test("an unloaded cover node is not treated as an overwritten 4:3 slot", () => {
-  const unread = judgeCoverSlot({
-    samples: [{ w: 0, h: 0 }, { w: 8, h: 8 }],
-    target: 4 / 3,
-    expectFamily: "red",
-    slot: "cover-phone-view-home-video-img",
-  });
-  assert.equal(unread.status, "unread");
-  const ok = judgeCoverSlot({
-    samples: [
-      { w: 0, h: 0 },
-      { w: 500, h: 375, sample: { r: 190, g: 30, b: 40 } },
-    ],
-    target: 4 / 3,
-    expectFamily: "red",
-    slot: "cover-phone-view-home-video-img",
-  });
-  assert.equal(ok.status, "ok");
-  assert.equal(ok.evidence.height, 375);
-  const overwritten = judgeCoverSlot({
-    samples: [{ w: 500, h: 281, sample: { r: 40, g: 160, b: 100 } }],
-    target: 4 / 3,
-    expectFamily: "red",
-    slot: "cover-phone-view-home-video-img",
-  });
-  assert.equal(overwritten.status, "mismatch");
-  const wrongColor = judgeCoverSlot({
-    samples: [{ w: 500, h: 375, sample: { r: 40, g: 160, b: 100 } }],
-    target: 4 / 3,
-    expectFamily: "red",
-    slot: "cover-phone-view-home-video-img",
-  });
-  assert.equal(wrongColor.status, "identity");
-});
-
-test("the 16:9 editor canvas is identified by color, not by the phone preview ratio", () => {
-  const bluePreview = judgeCoverColor({
-    samples: [{ w: 500, h: 281, sample: { r: 19, g: 92, b: 184 } }],
-    expectFamily: "green",
-    slot: "cover-editor-panel-canvas",
-  });
-  assert.equal(bluePreview.status, "identity");
-  const green = judgeCoverColor({
-    samples: [
-      { w: 500, h: 281, sample: { r: 19, g: 92, b: 184 } },
-      { w: 640, h: 360, sample: { r: 42, g: 163, b: 106 } },
-    ],
-    expectFamily: "green",
-    slot: "cover-editor-panel-canvas",
-  });
-  assert.equal(green.status, "ok");
-  assert.deepEqual(green.evidence.color, [42, 163, 106]);
-});
-
-test("png average distinguishes the red and green cover families", () => {
-  function solidPng(r, g, b) {
-    const width = 8;
-    const height = 8;
+function paintPng(width, height, pixel) {
+  const rawRows = [];
+  for (let y = 0; y < height; y += 1) {
     const row = Buffer.alloc(1 + width * 3);
     for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = pixel(x, y, width, height);
       row[1 + x * 3] = r;
       row[2 + x * 3] = g;
       row[3 + x * 3] = b;
     }
-    const raw = Buffer.concat(Array.from({ length: height }, () => row));
-    const idat = deflateSync(raw);
-    const chunk = (kind, body) => {
-      const type = Buffer.from(kind);
-      const length = Buffer.alloc(4);
-      length.writeUInt32BE(body.length);
-      const crc = Buffer.alloc(4);
-      crc.writeUInt32BE(crc32(Buffer.concat([type, body])));
-      return Buffer.concat([length, type, body, crc]);
-    };
-    const ihdr = Buffer.alloc(13);
-    ihdr.writeUInt32BE(width, 0);
-    ihdr.writeUInt32BE(height, 4);
-    ihdr[8] = 8;
-    ihdr[9] = 2;
-    return Buffer.concat([
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      chunk("IHDR", ihdr),
-      chunk("IDAT", idat),
-      chunk("IEND", Buffer.alloc(0)),
-    ]);
+    rawRows.push(row);
   }
-  assert.equal(colorFamily(averagePngColor(solidPng(191, 29, 41))), "red");
-  assert.equal(colorFamily(averagePngColor(solidPng(41, 163, 106))), "green");
+  const idat = deflateSync(Buffer.concat(rawRows));
+  const chunk = (kind, body) => {
+    const type = Buffer.from(kind);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(body.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([type, body])));
+    return Buffer.concat([length, type, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", idat),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+test("cover identity uses the spatial grid, not the average color", () => {
+  const blocks = (x, y, width, height) => {
+    const left = x < width / 2;
+    const top = y < height / 2;
+    if (left && top) return [20, 40, 90];
+    if (!left && top) return [210, 170, 60];
+    if (left && !top) return [40, 40, 40];
+    return [120, 70, 90];
+  };
+  const swapped = (x, y, width, height) => blocks(y * width / height, x * height / width, height, width);
+  const gray = (x, y, width) => {
+    const value = x < width / 3 ? 20 : x < (2 * width) / 3 ? 140 : 230;
+    return [value, value, value];
+  };
+  const source = pngFingerprint(paintPng(32, 24, blocks));
+  const same = pngFingerprint(paintPng(16, 12, blocks));
+  const otherLayout = pngFingerprint(paintPng(32, 24, swapped));
+  const graySource = pngFingerprint(paintPng(32, 24, gray));
+  const grayCopy = pngFingerprint(paintPng(24, 18, gray));
+  assert.ok(bestFingerprintScore(same.full, source) >= COVER_MATCH_MIN);
+  assert.ok(bestFingerprintScore(otherLayout.full, source) < COVER_MATCH_MIN);
+  assert.ok(bestFingerprintScore(grayCopy.full, graySource) >= COVER_MATCH_MIN);
+  const unread = judgeCoverIdentity({
+    samples: [{ w: 0, h: 0, grid: null }],
+    target: 4 / 3,
+    source,
+    slot: "cover-phone-view-home-video-img",
+    requireRatio: true,
+  });
+  assert.equal(unread.status, "unread");
+  const wrongRatio = judgeCoverIdentity({
+    samples: [{ w: 500, h: 281, grid: source.full }],
+    target: 4 / 3,
+    source,
+    slot: "cover-phone-view-home-video-img",
+    requireRatio: true,
+  });
+  assert.equal(wrongRatio.status, "mismatch");
+  const wrongPicture = judgeCoverIdentity({
+    samples: [{ w: 500, h: 375, grid: otherLayout.full }],
+    target: 4 / 3,
+    source,
+    other: otherLayout,
+    slot: "cover-phone-view-home-video-img",
+    requireRatio: true,
+  });
+  assert.equal(wrongPicture.status, "identity");
+  const matched = judgeCoverIdentity({
+    samples: [{ w: 8, h: 8 }, { w: 500, h: 375, grid: same.full }],
+    target: 4 / 3,
+    source,
+    other: otherLayout,
+    slot: "cover-phone-view-home-video-img",
+    requireRatio: true,
+  });
+  assert.equal(matched.status, "ok");
+  assert.equal(matched.evidence.height, 375);
 });
 
 function crc32(buf) {

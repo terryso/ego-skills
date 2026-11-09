@@ -5,20 +5,22 @@
 // B 站创作中心是 micro-app (shadow DOM):所有交互都用 shadow-walk 定位元素,
 // 拿到坐标后 page.mouse.click。文件选择走 waitForFileChooser。
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { readConfigSync } from "./lib/config-file.mjs";
 import {
   DECLARE_OPTIONS,
   PUBLISH_CONFIG_PATH,
   PUBLISH_OK_RE,
-  averagePngColor,
+  centerRgba,
   classifyLogin,
-  colorFamily,
   flowErrorBody,
+  imageDimsFromBuffer,
   loginRequiredBody,
   declareChoice,
-  judgeCoverColor,
-  judgeCoverSlot,
+  judgeCoverIdentity,
+  lumaGridFromRgba,
+  pngFingerprint,
   manuscriptFromText,
   mayClickSubmit,
   partitionChoice,
@@ -325,21 +327,22 @@ if (cover43 && cover169) {
   await page.waitForTimeout(800);
 
   const sampleNode = `
-    var sample=null;
     var w=node.naturalWidth||node.width||0;
     var h=node.naturalHeight||node.height||0;
     if(w>=20 && h>=20){
-      try {
-        var canvas=document.createElement("canvas");
-        canvas.width=4; canvas.height=4;
-        var ctx=canvas.getContext("2d");
-        ctx.drawImage(node,0,0,4,4);
-        var data=ctx.getImageData(0,0,4,4).data;
-        var r=0,g=0,b=0,n=0;
-        for(var i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; n++; }
-        sample={r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)};
-      } catch(error) { sample=null; }
-      out.push({w:w,h:h,sample:sample});
+        var grid=null;
+        try {
+          var canvas=document.createElement("canvas");
+          canvas.width=8; canvas.height=8;
+          var ctx=canvas.getContext("2d");
+          ctx.drawImage(node,0,0,8,8);
+          var data=ctx.getImageData(0,0,8,8).data;
+          grid=[];
+          for(var i=0;i<data.length;i+=4){
+            grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
+          }
+        } catch(error) { grid=null; }
+        if(grid) out.push({w:w,h:h,grid:grid});
     }
   `;
   const readSlotSamples = (slot) => ev(`function(arg){
@@ -364,7 +367,7 @@ if (cover43 && cover169) {
     return out;
   }`);
 
-  const uploadCover = async (ratioButton, file, kind, expectFamily) => {
+  const uploadCover = async (ratioButton, file, kind, source, other) => {
     const rBtn = await ev(`function(name){
       var btn=__all().find(function(el){return __own(el)===name && String(el.className).indexOf("button")===0;});
       if(!btn) return null;
@@ -388,44 +391,55 @@ if (cover43 && cover169) {
     for (let i = 0; i < 15; i++) {
       await page.waitForTimeout(500);
       const samples = kind === "4x3" ? await readSlotSamples("cover-phone-view-home-video-img") : await readCanvasSamples();
-      last = kind === "4x3"
-        ? judgeCoverSlot({ samples, target: RATIO_4_3, expectFamily, slot: slotSel })
-        : judgeCoverColor({ samples, expectFamily, slot: slotSel });
+      last = judgeCoverIdentity({
+        samples,
+        target: RATIO_4_3,
+        source,
+        other,
+        slot: slotSel,
+        requireRatio: kind === "4x3",
+      });
       if (last.status === "ok") return last.evidence;
     }
-    fail(`${kind} 封面在 7.5 秒内没有变成上传文件的${expectFamily === "red" ? "红" : "绿"}图: ${JSON.stringify(last)}`);
+    fail(`${kind} 封面在 7.5 秒内对不上原图(${last.status}): ${JSON.stringify(last)}`);
   };
 
-  const familyOf = (file) => {
-    const avg = averagePngColor(readFileSync(file));
-    const family = colorFamily(avg);
-    if (family !== "red" && family !== "green") {
-      fail(`无法从封面上读出可区分的红/绿身份: ${file}`);
-    }
-    return family;
+  const fingerprintFile = (file) => {
+    const buf = readFileSync(file);
+    const png = pngFingerprint(buf);
+    if (png) return png;
+    const dims = imageDimsFromBuffer(buf);
+    const decoded = spawnSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgba", "-vframes", "1", "pipe:1"], {
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (!dims || decoded.status !== 0 || !decoded.stdout || decoded.stdout.length < dims.width * dims.height * 4) return null;
+    const rgba = decoded.stdout.subarray(0, dims.width * dims.height * 4);
+    const center = centerRgba(rgba, dims.width, dims.height);
+    return {
+      full: lumaGridFromRgba(rgba, dims.width, dims.height),
+      center: lumaGridFromRgba(center.rgba, center.width, center.height),
+    };
   };
-  const family43 = familyOf(cover43);
-  const family169 = familyOf(cover169);
-  if (family43 === family169) fail("两张封面的主色相同,无法证明它们分别进了两个槽");
+  const source43 = fingerprintFile(cover43);
+  const source169 = fingerprintFile(cover169);
+  if (!source43 || !source169) fail("无法计算封面指纹，不能确认槽位里是哪张图");
 
-  const cover43Evidence = await uploadCover("首页推荐", cover43, "4x3", family43);
-  if (!cover43Evidence) {
-    fail("4:3 封面上传后未确认(槽位缩略图未可读),放弃投稿");
-  }
-  const cover169Evidence = await uploadCover("个人空间", cover169, "16x9", family169);
-  if (!cover169Evidence) {
-    fail("16:9 封面上传后未确认(槽位缩略图未可读),放弃投稿");
-  }
+  const cover43Evidence = await uploadCover("首页推荐", cover43, "4x3", source43, source169);
+  if (!cover43Evidence) fail("4:3 封面上传后未确认,放弃投稿");
+  const cover169Evidence = await uploadCover("个人空间", cover169, "16x9", source169, source43);
+  if (!cover169Evidence) fail("16:9 封面上传后未确认,放弃投稿");
   // 同一个 class 下会有还没解码的空节点。只拿已解码的图判断;
   // 比例或主色不对立即失败,读不到最多再等 4 次,不把「没读到」说成「被覆盖」。
   let still43 = { status: "unread" };
   for (let i = 0; i < 4; i += 1) {
     const samples = await readSlotSamples("cover-phone-view-home-video-img");
-    still43 = judgeCoverSlot({
+    still43 = judgeCoverIdentity({
       samples,
       target: RATIO_4_3,
-      expectFamily: family43,
+      source: source43,
+      other: source169,
       slot: "cover-phone-view-home-video-img",
+      requireRatio: true,
     });
     if (still43.status !== "unread") break;
     await page.waitForTimeout(400);

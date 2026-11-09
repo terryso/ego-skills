@@ -268,15 +268,8 @@ export function coverSlotEvidence({ slot, width, height, target } = {}) {
   return { slot, width: w, height: h };
 }
 
-export function colorFamily(avg) {
-  if (!avg || avg.length < 3) return "unknown";
-  const r = Number(avg[0]);
-  const g = Number(avg[1]);
-  const b = Number(avg[2]);
-  if (r > g + 40 && r > b + 40 && r > 80) return "red";
-  if (g > r + 40 && g > b + 20 && g > 80) return "green";
-  return "other";
-}
+export const COVER_MATCH_MIN = 0.82;
+export const COVER_GRID = 8;
 
 function paeth(left, up, upLeft) {
   const estimate = left + up - upLeft;
@@ -288,8 +281,74 @@ function paeth(left, up, upLeft) {
   return upLeft;
 }
 
+export function lumaGridFromRgba(rgba, width, height, gridSize = COVER_GRID) {
+  const cells = gridSize * gridSize;
+  const sum = new Array(cells).fill(0);
+  const count = new Array(cells).fill(0);
+  for (let y = 0; y < height; y += 1) {
+    const gy = Math.min(gridSize - 1, Math.floor((y * gridSize) / height));
+    for (let x = 0; x < width; x += 1) {
+      const gx = Math.min(gridSize - 1, Math.floor((x * gridSize) / width));
+      const pixel = (y * width + x) * 4;
+      const luma = 0.299 * rgba[pixel] + 0.587 * rgba[pixel + 1] + 0.114 * rgba[pixel + 2];
+      const cell = gy * gridSize + gx;
+      sum[cell] += luma;
+      count[cell] += 1;
+    }
+  }
+  return sum.map((value, index) => Math.round(value / count[index]));
+}
+
+export function centerRgba(rgba, width, height, keep = 0.8) {
+  const x0 = Math.floor((width * (1 - keep)) / 2);
+  const y0 = Math.floor((height * (1 - keep)) / 2);
+  const cropWidth = Math.max(1, Math.floor(width * keep));
+  const cropHeight = Math.max(1, Math.floor(height * keep));
+  const out = new Uint8Array(cropWidth * cropHeight * 4);
+  for (let y = 0; y < cropHeight; y += 1) {
+    const from = ((y0 + y) * width + x0) * 4;
+    out.set(rgba.subarray(from, from + cropWidth * 4), y * cropWidth * 4);
+  }
+  return { rgba: out, width: cropWidth, height: cropHeight };
+}
+
+// Correlation of two spatial grids. Mean color is removed first, so two
+// different pictures with the same average do not match.
+export function fingerprintCorrelation(left, right) {
+  if (!left || !right || left.length !== right.length || left.length === 0) return null;
+  let meanLeft = 0;
+  let meanRight = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    meanLeft += left[i];
+    meanRight += right[i];
+  }
+  meanLeft /= left.length;
+  meanRight /= right.length;
+  let dot = 0;
+  let energyLeft = 0;
+  let energyRight = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    const a = left[i] - meanLeft;
+    const b = right[i] - meanRight;
+    dot += a * b;
+    energyLeft += a * a;
+    energyRight += b * b;
+  }
+  if (energyLeft === 0 || energyRight === 0) return Math.abs(meanLeft - meanRight) <= 12 ? 1 : 0;
+  return dot / Math.sqrt(energyLeft * energyRight);
+}
+
+export function bestFingerprintScore(observed, source) {
+  if (!source) return null;
+  const scores = [fingerprintCorrelation(observed, source.full)];
+  if (source.center) scores.push(fingerprintCorrelation(observed, source.center));
+  const finite = scores.filter((score) => Number.isFinite(score));
+  if (!finite.length) return null;
+  return Math.max(...finite);
+}
+
 // Average an 8-bit non-interlaced PNG. Returns null when the file is not one of those.
-export function averagePngColor(buf) {
+function decodePngRgba(buf) {
   if (!buf || buf.length < 8 || buf[0] !== 0x89 || buf[1] !== 0x50) return null;
   let offset = 8;
   let width = 0;
@@ -326,12 +385,9 @@ export function averagePngColor(buf) {
     return null;
   }
   if (raw.length < height * (stride + 1)) return null;
+  const rgba = new Uint8Array(width * height * 4);
   let cursor = 0;
   const previous = new Uint8Array(stride);
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  let count = 0;
   for (let y = 0; y < height; y += 1) {
     const filter = raw[cursor];
     cursor += 1;
@@ -348,57 +404,72 @@ export function averagePngColor(buf) {
       else if (filter !== 0) return null;
     }
     previous.set(row);
-    if (y % 8 !== 0) continue;
-    for (let x = 0; x < width; x += 8) {
-      const pixel = x * channels;
-      red += row[pixel];
-      green += row[pixel + 1];
-      blue += row[pixel + 2];
-      count += 1;
+    for (let x = 0; x < width; x += 1) {
+      const source = x * channels;
+      const target = (y * width + x) * 4;
+      rgba[target] = row[source];
+      rgba[target + 1] = channels > 1 ? row[source + 1] : row[source];
+      rgba[target + 2] = channels > 2 ? row[source + 2] : row[source];
+      rgba[target + 3] = channels === 4 ? row[source + 3] : 255;
     }
   }
-  if (!count) return null;
-  return [Math.round(red / count), Math.round(green / count), Math.round(blue / count)];
+  return { rgba, width, height };
 }
 
-// Several DOM nodes share one slot class. An unloaded first node is not proof
-// that the 4:3 image was replaced. A decoded image with the wrong ratio or color is.
-export function judgeCoverColor({ samples, expectFamily, slot } = {}) {
-  const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => sample && sample.sample && Number(sample.w) >= 20 && Number(sample.h) >= 20);
-  if (!decoded.length) return { status: "unread" };
-  const identified = decoded.find((sample) => colorFamily([sample.sample.r, sample.sample.g, sample.sample.b]) === expectFamily);
-  if (!identified) {
-    return { status: "identity", width: decoded[0].w, height: decoded[0].h, sample: decoded[0].sample };
-  }
+export function pngFingerprint(buf) {
+  const decoded = decodePngRgba(buf);
+  if (!decoded) return null;
+  const center = centerRgba(decoded.rgba, decoded.width, decoded.height);
   return {
-    status: "ok",
-    evidence: {
-      slot,
-      width: identified.w,
-      height: identified.h,
-      color: [identified.sample.r, identified.sample.g, identified.sample.b],
-    },
+    full: lumaGridFromRgba(decoded.rgba, decoded.width, decoded.height),
+    center: lumaGridFromRgba(center.rgba, center.width, center.height),
   };
 }
 
-export function judgeCoverSlot({ samples, target, expectFamily, slot } = {}) {
-  const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => sample && Number(sample.w) >= 20 && Number(sample.h) >= 20);
+function roundScore(score) {
+  return Math.round(score * 1000) / 1000;
+}
+
+// Several DOM nodes share one slot class. An unloaded node is not an overwrite.
+// Identity is the spatial fingerprint, not the average color.
+export function judgeCoverIdentity({ samples, target, source, other, slot, requireRatio = false } = {}) {
+  const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => (
+    sample && Array.isArray(sample.grid) && sample.grid.length === COVER_GRID * COVER_GRID
+    && Number(sample.w) >= 20 && Number(sample.h) >= 20
+  ));
   if (!decoded.length) return { status: "unread" };
-  const matched = decoded.filter((sample) => ratioWithin(sample.w, sample.h, target));
-  if (!matched.length) {
-    return { status: "mismatch", width: decoded[0].w, height: decoded[0].h, sample: decoded[0].sample || null };
+  if (!source || !source.full) return { status: "unconfirmed" };
+  const pool = requireRatio ? decoded.filter((sample) => ratioWithin(sample.w, sample.h, target)) : decoded;
+  if (requireRatio && !pool.length) {
+    return { status: "mismatch", width: decoded[0].w, height: decoded[0].h };
   }
-  const identified = matched.find((sample) => sample.sample && colorFamily([sample.sample.r, sample.sample.g, sample.sample.b]) === expectFamily);
-  if (!identified) {
-    return { status: "identity", width: matched[0].w, height: matched[0].h, sample: matched[0].sample || null };
+  let best = null;
+  for (const sample of pool) {
+    const own = bestFingerprintScore(sample.grid, source);
+    if (!Number.isFinite(own)) continue;
+    const againstOther = other ? bestFingerprintScore(sample.grid, other) : null;
+    if (!best || own > best.own) best = { own, againstOther, sample };
+  }
+  if (!best) return { status: "unconfirmed" };
+  if (best.own < COVER_MATCH_MIN) {
+    return { status: "identity", score: roundScore(best.own), width: best.sample.w, height: best.sample.h };
+  }
+  if (Number.isFinite(best.againstOther) && best.own < best.againstOther + 0.08) {
+    return {
+      status: "identity",
+      score: roundScore(best.own),
+      other: roundScore(best.againstOther),
+      width: best.sample.w,
+      height: best.sample.h,
+    };
   }
   return {
     status: "ok",
     evidence: {
       slot,
-      width: identified.w,
-      height: identified.h,
-      color: [identified.sample.r, identified.sample.g, identified.sample.b],
+      width: best.sample.w,
+      height: best.sample.h,
+      match: roundScore(best.own),
     },
   };
 }
