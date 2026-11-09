@@ -357,27 +357,8 @@ if (cover43 && cover169) {
   };
   await ensureSyncOff("打开封面弹窗后");
 
-  const sampleNode = `
-    var w=node.naturalWidth||node.width||0;
-    var h=node.naturalHeight||node.height||0;
-    if(w>=20 && h>=20){
-        var grid=null;
-        try {
-          var canvas=document.createElement("canvas");
-          canvas.width=8; canvas.height=8;
-          var ctx=canvas.getContext("2d");
-          ctx.drawImage(node,0,0,8,8);
-          var data=ctx.getImageData(0,0,8,8).data;
-          grid=[];
-          for(var i=0;i<data.length;i+=4){
-            grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
-          }
-        } catch(error) { grid=null; }
-        if(grid) out.push({w:w,h:h,grid:grid});
-    }
-  `;
-  // 右侧「首页推荐 / 个人空间」只切换手机预览。上传落点是中间两块编辑画布，
-  // 父级 class 为 active 的那块才是当前目标。panel 下任意 canvas 会把 4:3 画布误当成 16:9。
+  // 4:3 画布是 16:9 视口，左右是留白。整幅 8×8 会被留白拉低到 0.4，
+  // 只取居中 4:3 区域。16:9 图铺满画布，用整幅。阈值不变。
   const readEditorSamples = (kind) => ev(`function(arg){
     var out=[];
     var marker=arg.kind==="4x3"?"editor_4_3":"editor_16_9";
@@ -386,10 +367,51 @@ if (cover43 && cover169) {
     var nodes=Array.from(root.querySelectorAll("canvas")).filter(function(node){
       return String(node.className||"").indexOf("lower-canvas")>=0;
     });
-    if(!nodes.length) nodes=Array.from(root.querySelectorAll("canvas,img"));
-    for(const node of nodes){ ${sampleNode} }
+    if(!nodes.length) nodes=Array.from(root.querySelectorAll("canvas"));
+    for(const node of nodes){
+      var bw=node.width||0, bh=node.height||0;
+      if(bw<20 || bh<20) continue;
+      var sx=0, sy=0, sw=bw, sh=bh;
+      if(arg.kind==="4x3"){
+        sw=Math.round(bh*4/3);
+        sh=bh;
+        if(sw>bw){ sw=bw; sh=Math.round(bw*3/4); }
+        sx=Math.round((bw-sw)/2);
+        sy=Math.round((bh-sh)/2);
+      }
+      try {
+        var canvas=document.createElement("canvas");
+        canvas.width=8; canvas.height=8;
+        var ctx=canvas.getContext("2d");
+        ctx.drawImage(node, sx, sy, sw, sh, 0, 0, 8, 8);
+        var data=ctx.getImageData(0,0,8,8).data;
+        var grid=[];
+        for(var i=0;i<data.length;i+=4) grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
+        out.push({w:sw,h:sh,grid:grid});
+      } catch(error) {}
+    }
     return out;
   }`, { kind });
+  const readPhone43 = () => ev(`function(){
+    var out=[];
+    for(const el of __all()){
+      if(String(el.className||"").indexOf("cover-phone-view-home-video-img")<0) continue;
+      var node=el.tagName==="IMG"?el:el.querySelector("img");
+      if(!node) continue;
+      var w=node.naturalWidth||0, h=node.naturalHeight||0;
+      if(w<20 || h<20) continue;
+      try {
+        var canvas=document.createElement("canvas");
+        canvas.width=8; canvas.height=8;
+        canvas.getContext("2d").drawImage(node,0,0,8,8);
+        var data=canvas.getContext("2d").getImageData(0,0,8,8).data;
+        var grid=[];
+        for(var i=0;i<data.length;i+=4) grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
+        out.push({w:w,h:h,grid:grid});
+      } catch(error) {}
+    }
+    return out;
+  }`);
   const selectEditor = async (kind) => {
     const marker = kind === "4x3" ? "editor_4_3" : "editor_16_9";
     for (let i = 0; i < 4; i += 1) {
@@ -428,20 +450,34 @@ if (cover43 && cover169) {
     const chooser2 = await cp;
     await chooser2.setFiles(file);
     // 等对应槽位的缩略图出现且比例正确(naturalWidth/Height 来自上传图)。
-    const slotSel = kind === "4x3" ? "editor_4_3" : "editor_16_9";
     let last = { status: "unread" };
     for (let i = 0; i < 15; i++) {
       await page.waitForTimeout(500);
-      const samples = await readEditorSamples(kind);
-      last = judgeCoverIdentity({
-        samples,
+      const editor = judgeCoverIdentity({
+        samples: await readEditorSamples(kind),
         target: RATIO_4_3,
         source,
         other,
-        slot: slotSel,
+        slot: kind === "4x3" ? "editor_4_3" : "editor_16_9",
         requireRatio: false,
       });
-      if (last.status === "ok") return last.evidence;
+      if (kind !== "4x3") {
+        last = editor;
+        if (editor.status === "ok") return editor.evidence;
+        continue;
+      }
+      const phone = judgeCoverIdentity({
+        samples: await readPhone43(),
+        target: RATIO_4_3,
+        source,
+        other,
+        slot: "cover-phone-view-home-video-img",
+        requireRatio: true,
+      });
+      if (editor.status === "ok" && phone.status === "ok") {
+        return { ...phone.evidence, editorMatch: editor.evidence.match };
+      }
+      last = editor.status === "ok" ? phone : editor;
     }
     fail(`${kind} 封面在 7.5 秒内对不上原图(${last.status}): ${JSON.stringify(last)}`);
   };
@@ -474,17 +510,31 @@ if (cover43 && cover169) {
   // 不拿另一块较小的残留图充数。
   let still43 = { status: "unread" };
   for (let i = 0; i < 4; i += 1) {
-    const samples = await readEditorSamples("4x3");
-    still43 = judgeCoverIdentity({
-      samples,
+    const editor = judgeCoverIdentity({
+      samples: await readEditorSamples("4x3"),
       target: RATIO_4_3,
       source: source43,
       other: source169,
       slot: "editor_4_3",
       requireRatio: false,
     });
-    if (still43.status !== "unread") break;
-    await page.waitForTimeout(400);
+    const phone = judgeCoverIdentity({
+      samples: await readPhone43(),
+      target: RATIO_4_3,
+      source: source43,
+      other: source169,
+      slot: "cover-phone-view-home-video-img",
+      requireRatio: true,
+    });
+    if (editor.status === "unread" || phone.status === "unread") {
+      still43 = { status: "unread" };
+      await page.waitForTimeout(400);
+      continue;
+    }
+    still43 = editor.status === "ok" && phone.status === "ok"
+      ? { status: "ok", evidence: { ...phone.evidence, editorMatch: editor.evidence.match } }
+      : { status: "identity", editor, phone };
+    break;
   }
   if (still43.status !== "ok") {
     const syncNow = await readSync();
