@@ -17,13 +17,13 @@ import {
   flowErrorBody,
   loginRequiredBody,
   declareChoice,
+  judgeCoverColor,
   judgeCoverSlot,
   manuscriptFromText,
   mayClickSubmit,
   partitionChoice,
   publishSuccessBody,
   RATIO_4_3,
-  RATIO_16_9,
 } from "./lib/pure.mjs";
 
 let spaceId;
@@ -324,29 +324,45 @@ if (cover43 && cover169) {
   await page.mouse.click(syncToggle.point.x, syncToggle.point.y, { label: "关闭双比例同步改动" });
   await page.waitForTimeout(800);
 
+  const sampleNode = `
+    var sample=null;
+    var w=node.naturalWidth||node.width||0;
+    var h=node.naturalHeight||node.height||0;
+    if(w>=20 && h>=20){
+      try {
+        var canvas=document.createElement("canvas");
+        canvas.width=4; canvas.height=4;
+        var ctx=canvas.getContext("2d");
+        ctx.drawImage(node,0,0,4,4);
+        var data=ctx.getImageData(0,0,4,4).data;
+        var r=0,g=0,b=0,n=0;
+        for(var i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; n++; }
+        sample={r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)};
+      } catch(error) { sample=null; }
+      out.push({w:w,h:h,sample:sample});
+    }
+  `;
   const readSlotSamples = (slot) => ev(`function(arg){
     var out=[];
     for(const el of __all()){
       if(String(el.className||"").indexOf(arg.slot)<0) continue;
       var imgs=el.tagName==="IMG"?[el]:Array.from(el.querySelectorAll("img"));
-      for(const img of imgs){
-        if(!img.naturalWidth || img.naturalWidth<20) continue;
-        var sample=null;
-        try {
-          var canvas=document.createElement("canvas");
-          canvas.width=4; canvas.height=4;
-          var ctx=canvas.getContext("2d");
-          ctx.drawImage(img,0,0,4,4);
-          var data=ctx.getImageData(0,0,4,4).data;
-          var r=0,g=0,b=0,n=0;
-          for(var i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; n++; }
-          sample={r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)};
-        } catch(error) { sample=null; }
-        out.push({w:img.naturalWidth,h:img.naturalHeight,sample:sample});
-      }
+      for(const node of imgs){ ${sampleNode} }
     }
     return out;
   }`, { slot });
+  // 16:9 的 cover-phone-view-space-video-img 在上传后仍可能是视频画面,
+  // 它的尺寸本来就是 16:9,不能当作封面已换上。当前编辑画布才是刚上传的图。
+  const readCanvasSamples = () => ev(`function(){
+    var out=[];
+    var panel=__all().find(function(el){return String(el.className||"").indexOf("cover-editor-panel-canvas")>=0;});
+    if(!panel) return out;
+    var nodes=[];
+    if(panel.tagName==="CANVAS" || panel.tagName==="IMG") nodes.push(panel);
+    nodes.push.apply(nodes, Array.from(panel.querySelectorAll("canvas,img")));
+    for(const node of nodes){ ${sampleNode} }
+    return out;
+  }`);
 
   const uploadCover = async (ratioButton, file, kind, expectFamily) => {
     const rBtn = await ev(`function(name){
@@ -367,18 +383,17 @@ if (cover43 && cover169) {
     const chooser2 = await cp;
     await chooser2.setFiles(file);
     // 等对应槽位的缩略图出现且比例正确(naturalWidth/Height 来自上传图)。
-    const slotSel = kind === "4x3" ? "cover-phone-view-home-video-img" : "cover-phone-view-space-video-img";
-    const target = kind === "4x3" ? RATIO_4_3 : RATIO_16_9;
-    for (let i = 0; i < 30; i++) {
-      await page.waitForTimeout(2000);
-      const samples = await readSlotSamples(slotSel);
-      const verdict = judgeCoverSlot({ samples, target, expectFamily, slot: slotSel });
-      if (verdict.status === "ok") return verdict.evidence;
-      if (verdict.status === "mismatch" || verdict.status === "identity") {
-        fail(`${kind} 封面槽确认失败(${verdict.status}): ${JSON.stringify(verdict)}`);
-      }
+    const slotSel = kind === "4x3" ? "cover-phone-view-home-video-img" : "cover-editor-panel-canvas";
+    let last = { status: "unread" };
+    for (let i = 0; i < 15; i++) {
+      await page.waitForTimeout(500);
+      const samples = kind === "4x3" ? await readSlotSamples("cover-phone-view-home-video-img") : await readCanvasSamples();
+      last = kind === "4x3"
+        ? judgeCoverSlot({ samples, target: RATIO_4_3, expectFamily, slot: slotSel })
+        : judgeCoverColor({ samples, expectFamily, slot: slotSel });
+      if (last.status === "ok") return last.evidence;
     }
-    return null;
+    fail(`${kind} 封面在 7.5 秒内没有变成上传文件的${expectFamily === "red" ? "红" : "绿"}图: ${JSON.stringify(last)}`);
   };
 
   const familyOf = (file) => {

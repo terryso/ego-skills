@@ -363,6 +363,24 @@ export function averagePngColor(buf) {
 
 // Several DOM nodes share one slot class. An unloaded first node is not proof
 // that the 4:3 image was replaced. A decoded image with the wrong ratio or color is.
+export function judgeCoverColor({ samples, expectFamily, slot } = {}) {
+  const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => sample && sample.sample && Number(sample.w) >= 20 && Number(sample.h) >= 20);
+  if (!decoded.length) return { status: "unread" };
+  const identified = decoded.find((sample) => colorFamily([sample.sample.r, sample.sample.g, sample.sample.b]) === expectFamily);
+  if (!identified) {
+    return { status: "identity", width: decoded[0].w, height: decoded[0].h, sample: decoded[0].sample };
+  }
+  return {
+    status: "ok",
+    evidence: {
+      slot,
+      width: identified.w,
+      height: identified.h,
+      color: [identified.sample.r, identified.sample.g, identified.sample.b],
+    },
+  };
+}
+
 export function judgeCoverSlot({ samples, target, expectFamily, slot } = {}) {
   const decoded = (Array.isArray(samples) ? samples : []).filter((sample) => sample && Number(sample.w) >= 20 && Number(sample.h) >= 20);
   if (!decoded.length) return { status: "unread" };

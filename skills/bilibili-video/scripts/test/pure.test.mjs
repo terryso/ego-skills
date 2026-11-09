@@ -10,6 +10,7 @@ import {
   egoMissingSummary,
   flowErrorBody,
   imageDimsFromBuffer,
+  judgeCoverColor,
   judgeCoverSlot,
   loginRequiredBody,
   manuscriptFromText,
@@ -281,6 +282,25 @@ test("an unloaded cover node is not treated as an overwritten 4:3 slot", () => {
     slot: "cover-phone-view-home-video-img",
   });
   assert.equal(wrongColor.status, "identity");
+});
+
+test("the 16:9 editor canvas is identified by color, not by the phone preview ratio", () => {
+  const bluePreview = judgeCoverColor({
+    samples: [{ w: 500, h: 281, sample: { r: 19, g: 92, b: 184 } }],
+    expectFamily: "green",
+    slot: "cover-editor-panel-canvas",
+  });
+  assert.equal(bluePreview.status, "identity");
+  const green = judgeCoverColor({
+    samples: [
+      { w: 500, h: 281, sample: { r: 19, g: 92, b: 184 } },
+      { w: 640, h: 360, sample: { r: 42, g: 163, b: 106 } },
+    ],
+    expectFamily: "green",
+    slot: "cover-editor-panel-canvas",
+  });
+  assert.equal(green.status, "ok");
+  assert.deepEqual(green.evidence.color, [42, 163, 106]);
 });
 
 test("png average distinguishes the red and green cover families", () => {
