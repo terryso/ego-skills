@@ -1,0 +1,48 @@
+# 避坑 / Pitfalls
+
+## 会打断自动化的弹窗
+
+- **通知权限弹窗**:打开创作中心可能触发浏览器通知权限提示,ego 会把 space 交给用户并停掉脚本。`post-video.mjs` 在 goto 之前用 `page.cdp("Browser.grantPermissions", { permissions: ["notifications"] })` 预授;该调用不支持 `camera` 等类型,传了会整批报错,只传确认存在的类型。
+- 文件选择是原生对话框,必须**先** `waitForFileChooser` **再**触发点击,顺序反了会超时。
+
+## micro-app + shadow DOM
+
+- 创作中心表单在 `<micro-app name="video-up">` 的 shadow 树里:`document.body.innerText` 看不到表单,所有探测都要 shadow-walk(`page.click(css=…)` 同样看不到)。
+- 交互方式统一为:walk 定位元素 → `getBoundingClientRect` 中心点 → `page.mouse.click(x, y)`。
+- `blob:` URL 会在重渲染时刷新,**不能**当稳定标识;判断槽位用 `.cover-phone-view-home-video-img` / `.cover-phone-view-space-video-img` 包裹层的 `img.naturalWidth/Height`。
+
+## 上传路径
+
+- 不要直接对 `<input type="file">` `setInputFiles`:bilibili 的 micro-app 不响应程序注入的 change,上传不会开始。
+- 正确路径:坐标点 `.upload-area`(内部 `.upload-btn` 是 `no-events`,点它会被拦截报错;点区域中心,事件冒泡到挂 handler 的祖先)。
+- 上传完成信号是 shadow 文本「上传完成 / 更换视频」;出现「上传失败 / 解析失败」直接失败。
+
+## 表单回读
+
+- **标题不能用原生 setter 写 value**:只改显示、不更新 Vue 模型,投稿会以文件名当标题发出去(实测 2026-11-06 发生过)。execCommand 也可能因 v-model.lazy 不进模型——**首选 CDP `Input.insertText` 真实输入**,再补 `change` 事件 + `blur()`,回读校验。
+- 标签要逐个「写值 + 派发 Enter 键事件」并核对 chip(`.label-item-v2-content`)文本;回车没生效会留下一半标签,宁可失败也不要静默。
+- 简介是 Quill 编辑器(`.ql-editor`,页面上可见的那个;另一个隐藏的是动态编辑器):focus + selectAll + insertText,回读 `innerText`(Quill 把单换行渲染成 `\n\n`,比较前归一化)。
+- 表单会预填上一次投稿的标签(如 爱情/生活/校园),技能先逐个移除;移除失败会保留并记录在 stderr,不会静默当成功。
+
+## 封面
+
+- 「双比例同步改动」(`.bcc-checkbox`)默认开启:开着一传,两张槽同时被覆盖,16:9 拿到的是 4:3 的居中裁切。技能先关它,且传完第二张后复核 4:3 槽比例——被覆盖直接失败,不投稿。
+- 4:3 槽 = 弹窗里「首页推荐」视图 + `上传封面`;16:9 槽 = 「个人空间」视图 + `上传封面`。每次上传后以槽位缩略图 natural 比例为准(±8%)。
+- 「完成」(`.button.submit`)后回到表单,`.cover-img` 必须出现 `url(...)` 背景;没有就是封面没落位。
+- 点「完成」可能弹出二层确认「检测到个人空间封面(16:9)未修改」(`.videoup-confirm-modal`):**必须点「不同步,手动编辑」**,绝不能点「确认同步」(会用 4:3 的居中裁切覆盖我们分开上传的 16:9)。选完后编辑器切到 16:9 手动编辑视图,再点一次「完成」才关闭。当两张封面裁自同一原图时(中心裁切像素相同)该弹窗必现,真实的不同设计稿也可能触发。
+- AI 推荐封面(`.img-item-box.img-item-cover`)是干扰项,不要误点。
+
+## 分区与投稿
+
+- **创作声明是必填**:为空时点「立即投稿」不会提交——表单校验把声明下拉弹开(截图里像弹了个选项列表),页面可能原地重载,看起来像"点了没反应"。必须先写声明(`--declare`)。
+- 声明下拉的打开方式:**点 input 本体**(外层 `.bcc-select` wrap 的中心点有时点不开);面板里按 ownText 点选项。打开失败就再点一次重试。
+- **成功文案是「稿件投递成功」**,不是「投稿成功」——成功判定正则必须包含「投递成功」,否则会把实际成功的投稿当成失败(实测 2026-11-06 发生过)。URL 不变,SPA 原地切换成功视图,出现「查看进度 / 再投一个」按钮。
+- 分区 chip 是 `.video-human-type` 里的 `select-item-cont-inserted`,input `.value` 是空的;判空和回读都看 chip 文本。`--type` 要点开 `.human-type-list` 再点同名项,点不中就停,不能把旧 chip 当成指定分区。
+- 「立即投稿」是 `.submit-add`;「存草稿」是 `.submit-draft`,不要点错。
+- 成功信号:页面出现「投稿成功/审核中」。90 秒没确认就截图(`/tmp/bilibili-video-publish-fail.png`)退出 1;此时稿件可能已在审核队列,**不要**盲目重跑,先去「内容管理 → 稿件管理」查重。
+
+## 其它
+
+- 网页投稿没有「仅自己可见」;给用户发测试视频前必须说清楚过审即公开。
+- B 站风控会针对高频投稿触发验证码(`geetest`/`risk-captcha`):脚本遇到即失败退出,把截图给用户人工处理,**不要**尝试自动绕过。
+- 表单布局会随展开「更多设置」等操作 reflow,任何缓存坐标都要在点击前现取。

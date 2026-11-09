@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`wechat-article-ego`](./skills/wechat-article-ego/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/) 和 [`xiaohongshu-ego`](./skills/xiaohongshu-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`wechat-article-ego`](./skills/wechat-article-ego/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`bilibili-video`](./skills/bilibili-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/) 和 [`xiaohongshu-ego`](./skills/xiaohongshu-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -63,6 +63,7 @@ cd ego-skills
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。描述回读、上传等待或封面预览没确认时也不点「保存草稿」。 |
 | [`wechat-article-ego`](./skills/wechat-article-ego/) | 在微信公众平台把一篇 Markdown 存成一篇图文草稿。先检查登录。没有 `--yes` 不上传。`--yes` 只点「保存」。不点「发表」「群发」或「发送预览」。 |
 | [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。上传超时、失败或一直没就绪时不会点发布。 |
+| [`bilibili-video`](./skills/bilibili-video/) | 把本地视频投到 B 站。先检查登录。没有 `--yes` 不投稿。`--type` 必须点选并回读，否则停在投稿之前。两张封面各自带回尺寸。成功是审核中，并带 BV 链接，读不到则为 `identity: unconfirmed`。 |
 | [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
 | [`douyin-video`](./skills/douyin-video/) | 把本地视频发到抖音创作者中心。先检查登录。标题最多 30 字。默认公开、允许保存、立即发布。成功标准是进入内容管理或出现「发布成功」。 |
 | [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。Phase 2a 还能新建、改标题/前置/步骤、改状态，以及把一条用例移到回收站（`delete --yes`）。只走浏览器会话，不用 Open API token。 |
