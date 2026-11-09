@@ -474,6 +474,21 @@ export function judgeCoverIdentity({ samples, target, source, other, slot, requi
   };
 }
 
+// The cover dialog's sync box is `.sync-checkbox-wrapper input`, default checked.
+// One click on the words is not a state change: the box can still be checked when
+// the 16:9 file is chosen, and that upload then replaces the 4:3 image.
+// Two consecutive false readings mean it stayed off. A true reading needs another
+// click on the box itself, and a handful of clicks without that is a hard stop.
+export function syncGate({ readings, clicks } = {}) {
+  const history = Array.isArray(readings) ? readings : [];
+  const last = history[history.length - 1];
+  const prev = history[history.length - 2];
+  if (last === false && prev === false) return "ready";
+  if (Number(clicks) >= 4) return "fail";
+  if (last === true) return "click";
+  return "wait";
+}
+
 export function declareChoice({ requested, current, options } = {}) {
   const want = String(requested || "").trim();
   const now = String(current || "").trim();

@@ -12,7 +12,7 @@
 | 简介 | shadow `.ql-editor` 且可见、高度 >60 | Quill;隐藏的另一个是动态编辑器 |
 | 添加封面 | shadow 文本 `添加封面`(span `.add-text`) | 打开 `.bcc-dialog`(1220px 宽) |
 | 弹窗头 | `.cover-editor-head` | 可见性判定弹窗开关 |
-| 双比例同步 | `.bcc-checkbox`(label) | 默认开启;先点关掉 |
+| 双比例同步 | `.sync-checkbox-wrapper input[type=checkbox]` | 默认勾选。点可见方框并读 `checked`，连续两次为关才上传 |
 | 4:3 视图按钮 | shadow 文本 `首页推荐`,`class^="button"` | active 判定 `button active` |
 | 16:9 视图按钮 | shadow 文本 `个人空间` | 同上 |
 | 上传封面 | shadow 文本 `上传封面`(span `.upload-text`) | 传到当前激活视图的槽 |

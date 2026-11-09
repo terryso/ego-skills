@@ -20,6 +20,7 @@ import {
   parsePublishArgs,
   parseTags,
   partitionChoice,
+  syncGate,
   planBody,
   publishMode,
   publishSuccessBody,
@@ -239,6 +240,14 @@ test("an already displayed declaration is kept and submit cannot be combined wit
   assert.equal(mayClickSubmit({ yes: true, stopBeforeSubmit: true }).allow, false);
   assert.equal(mayClickSubmit({ yes: true, stopBeforeSubmit: false }).allow, true);
   assert.equal(mayClickSubmit({ yes: false, stopBeforeSubmit: true }).allow, false);
+});
+
+test("the sync checkbox stays off only after two consecutive readings", () => {
+  assert.equal(syncGate({ readings: [true], clicks: 0 }), "click");
+  assert.equal(syncGate({ readings: [true, false], clicks: 1 }), "wait");
+  assert.equal(syncGate({ readings: [true, false, false], clicks: 1 }), "ready");
+  assert.equal(syncGate({ readings: [false, true], clicks: 1 }), "click");
+  assert.equal(syncGate({ readings: [true, true, true, true], clicks: 4 }), "fail");
 });
 
 test("the partition list is polled before an unknown name is refused", async () => {

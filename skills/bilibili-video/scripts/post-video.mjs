@@ -24,6 +24,7 @@ import {
   manuscriptFromText,
   mayClickSubmit,
   partitionChoice,
+  syncGate,
   publishSuccessBody,
   RATIO_4_3,
 } from "./lib/pure.mjs";
@@ -310,21 +311,51 @@ if (cover43 && cover169) {
   if (!dlgOpen) fail("「封面制作」弹窗没有出现");
   await page.waitForTimeout(1000);
 
-  // 关掉「双比例同步改动」。只点写着这句话的那一枚,不点页面上别的勾选。
-  const syncToggle = await ev(`function(){
-    var label=__all().find(function(el){return __own(el)==="双比例同步改动" && __visible(el);});
-    if(!label) return {ok:false,error:"未找到双比例同步开关"};
-    var box=label;
-    for(var i=0;i<5 && box;i++){
-      if(String(box.className||"").indexOf("bcc-checkbox")>=0) break;
-      box=box.parentElement;
+  // 同步开关是 .sync-checkbox-wrapper 里的可见 checkbox，不是文字，也没有 bcc-checkbox。
+  // 弹窗初始化会在点击之后把勾选写回去。读 input.checked，连续两次为关才算关掉。
+  const readSync = () => ev(`function(){
+    var wrappers=__all().filter(function(el){
+      return String(el.className||"").split(" ").indexOf("sync-checkbox-wrapper")>=0;
+    });
+    var visible=null;
+    for(const el of wrappers){
+      var r=el.getBoundingClientRect();
+      if(r.width>20 && r.height>8) visible=el;
     }
-    var target=box && String(box.className||"").indexOf("bcc-checkbox")>=0 ? box : label;
-    return {ok:true,point:__point(target)};
+    if(!visible) return {found:false};
+    var input=null;
+    for(const el of visible.querySelectorAll("input")){
+      if(el.type!=="checkbox") continue;
+      var box=el.getBoundingClientRect();
+      if(box.width<8 || box.height<8) continue;
+      input=el;
+      break;
+    }
+    if(!input) return {found:true, checked:null};
+    var box=input.getBoundingClientRect();
+    return {found:true, checked:input.checked===true, x:box.x+box.width/2, y:box.y+box.height/2};
   }`);
-  if (!syncToggle.ok) fail(syncToggle.error);
-  await page.mouse.click(syncToggle.point.x, syncToggle.point.y, { label: "关闭双比例同步改动" });
-  await page.waitForTimeout(800);
+  const ensureSyncOff = async (why) => {
+    const readings = [];
+    let clicks = 0;
+    for (let i = 0; i < 8; i += 1) {
+      const state = await readSync();
+      if (state.found && state.checked !== null) readings.push(state.checked);
+      const plan = syncGate({ readings, clicks });
+      if (plan === "ready") return;
+      if (plan === "fail") {
+        fail(`双比例同步仍开着(${why})，已停止，避免上传覆盖另一张封面`);
+      }
+      if (plan === "click") {
+        if (!state.x) fail(`双比例同步勾选看得见但点不到(${why})`);
+        await page.mouse.click(state.x, state.y, { label: "关闭双比例同步改动" });
+        clicks += 1;
+      }
+      await page.waitForTimeout(300);
+    }
+    fail(`双比例同步状态没有稳定关掉(${why})，已停止`);
+  };
+  await ensureSyncOff("打开封面弹窗后");
 
   const sampleNode = `
     var w=node.naturalWidth||node.width||0;
@@ -375,7 +406,8 @@ if (cover43 && cover169) {
     }`, ratioButton);
     if (!rBtn) fail(`封面弹窗里找不到「${ratioButton}」比例按钮`);
     await page.mouse.click(rBtn.x, rBtn.y, { label: `切换到${ratioButton}` });
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(400);
+    await ensureSyncOff(`上传${kind}前`);
 
     const upPt = await ev(`function(){
       return __textPoint("上传封面");
@@ -445,11 +477,13 @@ if (cover43 && cover169) {
     await page.waitForTimeout(400);
   }
   if (still43.status !== "ok") {
+    const syncNow = await readSync();
     const why = still43.status === "mismatch"
-      ? "上传 16:9 后 4:3 槽位比例变了(双比例同步可能没关掉)"
+      ? "上传 16:9 后 4:3 槽位比例变了"
       : `上传 16:9 后未能确认 4:3 槽仍是原图(${still43.status})`;
-    fail(`${why}: ${JSON.stringify(still43)}`);
+    fail(`${why}: ${JSON.stringify({ ...still43, syncChecked: syncNow.checked })}`);
   }
+  try { await page.screenshot({ path: "/tmp/bilibili-cover-slots.png" }); } catch {}
   coverApplied = { "4x3": still43.evidence, "16x9": cover169Evidence };
 
   // 完成可能需要多轮:点「完成」后若弹「检测到个人空间封面(16:9)未修改」,
@@ -715,6 +749,7 @@ if (!submitGate.allow) {
     declare: declareFinal,
     tags,
     covers: coverApplied,
+    cover_slots: "/tmp/bilibili-cover-slots.png",
     screenshot: shot || `${dir}/bilibili-video-stop.png`,
   }));
   if (!keep) {
