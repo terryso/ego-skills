@@ -42,12 +42,13 @@ const FLAG_SPECS = {
   "--type": "value",
   "--declare": "value",
   "--yes": "flag",
+  "--stop-before-submit": "flag",
   "--keep": "flag",
   "--space-id": "value",
 };
 
 export function parsePublishArgs(argv) {
-  const out = { desc: "", tags: "", yes: false, keep: false, cover43: "", cover169: "", type: "", declare: "none", spaceId: 0 };
+  const out = { desc: "", tags: "", yes: false, stopBeforeSubmit: false, keep: false, cover43: "", cover169: "", type: "", declare: "none", spaceId: 0 };
   for (let i = 0; i < argv.length; i++) {
     let token = argv[i];
     let inline = null;
@@ -264,6 +265,28 @@ export function coverSlotEvidence({ slot, width, height, target } = {}) {
   const h = Number(height);
   if (!slot || !w || !h || !ratioWithin(w, h, target)) return null;
   return { slot, width: w, height: h };
+}
+
+export function declareChoice({ requested, current, options } = {}) {
+  const want = String(requested || "").trim();
+  const now = String(current || "").trim();
+  const names = (Array.isArray(options) ? options : []).map((item) => String(item || "").trim()).filter(Boolean);
+  if (!want) return { action: "fail", reason: "missing", type: now };
+  if (now === want) return { action: "keep", reason: "already", type: now };
+  if (names.includes(want)) return { action: "select", reason: "listed", type: want };
+  return { action: "fail", reason: "closed-or-missing", type: now };
+}
+
+export function publishMode({ yes, stopBeforeSubmit } = {}) {
+  if (stopBeforeSubmit) return "stop-before-submit";
+  if (yes === true) return "submit";
+  return "plan";
+}
+
+export function mayClickSubmit(input = {}) {
+  const mode = publishMode(input);
+  if (mode !== "submit") return { allow: false, reason: mode };
+  return { allow: true, reason: "confirmed" };
 }
 
 export function manuscriptFromText(text) {

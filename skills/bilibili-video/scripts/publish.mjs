@@ -5,7 +5,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runEgoFile } from "./lib/run-ego.mjs";
-import { PUBLISH_CONFIG_PATH, imageDimsFromBuffer, parsePublishArgs, planBody, validatePublishInput } from "./lib/pure.mjs";
+import { PUBLISH_CONFIG_PATH, imageDimsFromBuffer, parsePublishArgs, planBody, publishMode, validatePublishInput } from "./lib/pure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +61,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (!a.yes) {
+  if (publishMode({ yes: a.yes, stopBeforeSubmit: a.stopBeforeSubmit }) === "plan") {
     console.log(JSON.stringify(planBody({
       video: a.video,
       sizeMB: checked.sizeMB,
@@ -87,6 +87,8 @@ async function main() {
     type: a.type,
     declare: a.declare,
     keep: a.keep,
+    yes: a.yes === true && a.stopBeforeSubmit !== true,
+    stopBeforeSubmit: a.stopBeforeSubmit === true,
     spaceId: a.spaceId || 0,
   }));
 

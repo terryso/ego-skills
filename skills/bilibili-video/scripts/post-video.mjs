@@ -15,7 +15,9 @@ import {
   coverSlotEvidence,
   flowErrorBody,
   loginRequiredBody,
+  declareChoice,
   manuscriptFromText,
+  mayClickSubmit,
   partitionChoice,
   publishSuccessBody,
   RATIO_4_3,
@@ -423,26 +425,51 @@ if (cover43 && cover169) {
   coverApplied = { "4x3": cover43Evidence, "16x9": cover169Evidence };
 }
 
-// --- 创作声明(必填,为空或模型未更新时点立即投稿会被表单校验拦下) ---
-// 注意:直接对 input 原生 setter 写值只改显示、不更新 bcc-select 的 Vue 模型,
-// 投稿时照样被拦。必须点开面板、点选项,像人一样选。
+// --- 创作声明 ---
+// bcc-select 预填时 input.value 已是组件当前值。点输入框中心不会展开列表,
+// 未展开时选项高度为 0,按可见文本去找会误报「没有选项」。
+// 只有回读不一致才点下拉右侧箭头,并等选项高度大于 0。
 const declareText = DECLARE_OPTIONS[cfg.declare] || DECLARE_OPTIONS.none;
-// 点 input 本体(不是外层 wrap)才能可靠打开下拉;打开后确认选项可见,失败重试一次。
-const openDeclare = async () => {
-  const pt = await ev(`function(){
+const readDeclare = () => ev(`function(){
+  var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
+  return input ? String(input.value||"").trim() : "";
+}`);
+let declareFinal = await readDeclare();
+if (!declareFinal && declareFinal !== "") fail("未找到创作声明下拉");
+let declareDecision = declareChoice({ requested: declareText, current: declareFinal, options: [] });
+if (declareDecision.action !== "keep") {
+  const opener = await ev(`function(){
     var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
     if(!input) return null;
-    input.scrollIntoView({block:"center"});
-    var r=input.getBoundingClientRect();
-    return {x:r.x+r.width/2,y:r.y+r.height/2};
+    var wrap=input.closest(".bcc-select") || input;
+    wrap.scrollIntoView({block:"center"});
+    var r=wrap.getBoundingClientRect();
+    return {x:r.x+r.width-18, y:r.y+r.height/2};
   }`);
-  if (!pt) fail("未找到创作声明下拉");
-  await page.mouse.click(pt.x, pt.y, { label: "打开创作声明下拉" });
-  await page.waitForTimeout(1500);
-  return await ev(`function(arg){
-    var vis=function(el){return !!(el.getClientRects().length);};
+  if (!opener) fail("未找到创作声明下拉");
+  await page.mouse.click(opener.x, opener.y, { label: "打开创作声明下拉" });
+  let optionNames = [];
+  for (let i = 0; i < 8 && !optionNames.length; i += 1) {
+    await page.waitForTimeout(300);
+    optionNames = await ev(`function(){
+      var names=[];
+      for (const el of __all()) {
+        var own=(__own(el)||"").trim();
+        if(!own) continue;
+        var r=el.getBoundingClientRect();
+        if(r.width>0 && r.height>0) names.push(own);
+      }
+      return names;
+    }`);
+    optionNames = optionNames.filter((name) => Object.values(DECLARE_OPTIONS).includes(name));
+  }
+  declareDecision = declareChoice({ requested: declareText, current: declareFinal, options: optionNames });
+  if (declareDecision.action !== "select") {
+    fail(`创作声明下拉里没有「${declareText}」,当前值是「${declareFinal || "空"}」`);
+  }
+  const optPt = await ev(`function(arg){
     var opt=__all().find(function(el){
-      if(!vis(el) || __own(el)!==arg.text) return false;
+      if((__own(el)||"").trim()!==arg.text) return false;
       var r=el.getBoundingClientRect();
       return r.width>0 && r.height>0;
     });
@@ -451,18 +478,13 @@ const openDeclare = async () => {
     var r=opt.getBoundingClientRect();
     return {x:r.x+r.width/2,y:r.y+r.height/2};
   }`, { text: declareText });
-};
-let optPt = await openDeclare();
-if (!optPt) optPt = await openDeclare();
-if (!optPt) fail(`创作声明下拉里没有「${declareText}」选项`);
-await page.mouse.click(optPt.x, optPt.y, { label: "选择创作声明" });
-await page.waitForTimeout(1000);
-const declareFinal = await ev(`function(){
-  var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
-  return input ? input.value : "";
-}`);
-if ((declareFinal || "").trim() !== declareText) {
-  fail(`创作声明写入异常: 期望「${declareText}」实际「${declareFinal}」`);
+  if (!optPt) fail(`创作声明「${declareText}」可见但点不到,当前值是「${declareFinal || "空"}」`);
+  await page.mouse.click(optPt.x, optPt.y, { label: "选择创作声明" });
+  await page.waitForTimeout(600);
+  declareFinal = await readDeclare();
+}
+if (declareFinal !== declareText) {
+  fail(`创作声明回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
 }
 
 // --- 分区 ---
@@ -525,6 +547,31 @@ if (kept.action === "fail") {
 }
 
 // --- 立即投稿 ---
+// The only click. stop-before-submit and a missing --yes both refuse it.
+const submitGate = mayClickSubmit({ yes: cfg.yes === true, stopBeforeSubmit: cfg.stopBeforeSubmit === true });
+if (!submitGate.allow) {
+  const dir = "/tmp";
+  let shot = "";
+  try {
+    shot = await page.screenshot({ path: `${dir}/bilibili-video-stop.png` });
+  } catch {}
+  console.log(JSON.stringify({
+    ok: true,
+    submitted: false,
+    stopped_before_submit: true,
+    reason: submitGate.reason,
+    title,
+    type: typeState.chip,
+    declare: declareFinal,
+    tags,
+    covers: coverApplied,
+    screenshot: shot || `${dir}/bilibili-video-stop.png`,
+  }));
+  if (!keep) {
+    try { await task.finish({ keep: [] }); } catch {}
+  }
+  process.exit(0);
+}
 const submitPt = await ev(`function(){
   var btn=__all().find(function(el){return __own(el)==="立即投稿" && String(el.className).indexOf("submit-add")>=0;});
   if(!btn) return null;

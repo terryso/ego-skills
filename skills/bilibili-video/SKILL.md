@@ -42,7 +42,15 @@ node skills/bilibili-video/scripts/check-login.mjs --keep
 `ego-browser nodejs` 不继承 shell 环境变量,也不转发 argv,所以由 `publish.mjs` 把 JSON 写到 `/tmp` 再交给 ego。**参数全部走 flag**(key=value 也支持):
 
 ```bash
-# 仓库根目录。没有 --yes:只做本地校验并打印计划,exit 3,不打开浏览器、不投稿
+# 仓库根目录。没有 --yes 且没有 --stop-before-submit:只做本地校验并打印计划,exit 3,不打开浏览器
+# 验收入口:真实上传并校验,但在「立即投稿」之前退出。和 --yes 同时出现也不会投稿
+node skills/bilibili-video/scripts/publish.mjs \
+  --video /absolute/path/to/video.mp4 \
+  --title "标题" \
+  --cover-4x3 /absolute/path/to/cover-4x3.png \
+  --cover-16x9 /absolute/path/to/cover-16x9.png \
+  --type "科技数码" \
+  --stop-before-submit
 node skills/bilibili-video/scripts/publish.mjs \
   --video /absolute/path/to/video.mp4 \
   --title "标题(≤80字)" \
@@ -68,7 +76,8 @@ node skills/bilibili-video/scripts/publish.mjs --video ... --title ... --yes --s
 | `0` | 投稿成功,stdout 有 `{"ok":true,"status":"审核中","bvid","url","identity"}`;读不到稿件号时 `identity` 为 `unconfirmed`,`url` 为 null |
 | `1` | 参数或流程错误(JSON 在 stderr) |
 | `2` | 需要登录(脚本内遇登录墙会 `handOff()`) |
-| `3` | 没有 `--yes` 的计划模式,未上传未投稿 |
+| `0` | `--stop-before-submit`:表单已填完并回读,`submitted` 为 false,没有点「立即投稿」。和 `--yes` 同时使用也停 |
+| `3` | 没有 `--yes` 也没有 `--stop-before-submit` 的计划模式,未上传未投稿 |
 
 ## 硬性限制(先本地校验,超了直接 exit 1)
 

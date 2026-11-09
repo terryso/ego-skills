@@ -3,16 +3,19 @@ import { test } from "node:test";
 import {
   classifyLogin,
   coverSlotEvidence,
+  declareChoice,
   egoMissingSummary,
   flowErrorBody,
   imageDimsFromBuffer,
   loginRequiredBody,
   manuscriptFromText,
+  mayClickSubmit,
   parseCheckArgs,
   parsePublishArgs,
   parseTags,
   partitionChoice,
   planBody,
+  publishMode,
   publishSuccessBody,
   ratioWithin,
   resolveEgoExit,
@@ -219,6 +222,26 @@ test("partitionChoice does not keep a remembered partition for an unknown name",
   assert.equal(partitionChoice({ requested: "音乐", current: "音乐" }).action, "keep");
   assert.equal(partitionChoice({ requested: "知识", current: "音乐", options: ["影视", "音乐"] }).reason, "unsupported");
   assert.equal(partitionChoice({ requested: "知识", current: "音乐", options: ["知识", "音乐"] }).action, "select");
+});
+
+test("an already displayed declaration is kept and submit cannot be combined with the stop flag", () => {
+  assert.equal(declareChoice({ requested: "内容无需标注", current: "内容无需标注", options: [] }).action, "keep");
+  assert.equal(declareChoice({ requested: "含AI生成内容", current: "内容无需标注", options: ["含AI生成内容"] }).action, "select");
+  assert.equal(declareChoice({ requested: "含AI生成内容", current: "内容无需标注", options: [] }).reason, "closed-or-missing");
+  assert.equal(publishMode({ yes: false, stopBeforeSubmit: false }), "plan");
+  assert.equal(publishMode({ yes: true, stopBeforeSubmit: true }), "stop-before-submit");
+  assert.equal(mayClickSubmit({ yes: true, stopBeforeSubmit: true }).allow, false);
+  assert.equal(mayClickSubmit({ yes: true, stopBeforeSubmit: false }).allow, true);
+  assert.equal(mayClickSubmit({ yes: false, stopBeforeSubmit: true }).allow, false);
+});
+
+test("the submit click stays behind the stop gate", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const source = await readFile(fileURLToPath(new URL("../post-video.mjs", import.meta.url)), "utf8");
+  const gate = source.indexOf("mayClickSubmit");
+  const click = source.indexOf("点击立即投稿");
+  assert.ok(gate > 0 && click > gate);
 });
 
 test("cover slots keep their own measurements and a BV id is read from text", () => {

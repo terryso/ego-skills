@@ -22,7 +22,7 @@
 | 16:9 未修改确认框 | `.videoup-confirm-modal`,按钮 `不同步，手动编辑` / `确认同步` | 选不同步;选完需再点一次「完成」 |
 | 表单封面落位 | `.cover-img` 的 `background-image` | 出现 `url(...)` 即已应用 |
 | 分区 | `.video-human-type` 内 `.select-item-cont-inserted` | 点 `.select-controller` 打开 `.human-type-list`;选项是 `.drop-list-v2-item[title]` |
-| 创作声明 | shadow `INPUT[placeholder*="创作声明"]`(bcc-select) | 必填;**点 input 本体**打开面板,按 ownText 选项;为空会拦住「立即投稿」 |
+| 创作声明 | `.bcc-select` 里 `INPUT[placeholder*="创作声明"]` | 当前值看 `input.value`。要改时点控件右侧箭头;未展开的 `.bcc-option` 高度为 0 |
 | 成功视图 | 文本 `稿件投递成功`,按钮 `查看进度` / `再投一个` | URL 不变,SPA 原地切换;正则要含「投递成功」 |
 | 立即投稿 | shadow 文本 `立即投稿` + `class*="submit-add"` | `存草稿` 是 `.submit-draft` |
 | 成功信号 | 文本 `投递成功|投稿成功|提交成功|审核中` | 稿件号从页面或稿件管理标题链接读取;没有则 identity=unconfirmed |
