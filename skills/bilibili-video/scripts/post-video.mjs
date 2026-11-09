@@ -559,6 +559,10 @@ if (declareDecision.action !== "keep") {
     if(!opt) return null;
     opt.scrollIntoView({block:"center"});
     var r=opt.getBoundingClientRect();
+    var top=document.elementFromPoint(r.x+r.width/2, r.y+Math.min(r.height/2, 8));
+    var hit=top;
+    while(hit && hit!==opt) hit=hit.parentElement || (hit.getRootNode && hit.getRootNode().host) || null;
+    if(hit!==opt) return null;
     return {x:r.x+r.width/2,y:r.y+r.height/2};
   }`, { text: declareText });
   if (!optPt) fail(`创作声明「${declareText}」可见但点不到,当前值是「${declareFinal || "空"}」`);
@@ -659,13 +663,28 @@ const kept = partitionChoice({ requested: requestedType, current: typeState.chip
 if (kept.action === "fail") {
   fail("分区为空:B 站投稿必须选分区。请传 --type,或先在创作中心留下一个分区。");
 }
-if (page.keyboard && typeof page.keyboard.press === "function") {
-  try { await page.keyboard.press("Escape"); } catch {}
+const partitionListOpen = () => ev(`function(){
+  return __all().some(function(el){
+    if(String(el.className||"").indexOf("human-type-list")<0) return false;
+    var r=el.getBoundingClientRect();
+    return r.height>20 && r.width>20;
+  });
+}`);
+if (await partitionListOpen()) {
+  const closer = await ev(`function(){
+    var root=__all().find(function(el){return String(el.className||"").split(" ").indexOf("video-human-type")>=0;});
+    var ctrl=root && root.querySelector(".select-controller");
+    return ctrl ? __pointInView(ctrl) : null;
+  }`);
+  if (closer) await page.mouse.click(closer.x, closer.y, { label: "收起分区列表" });
+  await page.waitForTimeout(400);
 }
-await page.waitForTimeout(300);
 typeState = await readPartition();
 if (requestedType && typeState.chip !== requestedType) {
   fail(`收起分区列表后回读不是「${requestedType}」(实际「${typeState.chip || "空"}」)`);
+}
+if (await partitionListOpen()) {
+  fail("分区列表没有收起,已停止,避免点击落到声明上");
 }
 // 分区点击会盖住仍开着的声明列表,并把声明打回默认值。分区定下来后再改声明。
 await applyDeclare();
