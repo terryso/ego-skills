@@ -250,6 +250,16 @@ test("the sync checkbox stays off only after two consecutive readings", () => {
   assert.equal(syncGate({ readings: [true, true, true, true], clicks: 4 }), "fail");
 });
 
+test("the 4:3 phone check reads the visible home preview", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const source = await readFile(fileURLToPath(new URL("../post-video.mjs", import.meta.url)), "utf8");
+  const show = source.indexOf("显示首页推荐预览");
+  const visible = source.indexOf("previewStyle.visibility===\"hidden\"");
+  const recheck = source.indexOf("上传 16:9 后未能确认 4:3 槽仍是原图");
+  assert.ok(show > 0 && visible > show && recheck > visible);
+});
+
 test("the partition list is polled before an unknown name is refused", async () => {
   const { readFile } = await import("node:fs/promises");
   const { fileURLToPath } = await import("node:url");

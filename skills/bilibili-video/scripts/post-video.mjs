@@ -392,25 +392,56 @@ if (cover43 && cover169) {
     }
     return out;
   }`, { kind });
-  const readPhone43 = () => ev(`function(){
-    var out=[];
-    for(const el of __all()){
-      if(String(el.className||"").indexOf("cover-phone-view-home-video-img")<0) continue;
-      var node=el.tagName==="IMG"?el:el.querySelector("img");
-      if(!node) continue;
-      var w=node.naturalWidth||0, h=node.naturalHeight||0;
-      if(w<20 || h<20) continue;
-      try {
-        var canvas=document.createElement("canvas");
-        canvas.width=8; canvas.height=8;
-        canvas.getContext("2d").drawImage(node,0,0,8,8);
-        var data=canvas.getContext("2d").getImageData(0,0,8,8).data;
-        var grid=[];
-        for(var i=0;i<data.length;i+=4) grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
-        out.push({w:w,h:h,grid:grid});
-      } catch(error) {}
+  // 上传 16:9 后手机预览停在「个人空间」。首页推荐那张图是 visibility:hidden，
+  // 隐藏期间位图会短暂变成别的 500×375，不能拿它当 4:3 结论。
+  // 先点开「首页推荐」，只读当前稿件那一张可见封面，不读后面的推荐卡片。
+  const showHomePreview = async () => {
+    const tab = await ev(`function(){
+      var el=__all().find(function(node){
+        return __own(node)==="首页推荐" && String(node.className||"").split(" ").indexOf("button")>=0;
+      });
+      if(!el) return {found:false};
+      var r=el.getBoundingClientRect();
+      return {
+        found:true,
+        active:String(el.className||"").split(" ").indexOf("active")>=0,
+        x:r.x+r.width/2,
+        y:r.y+r.height/2
+      };
+    }`);
+    if (!tab.found) fail("手机预览没有「首页推荐」");
+    if (!tab.active) {
+      await page.mouse.click(tab.x, tab.y, { label: "显示首页推荐预览" });
+      await page.waitForTimeout(300);
     }
-    return out;
+  };
+  const readPhone43 = () => ev(`function(){
+    var preview=__all().find(function(el){
+      var parts=String(el.className||"").split(" ");
+      return parts.indexOf("cover-phone-view-home")>=0 && parts.indexOf("preview")>=0;
+    });
+    if(!preview) return [];
+    var previewStyle=getComputedStyle(preview);
+    var previewBox=preview.getBoundingClientRect();
+    if(previewStyle.visibility==="hidden" || previewStyle.display==="none" || previewBox.width<20) return [];
+    var card=preview.querySelector(".cover-phone-view-home-video-item");
+    var node=card && (card.querySelector("img") || (card.tagName==="IMG"?card:null));
+    if(!node) return [];
+    var nodeStyle=getComputedStyle(node);
+    var nodeBox=node.getBoundingClientRect();
+    if(nodeStyle.visibility==="hidden" || nodeStyle.display==="none" || nodeBox.width<20) return [];
+    var w=node.naturalWidth||0, h=node.naturalHeight||0;
+    if(w<20 || h<20) return [];
+    try {
+      var canvas=document.createElement("canvas");
+      canvas.width=8; canvas.height=8;
+      var ctx=canvas.getContext("2d");
+      ctx.drawImage(node,0,0,8,8);
+      var data=ctx.getImageData(0,0,8,8).data;
+      var grid=[];
+      for(var i=0;i<data.length;i+=4) grid.push(Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]));
+      return [{w:w,h:h,grid:grid}];
+    } catch(error) { return []; }
   }`);
   const selectEditor = async (kind) => {
     const marker = kind === "4x3" ? "editor_4_3" : "editor_16_9";
@@ -466,6 +497,7 @@ if (cover43 && cover169) {
         if (editor.status === "ok") return editor.evidence;
         continue;
       }
+      await showHomePreview();
       const phone = judgeCoverIdentity({
         samples: await readPhone43(),
         target: RATIO_4_3,
@@ -509,7 +541,8 @@ if (cover43 && cover169) {
   // 16:9 文件若进了 4:3 画布，或同步把 4:3 换成了 16:9，这里看的是 4:3 画布本身。
   // 不拿另一块较小的残留图充数。
   let still43 = { status: "unread" };
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < 8; i += 1) {
+    await showHomePreview();
     const editor = judgeCoverIdentity({
       samples: await readEditorSamples("4x3"),
       target: RATIO_4_3,
