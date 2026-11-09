@@ -678,16 +678,18 @@ if (declareDecision.action !== "keep") {
     fail(`创作声明下拉里没有「${declareText}」,当前值是「${declareFinal || "空"}」`);
   }
   const optPt = await ev(`function(arg){
-    var opt=__all().find(function(el){
+    var rows=__all().filter(function(el){
       if((__own(el)||"").trim()!==arg.text) return false;
       var r=el.getBoundingClientRect();
-      return r.width>0 && r.height>0;
+      return r.width>40 && r.height>=12 && r.height<=40;
     });
+    rows.sort(function(a,b){return a.getBoundingClientRect().height-b.getBoundingClientRect().height;});
+    var opt=rows[0];
     if(!opt) return null;
     opt.scrollIntoView({block:"center"});
     var r=opt.getBoundingClientRect();
-    var x=r.x+Math.min(r.width/2, 36);
-    var y=r.y+Math.min(r.height/2, 10);
+    var x=r.x+Math.min(r.width/2, 48);
+    var y=r.y+r.height/2;
     var top=document.elementFromPoint(x, y);
     var hit=top;
     while(hit && hit!==opt) hit=hit.parentElement || (hit.getRootNode && hit.getRootNode().host) || null;
@@ -696,7 +698,47 @@ if (declareDecision.action !== "keep") {
   }`, { text: declareText });
   if (!optPt) fail(`创作声明「${declareText}」可见但点不到,当前值是「${declareFinal || "空"}」`);
   await page.mouse.click(optPt.x, optPt.y, { label: "选择创作声明" });
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(400);
+  declareFinal = await readDeclare();
+}
+if (declareFinal !== declareText && declareDecision.action === "select") {
+  console.error("创作声明第一次点击没有改到目标值，再点一次选项");
+  const again = await ev(`function(arg){
+    var input=__all().find(function(el){return el.tagName==="INPUT" && /创作声明/.test(el.placeholder||"");});
+    if(!input) return null;
+    var wrap=input.closest(".bcc-select") || input;
+    var wr=wrap.getBoundingClientRect();
+    var rows=__all().filter(function(el){
+      if((__own(el)||"").trim()!==arg.text) return false;
+      var r=el.getBoundingClientRect();
+      return r.width>40 && r.height>=12 && r.height<=40;
+    });
+    var opt=rows[0];
+    if(opt){
+      var r=opt.getBoundingClientRect();
+      return {open:false, x:r.x+Math.min(r.width/2, 48), y:r.y+r.height/2};
+    }
+    return {open:true, x:wr.x+wr.width-18, y:wr.y+wr.height/2};
+  }`, { text: declareText });
+  if (again && again.open) {
+    await page.mouse.click(again.x, again.y, { label: "再次打开创作声明" });
+    await page.waitForTimeout(400);
+    const optPt2 = await ev(`function(arg){
+      var rows=__all().filter(function(el){
+        if((__own(el)||"").trim()!==arg.text) return false;
+        var r=el.getBoundingClientRect();
+        return r.width>40 && r.height>=12 && r.height<=40;
+      });
+      var opt=rows[0];
+      if(!opt) return null;
+      var r=opt.getBoundingClientRect();
+      return {x:r.x+Math.min(r.width/2, 48), y:r.y+r.height/2};
+    }`, { text: declareText });
+    if (optPt2) await page.mouse.click(optPt2.x, optPt2.y, { label: "再次选择创作声明" });
+  } else if (again) {
+    await page.mouse.click(again.x, again.y, { label: "再次选择创作声明" });
+  }
+  await page.waitForTimeout(400);
   declareFinal = await readDeclare();
 }
 if (declareFinal !== declareText) {
