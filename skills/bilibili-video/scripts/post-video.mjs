@@ -672,9 +672,8 @@ const partitionListOpen = () => ev(`function(){
 }`);
 if (await partitionListOpen()) {
   const closer = await ev(`function(){
-    var root=__all().find(function(el){return String(el.className||"").split(" ").indexOf("video-human-type")>=0;});
-    var ctrl=root && root.querySelector(".select-controller");
-    return ctrl ? __pointInView(ctrl) : null;
+    var el=__byTextExact("标题") || __byTextExact("基本设置");
+    return el ? __pointInView(el) : null;
   }`);
   if (closer) await page.mouse.click(closer.x, closer.y, { label: "收起分区列表" });
   await page.waitForTimeout(400);
