@@ -670,7 +670,7 @@ const partitionListOpen = () => ev(`function(){
     return r.height>20 && r.width>20;
   });
 }`);
-if (await partitionListOpen()) {
+for (let i = 0; i < 3 && await partitionListOpen(); i += 1) {
   const closer = await ev(`function(){
     var el=__byTextExact("标题") || __byTextExact("基本设置");
     return el ? __pointInView(el) : null;
