@@ -563,6 +563,21 @@ if (declareDecision.action !== "keep") {
 if (declareFinal !== declareText) {
   fail(`创作声明回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
 }
+if (declareDecision.action === "select") {
+  if (page.keyboard && typeof page.keyboard.press === "function") {
+    try { await page.keyboard.press("Escape"); } catch {}
+  }
+  const away = await ev(`function(){
+    var el=__byTextExact("基本设置");
+    return el ? __pointInView(el) : null;
+  }`);
+  if (away) await page.mouse.click(away.x, away.y, { label: "收起创作声明" });
+  await page.waitForTimeout(300);
+  declareFinal = await readDeclare();
+  if (declareFinal !== declareText) {
+    fail(`收起创作声明后回读不是「${declareText}」(实际「${declareFinal || "空"}」)`);
+  }
+}
 
 // --- 分区 ---
 // The remembered chip lives in .video-human-type .select-item-cont-inserted.
@@ -599,10 +614,20 @@ if (requestedType && typeState.chip !== requestedType) {
     return names;
   }`);
   let optionNames = [];
+  let reopened = false;
   for (let i = 0; i < 8; i += 1) {
     await page.waitForTimeout(300);
     optionNames = await readOptionNames();
     if (optionNames.includes(requestedType)) break;
+    if (!reopened && i === 3 && optionNames.length === 0) {
+      reopened = true;
+      const again = await ev(`function(){
+        var root=__all().find(function(el){return String(el.className||"").split(" ").indexOf("video-human-type")>=0;});
+        var ctrl=root && root.querySelector(".select-controller");
+        return ctrl ? __pointInView(ctrl) : null;
+      }`);
+      if (again) await page.mouse.click(again.x, again.y, { label: "再次打开分区列表" });
+    }
   }
   const choice = partitionChoice({ requested: requestedType, current: typeState.chip, options: optionNames });
   if (choice.action !== "select") {
