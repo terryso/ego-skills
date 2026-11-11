@@ -22,7 +22,12 @@ import {
   judgeCoverIdentity,
   lumaGridFromRgba,
   pngFingerprint,
+  coverSampleFromPng,
   manuscriptFromText,
+  MANUSCRIPT_LOOKUP_ATTEMPTS,
+  MANUSCRIPT_LOOKUP_INTERVAL_MS,
+  archivesSearchUrls,
+  pickManuscriptFromArchivePayloads,
   mayClickSubmit,
   partitionChoice,
   syncGate,
@@ -204,32 +209,64 @@ for (let round = 0; round < 3; round++) {
   if (!removed.length) break;
   await page.waitForTimeout(800);
 }
-const remainingTags = await ev(`function(){
+const readTagChips = () => ev(`function(){
+  function chipText(el){
+    var own=__own(el);
+    if(own) return own;
+    var p=el.querySelector("p");
+    if(p){
+      var t=__own(p)||String(p.textContent||"").trim();
+      if(t) return t;
+    }
+    return String(el.textContent||"").replace(/\s+/g," ").trim();
+  }
   return __all().filter(function(el){return String(el.className).indexOf("label-item-v2-content")>=0 && __visible(el);})
-    .map(function(el){return __own(el);});
+    .map(chipText).filter(Boolean);
 }`);
+const remainingTags = await readTagChips();
 if (remainingTags.length > 0) {
   console.error(JSON.stringify({ note: "预填标签未能全部移除,保留现状", remaining: remainingTags }));
 }
 
+// 以前是三个标签连续模拟回车后再一起核对。某一格没挂上就会三个一起报失败，
+// 且输入框未聚焦、建议下拉未收起时，后面的回车会打空。每个标签都等到 chip 出现再写下一项。
 for (const tag of tags) {
-  const added = await ev(`function(tag){
-    var input=__all().find(function(el){return el.tagName==="INPUT" && /创建标签/.test(el.placeholder||"");});
-    if(!input) return {ok:false,error:"未找到标签输入框"};
-    var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
-    setter.call(input,tag);
-    input.dispatchEvent(new Event("input",{bubbles:true}));
-    input.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",keyCode:13,which:13,bubbles:true}));
-    return {ok:true};
-  }`, tag);
-  if (!added.ok) fail(added.error || "标签写入失败");
-  await page.waitForTimeout(600);
+  let present = (await readTagChips()).includes(tag);
+  for (let attempt = 0; attempt < 3 && !present; attempt += 1) {
+    const pt = await ev(`function(){
+      var input=__all().find(function(el){return el.tagName==="INPUT" && /创建标签/.test(el.placeholder||"");});
+      if(!input) return null;
+      return __pointInView(input);
+    }`);
+    if (!pt) fail("未找到标签输入框");
+    await page.mouse.click(pt.x, pt.y, { label: `聚焦标签输入框(${tag})` });
+    await page.waitForTimeout(200);
+    const added = await ev(`function(tag){
+      var input=__all().find(function(el){return el.tagName==="INPUT" && /创建标签/.test(el.placeholder||"");});
+      if(!input) return {ok:false,error:"未找到标签输入框"};
+      input.focus();
+      var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
+      setter.call(input,tag);
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+      input.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",keyCode:13,which:13,bubbles:true,code:"Enter"}));
+      return {ok:true};
+    }`, tag);
+    if (!added.ok) fail(added.error || "标签写入失败");
+    try {
+      await page.keyboard.press("Enter");
+    } catch {
+      // 老版本 ego 没有 keyboard 时，上面的合成 keydown 仍会发出。
+    }
+    for (let i = 0; i < 10; i += 1) {
+      await page.waitForTimeout(400);
+      present = (await readTagChips()).includes(tag);
+      if (present) break;
+    }
+  }
+  if (!present) fail(`标签未确认添加(回车创建失败?): ${tag}`);
 }
 if (tags.length) {
-  const chipTexts = await ev(`function(){
-    return __all().filter(function(el){return String(el.className).indexOf("label-item-v2-content")>=0 && __visible(el);})
-      .map(function(el){return __own(el);});
-  }`);
+  const chipTexts = await readTagChips();
   const missing = tags.filter((t) => !chipTexts.includes(t));
   if (missing.length) fail(`标签未确认添加(回车创建失败?): ${missing.join(", ")}`);
 
@@ -240,10 +277,7 @@ if (tags.length) {
   let extras = [];
   for (let round = 0; round < 6; round++) {
     await page.waitForTimeout(1500);
-    const chipsNow = await ev(`function(arg){
-      return __all().filter(function(el){return String(el.className).indexOf("label-item-v2-content")>=0 && __visible(el);})
-        .map(function(el){return __own(el);});
-    }`);
+    const chipsNow = await readTagChips();
     extras = chipsNow.filter((t) => !tags.includes(t));
     if (!extras.length) { extras = []; break; }
     const removed = await ev(`function(arg){
@@ -469,6 +503,150 @@ if (cover43 && cover169) {
     fail(`${kind}画布没有成为当前上传目标，已停止，避免文件进到另一个槽`);
   };
 
+  const clipRect = (r, vp) => {
+    if (!r || !(r.width >= 20) || !(r.height >= 20)) return null;
+    const x = Math.max(0, Math.floor(r.x));
+    const y = Math.max(0, Math.floor(r.y));
+    let width = Math.floor(r.width);
+    let height = Math.floor(r.height);
+    if (vp) {
+      if (x >= vp.w || y >= vp.h) return null;
+      width = Math.min(width, vp.w - x);
+      height = Math.min(height, vp.h - y);
+    }
+    if (width < 20 || height < 20) return null;
+    return { x, y, width, height };
+  };
+  // Clip screenshots of Fabric canvases can miss the composited pixels (round 8
+  // scored -0.111 on a 315×236 clip while the same region in a full viewport
+  // shot scores ~0.93). Always capture the viewport, then crop the PNG.
+  const captureViewportPng = async (label = "viewport") => {
+    const path = `/tmp/bilibili-cover-${label}.png`;
+    try {
+      await page.screenshot({ path });
+    } catch {
+      return null;
+    }
+    try {
+      const buf = readFileSync(path);
+      const dims = imageDimsFromBuffer(buf);
+      if (!dims || !(dims.width >= 20) || !(dims.height >= 20)) return null;
+      const vp = await ev(`function(){ return { vw: window.innerWidth, vh: window.innerHeight }; }`);
+      if (!vp || !(vp.vw >= 20) || !(vp.vh >= 20)) return null;
+      return { buf, pngW: dims.width, pngH: dims.height, vw: vp.vw, vh: vp.vh, path };
+    } catch {
+      return null;
+    }
+  };
+  const cssToPngRect = (shot, r) => {
+    if (!shot || !r) return null;
+    const scaleX = shot.pngW / shot.vw;
+    const scaleY = shot.pngH / shot.vh;
+    const x = Math.max(0, Math.round(r.x * scaleX));
+    const y = Math.max(0, Math.round(r.y * scaleY));
+    const width = Math.round(r.width * scaleX);
+    const height = Math.round(r.height * scaleY);
+    if (x >= shot.pngW || y >= shot.pngH) return null;
+    const w = Math.min(width, shot.pngW - x);
+    const h = Math.min(height, shot.pngH - y);
+    if (w < 20 || h < 20) return null;
+    return { x, y, width: w, height: h };
+  };
+  const sampleVisibleClip = (shot, cssRect, { centerRatio = null } = {}) => {
+    if (!shot || !cssRect) return [];
+    const clipped = clipRect(cssRect, { w: shot.vw, h: shot.vh });
+    const rect = cssToPngRect(shot, clipped);
+    if (!rect) return [];
+    try {
+      const sample = coverSampleFromPng(shot.buf, { rect, centerRatio });
+      return sample ? [sample] : [];
+    } catch {
+      return [];
+    }
+  };
+  const readEditorVisible = async (kind, shot) => {
+    if (!shot) return [];
+    const info = await ev(`function(arg){
+      var marker=arg.kind==="4x3"?"editor_4_3":"editor_16_9";
+      var root=__all().find(function(el){return String(el.className||"").split(" ").indexOf(marker)>=0;});
+      if(!root) return null;
+      // Prefer the painted canvas so a toolbar above the 4:3 picture is not included.
+      var inner=root.querySelector("canvas.lower-canvas, canvas, img") || root;
+      var r=inner.getBoundingClientRect();
+      return { x:r.x, y:r.y, width:r.width, height:r.height };
+    }`, { kind });
+    return sampleVisibleClip(shot, info, {
+      centerRatio: kind === "4x3" ? RATIO_4_3 : null,
+    });
+  };
+  const readPhoneVisible = async (shot) => {
+    const info = await ev(`function(wantTitle){
+      var preview=__all().find(function(el){
+        var parts=String(el.className||"").split(" ");
+        return parts.indexOf("cover-phone-view-home")>=0 && parts.indexOf("preview")>=0;
+      });
+      if(!preview) return null;
+      var previewStyle=getComputedStyle(preview);
+      var previewBox=preview.getBoundingClientRect();
+      if(previewStyle.visibility==="hidden" || previewStyle.display==="none" || previewBox.width<20) return null;
+      var items=Array.from(preview.querySelectorAll(".cover-phone-view-home-video-item"));
+      var rects=[];
+      var pushImg=function(node){
+        if(!node) return;
+        var s=getComputedStyle(node);
+        var r=node.getBoundingClientRect();
+        if(s.visibility==="hidden"||s.display==="none"||r.width<20||r.height<20) return;
+        rects.push({ x:r.x, y:r.y, width:r.width, height:r.height });
+      };
+      if(wantTitle){
+        var match=items.find(function(item){
+          var text=(item.innerText||"")+" "+(item.textContent||"");
+          return text.indexOf(wantTitle)>=0;
+        });
+        if(match){
+          pushImg(match.querySelector("img")||(match.tagName==="IMG"?match:null));
+          if(rects.length) return { rects:rects, vw:window.innerWidth, vh:window.innerHeight, matched:true };
+        }
+      }
+      items.forEach(function(item){
+        var node=item.querySelector("img")||(item.tagName==="IMG"?item:null);
+        if(!node) return;
+        var r=node.getBoundingClientRect();
+        if(r.width<40||r.height<40) return;
+        if(Math.abs((r.width/r.height)-(4/3))>0.2) return;
+        pushImg(node);
+      });
+      if(!rects.length) return null;
+      return { rects:rects, vw:window.innerWidth, vh:window.innerHeight, matched:false };
+    }`, title);
+    if (!shot || !info || !Array.isArray(info.rects) || !info.rects.length) {
+      return { samples: [], matched: false };
+    }
+    const samples = [];
+    for (let i = 0; i < info.rects.length; i += 1) {
+      samples.push(...sampleVisibleClip(shot, info.rects[i]));
+    }
+    return { samples, matched: !!info.matched };
+  };
+  const pickCoverJudge = (primary, visible) => {
+    if (primary && primary.status === "ok") return primary;
+    if (visible && visible.status === "ok") return visible;
+    const scoreOf = (j) => (j && Number.isFinite(j.score) ? j.score : -1);
+    if (scoreOf(visible) > scoreOf(primary)) return visible;
+    if (primary && primary.status !== "unread") return primary;
+    return visible || primary || { status: "unread" };
+  };
+  const judgeVisibleSamples = (samples, opts) => {
+    if (!samples || !samples.length) return { status: "unread" };
+    let last = { status: "unread" };
+    for (const sample of samples) {
+      const judged = judgeCoverIdentity({ ...opts, samples: [sample] });
+      if (judged.status === "ok") return judged;
+      if (judged.status !== "unread") last = judged;
+    }
+    return last;
+  };
+
   const uploadCover = async (file, kind, source, other) => {
     await selectEditor(kind);
     await ensureSyncOff(`上传${kind}前`);
@@ -483,9 +661,18 @@ if (cover43 && cover169) {
     await chooser2.setFiles(file);
     // 等对应槽位的缩略图出现且比例正确(naturalWidth/Height 来自上传图)。
     let last = { status: "unread" };
-    for (let i = 0; i < 15; i++) {
-      await page.waitForTimeout(500);
-      const editor = judgeCoverIdentity({
+    // The Fabric lower-canvas / a 500×375 phone thumb can sit at ~0.73 forever
+    // even when the official cover is already painted on screen. Keep the 0.82
+    // threshold. Sample visible pixels from a viewport screenshot (not a clip
+    // shot). A 120×90 home-preview card with a gradient overlay cannot hit 0.82,
+    // so a titled card is enough once the editor visible/canvas path has passed.
+    const coverWaitMs = 500;
+    const coverWaitTries = 120;
+    for (let i = 0; i < coverWaitTries; i++) {
+      await page.waitForTimeout(coverWaitMs);
+      if (kind === "4x3") await showHomePreview();
+      const shot = await captureViewportPng(`viewport-${kind}-${i}`);
+      const editorCanvas = judgeCoverIdentity({
         samples: await readEditorSamples(kind),
         target: RATIO_4_3,
         source,
@@ -493,13 +680,23 @@ if (cover43 && cover169) {
         slot: kind === "4x3" ? "editor_4_3" : "editor_16_9",
         requireRatio: false,
       });
+      const editorVisible = judgeVisibleSamples(await readEditorVisible(kind, shot), {
+        target: RATIO_4_3,
+        source,
+        other,
+        slot: kind === "4x3" ? "editor_4_3" : "editor_16_9",
+        requireRatio: false,
+      });
+      const editor = pickCoverJudge(editorCanvas, editorVisible);
       if (kind !== "4x3") {
         last = editor;
-        if (editor.status === "ok") return editor.evidence;
+        if (i === 0 || (i + 1) % 10 === 0 || editor.status === "ok") {
+          console.error(JSON.stringify({ coverWait: { kind, i, elapsedMs: (i + 1) * coverWaitMs, editor, editorCanvas, editorVisible } }));
+        }
+        if (editor.status === "ok") return { ...editor.evidence, via: editor === editorCanvas ? "canvas" : "visible" };
         continue;
       }
-      await showHomePreview();
-      const phone = judgeCoverIdentity({
+      const phoneImg = judgeCoverIdentity({
         samples: await readPhone43(),
         target: RATIO_4_3,
         source,
@@ -507,12 +704,33 @@ if (cover43 && cover169) {
         slot: "cover-phone-view-home-video-img",
         requireRatio: true,
       });
-      if (editor.status === "ok" && phone.status === "ok") {
-        return { ...phone.evidence, editorMatch: editor.evidence.match };
+      const phoneRead = await readPhoneVisible(shot);
+      const phoneVisible = judgeVisibleSamples(phoneRead.samples, {
+        target: RATIO_4_3,
+        source,
+        other,
+        slot: "cover-phone-view-home-video-img",
+        requireRatio: false,
+      });
+      const phone = pickCoverJudge(phoneImg, phoneVisible);
+      const phoneOk = phone.status === "ok" || (editor.status === "ok" && phoneRead.matched);
+      if (i === 0 || (i + 1) % 10 === 0 || (editor.status === "ok" && phoneOk)) {
+        console.error(JSON.stringify({ coverWait: { kind, i, elapsedMs: (i + 1) * coverWaitMs, editor, phone, editorCanvas, editorVisible, phoneImg, phoneVisible, phoneTitled: phoneRead.matched } }));
+      }
+      if (editor.status === "ok" && phoneOk) {
+        return {
+          ...(phone.status === "ok" ? phone.evidence : editor.evidence),
+          editorMatch: editor.evidence.match,
+          via: {
+            editor: editor === editorCanvas ? "canvas" : "visible",
+            phone: phone.status === "ok" ? (phone === phoneImg ? "img" : "visible") : "titled-card",
+          },
+          phoneTitled: phoneRead.matched,
+        };
       }
       last = editor.status === "ok" ? phone : editor;
     }
-    fail(`${kind} 封面在 7.5 秒内对不上原图(${last.status}): ${JSON.stringify(last)}`);
+    fail(`${kind} 封面在 60 秒内对不上原图(${last.status}): ${JSON.stringify(last)}`);
   };
 
   const fingerprintFile = (file) => {
@@ -544,7 +762,7 @@ if (cover43 && cover169) {
   let still43 = { status: "unread" };
   for (let i = 0; i < 8; i += 1) {
     await showHomePreview();
-    const editor = judgeCoverIdentity({
+    const editorCanvas = judgeCoverIdentity({
       samples: await readEditorSamples("4x3"),
       target: RATIO_4_3,
       source: source43,
@@ -552,7 +770,16 @@ if (cover43 && cover169) {
       slot: "editor_4_3",
       requireRatio: false,
     });
-    const phone = judgeCoverIdentity({
+    const shot = await captureViewportPng(`viewport-still43-${i}`);
+    const editorVisible = judgeVisibleSamples(await readEditorVisible("4x3", shot), {
+      target: RATIO_4_3,
+      source: source43,
+      other: source169,
+      slot: "editor_4_3",
+      requireRatio: false,
+    });
+    const editor = pickCoverJudge(editorCanvas, editorVisible);
+    const phoneImg = judgeCoverIdentity({
       samples: await readPhone43(),
       target: RATIO_4_3,
       source: source43,
@@ -560,14 +787,24 @@ if (cover43 && cover169) {
       slot: "cover-phone-view-home-video-img",
       requireRatio: true,
     });
-    if (editor.status === "unread" || phone.status === "unread") {
+    const phoneRead = await readPhoneVisible(shot);
+    const phoneVisible = judgeVisibleSamples(phoneRead.samples, {
+      target: RATIO_4_3,
+      source: source43,
+      other: source169,
+      slot: "cover-phone-view-home-video-img",
+      requireRatio: false,
+    });
+    const phone = pickCoverJudge(phoneImg, phoneVisible);
+    const phoneOk = phone.status === "ok" || (editor.status === "ok" && phoneRead.matched);
+    if (editor.status === "unread" || (phone.status === "unread" && !phoneRead.matched)) {
       still43 = { status: "unread" };
       await page.waitForTimeout(400);
       continue;
     }
-    still43 = editor.status === "ok" && phone.status === "ok"
-      ? { status: "ok", evidence: { ...phone.evidence, editorMatch: editor.evidence.match } }
-      : { status: "identity", editor, phone };
+    still43 = editor.status === "ok" && phoneOk
+      ? { status: "ok", evidence: { ...(phone.status === "ok" ? phone.evidence : editor.evidence), editorMatch: editor.evidence.match, via: { editor: editor === editorCanvas ? "canvas" : "visible", phone: phone.status === "ok" ? (phone === phoneImg ? "img" : "visible") : "titled-card" }, phoneTitled: phoneRead.matched } }
+      : { status: "identity", editor, phone, editorCanvas, editorVisible, phoneImg, phoneVisible, phoneTitled: phoneRead.matched };
     break;
   }
   if (still43.status !== "ok") {
@@ -956,21 +1193,77 @@ if (!published) {
   });
 }
 
+async function fetchCreatorJson(url) {
+  return ev(`async function(arg){
+    try {
+      var r = await fetch(arg.url, { credentials: "include" });
+      var text = await r.text();
+      var json = null;
+      try { json = JSON.parse(text); } catch (e) {}
+      return { ok: r.ok, status: r.status, json: json };
+    } catch (e) {
+      return { ok: false, status: 0, json: null };
+    }
+  }`, { url });
+}
+
+async function lookupManuscriptByTitle(wantedTitle) {
+  const urls = archivesSearchUrls(wantedTitle);
+  const payloads = [];
+  for (const url of [urls.keyword, urls.pubing, urls.all]) {
+    try {
+      const res = await fetchCreatorJson(url);
+      if (res && res.json) payloads.push(res.json);
+    } catch {
+      // One endpoint failing should not stop the others.
+    }
+  }
+  return pickManuscriptFromArchivePayloads(payloads, wantedTitle);
+}
+
+async function lookupManuscriptFromManager(wantedTitle) {
+  const pages = [
+    "https://member.bilibili.com/platform/upload-manager/article",
+    "https://member.bilibili.com/platform/upload-manager/article?group=is_pubing&page=1",
+    "https://member.bilibili.com/platform/upload-manager/article?group=pubed&page=1",
+  ];
+  for (const href of pages) {
+    await page.goto(href, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.waitForTimeout(2000);
+    const link = await ev(`function(arg){
+      var hit=__all().find(function(el){
+        var text=el.innerText||"";
+        var href=el.href||el.getAttribute("href")||"";
+        return text.indexOf(arg.title)>=0 && /BV[0-9A-Za-z]{10}/.test(text + "\n" + href);
+      });
+      if (!hit) return "";
+      return (hit.href || hit.getAttribute("href") || hit.innerText || "");
+    }`, { title: wantedTitle });
+    const again = manuscriptFromText(link);
+    if (again.identity === "bvid") return again;
+  }
+  return { bvid: null, url: null, identity: "unconfirmed" };
+}
+
 let found = manuscriptFromText(`${finalText}\n${finalUrl}`);
 if (found.identity !== "bvid") {
   try {
-    await page.goto("https://member.bilibili.com/platform/upload-manager/article", { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(2000);
-    const href = await ev(`function(arg){
-      var link=__all().find(function(el){
-        return el.tagName==="A" && (el.innerText||"").indexOf(arg.title)>=0 && /BV[0-9A-Za-z]{10}/.test(el.href||"");
-      });
-      return link ? link.href : "";
-    }`, { title });
-    const again = manuscriptFromText(href);
-    if (again.identity === "bvid") found = again;
+    for (let i = 0; i < MANUSCRIPT_LOOKUP_ATTEMPTS; i++) {
+      found = await lookupManuscriptByTitle(title);
+      if (found.identity === "bvid") break;
+      if (i < MANUSCRIPT_LOOKUP_ATTEMPTS - 1) {
+        await page.waitForTimeout(MANUSCRIPT_LOOKUP_INTERVAL_MS);
+      }
+    }
   } catch {
-    // The submit already happened. A missing id is reported as unconfirmed.
+    // The submit already happened. Keep looking in the manager UI.
+  }
+}
+if (found.identity !== "bvid") {
+  try {
+    found = await lookupManuscriptFromManager(title);
+  } catch {
+    // A missing id is reported as unconfirmed.
   }
 }
 console.log(JSON.stringify(publishSuccessBody({

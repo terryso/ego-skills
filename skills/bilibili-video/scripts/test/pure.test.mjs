@@ -13,8 +13,12 @@ import {
   judgeCoverIdentity,
   lumaGridFromRgba,
   pngFingerprint,
+  coverSampleFromPng,
   loginRequiredBody,
   manuscriptFromText,
+  archivesSearchUrls,
+  manuscriptFromArchives,
+  pickManuscriptFromArchivePayloads,
   mayClickSubmit,
   parseCheckArgs,
   parsePublishArgs,
@@ -394,6 +398,112 @@ test("cover identity uses the spatial grid, not the average color", () => {
   assert.equal(staleHidesOverwrite.width, 500);
 });
 
+test("visible PNG samples can crop a 16:9 viewport to the centered 4:3 picture", () => {
+  const blocks = (x, y, width, height) => {
+    const left = x < width / 2;
+    const top = y < height / 2;
+    if (left && top) return [20, 40, 90];
+    if (!left && top) return [210, 170, 60];
+    if (left && !top) return [40, 40, 40];
+    return [120, 70, 90];
+  };
+  const source = pngFingerprint(paintPng(32, 24, blocks));
+  const letterboxed = paintPng(48, 24, (x, y, width, height) => {
+    const side = (48 - 32) / 2;
+    if (x < side || x >= 48 - side) return [160, 160, 160];
+    return blocks(x - side, y, 32, 24);
+  });
+  const cropped = coverSampleFromPng(letterboxed, { centerRatio: 4 / 3 });
+  assert.ok(cropped);
+  assert.equal(cropped.w, 32);
+  assert.equal(cropped.h, 24);
+  const matched = judgeCoverIdentity({
+    samples: [cropped],
+    target: 4 / 3,
+    source,
+    slot: "editor_4_3",
+  });
+  assert.equal(matched.status, "ok");
+  const uncropped = coverSampleFromPng(letterboxed);
+  const wide = judgeCoverIdentity({
+    samples: [uncropped],
+    target: 4 / 3,
+    source,
+    slot: "editor_4_3",
+  });
+  assert.equal(wide.status, "identity");
+});
+
+test("coverSampleFromPng can crop a rect out of a larger PNG", () => {
+  const blocks = (x, y, width, height) => {
+    const left = x < width / 2;
+    const top = y < height / 2;
+    if (left && top) return [20, 40, 90];
+    if (!left && top) return [210, 170, 60];
+    if (left && !top) return [40, 40, 40];
+    return [120, 70, 90];
+  };
+  const source = pngFingerprint(paintPng(32, 24, blocks));
+  const padded = paintPng(80, 48, (x, y) => {
+    const ox = 12;
+    const oy = 8;
+    if (x >= ox && x < ox + 32 && y >= oy && y < oy + 24) return blocks(x - ox, y - oy, 32, 24);
+    return [160, 160, 160];
+  });
+  const sample = coverSampleFromPng(padded, { rect: { x: 12, y: 8, width: 32, height: 24 } });
+  assert.ok(sample);
+  assert.equal(sample.w, 32);
+  assert.equal(sample.h, 24);
+  const matched = judgeCoverIdentity({
+    samples: [sample],
+    target: 4 / 3,
+    source,
+    slot: "editor_4_3",
+  });
+  assert.equal(matched.status, "ok");
+});
+
+test("same-art 4:3 and 16:9 letterboxes pass when this slot is the better match", () => {
+  const cream = [247, 241, 227];
+  const blocks = (x, y, width, height) => {
+    const left = x < width / 2;
+    const top = y < height / 2;
+    if (left && top) return [20, 40, 90];
+    if (!left && top) return [210, 170, 60];
+    if (left && !top) return [40, 40, 40];
+    return [120, 70, 90];
+  };
+  const letterbox = (canvasW, canvasH, artW, artH) => {
+    const ox = Math.round((canvasW - artW) / 2);
+    const oy = Math.round((canvasH - artH) / 2);
+    return paintPng(canvasW, canvasH, (x, y) => {
+      if (x >= ox && x < ox + artW && y >= oy && y < oy + artH) return blocks(x - ox, y - oy, artW, artH);
+      return cream;
+    });
+  };
+  const png43 = letterbox(80, 60, 45, 60);
+  const png169 = letterbox(106, 60, 45, 60);
+  const source43 = pngFingerprint(png43);
+  const source169 = pngFingerprint(png169);
+  assert.ok(bestFingerprintScore(source43.full, source169) >= COVER_MATCH_MIN);
+  const matched = judgeCoverIdentity({
+    samples: [{ w: 80, h: 60, grid: source43.full }],
+    target: 4 / 3,
+    source: source43,
+    other: source169,
+    slot: "editor_4_3",
+  });
+  assert.equal(matched.status, "ok");
+  const wrongSlot = judgeCoverIdentity({
+    samples: [{ w: 106, h: 60, grid: source169.full }],
+    target: 4 / 3,
+    source: source43,
+    other: source169,
+    slot: "editor_4_3",
+  });
+  assert.equal(wrongSlot.status, "identity");
+});
+
 function crc32(buf) {
   let crc = 0xffffffff;
   for (const byte of buf) {
@@ -408,6 +518,42 @@ test("cover slots keep their own measurements and a BV id is read from text", ()
   assert.equal(coverSlotEvidence({ slot: "cover-phone-view-space-video-img", width: 1280, height: 960, target: 16 / 9 }), null);
   assert.equal(manuscriptFromText("稿件投递成功").identity, "unconfirmed");
   assert.equal(manuscriptFromText("https://www.bilibili.com/video/BV1uVW46QEZn/").bvid, "BV1uVW46QEZn");
+});
+
+test("archives search URLs and exact title lookup recover a BV", () => {
+  const urls = archivesSearchUrls("同一个模型，两个名字");
+  assert.match(urls.keyword, /status=is_pubing%2Cpubed%2Cnot_pubed/);
+  assert.match(urls.keyword, /keyword=%E5%90%8C%E4%B8%80%E4%B8%AA%E6%A8%A1%E5%9E%8B%EF%BC%8C%E4%B8%A4%E4%B8%AA%E5%90%8D%E5%AD%97/);
+  assert.match(urls.pubing, /status=is_pubing/);
+  assert.doesNotMatch(urls.pubing, /keyword=/);
+  assert.match(urls.all, /status=is_pubing%2Cpubed%2Cnot_pubed/);
+
+  const title = "同一个模型，两个名字";
+  const hit = manuscriptFromArchives({
+    data: {
+      archives: [{ title: "其它稿件", bvid: "BV1aaaaaaaa1" }],
+      arc_audits: [{ Archive: { title, bvid: "BV1ihWu6jEx5" } }],
+    },
+  }, title);
+  assert.equal(hit.bvid, "BV1ihWu6jEx5");
+  assert.equal(hit.url, "https://www.bilibili.com/video/BV1ihWu6jEx5/");
+  assert.equal(hit.identity, "bvid");
+
+  const wrapped = manuscriptFromArchives({
+    json: { data: { archives: [{ title, bvid: "BV1ihWu6jEx5" }] } },
+  }, title);
+  assert.equal(wrapped.bvid, "BV1ihWu6jEx5");
+
+  assert.equal(manuscriptFromArchives({ data: { archives: [{ title, bvid: "" }] } }, title).identity, "unconfirmed");
+  assert.equal(manuscriptFromArchives({ data: { archives: [{ title: "同一个模型", bvid: "BV1ihWu6jEx5" }] } }, title).identity, "unconfirmed");
+  assert.equal(manuscriptFromArchives(null, title).identity, "unconfirmed");
+
+  const picked = pickManuscriptFromArchivePayloads([
+    { data: { archives: [{ title: "其它稿件", bvid: "BV1aaaaaaaa1" }] } },
+    { data: { archives: [{ title, bvid: "BV1ihWu6jEx5" }] } },
+  ], title);
+  assert.equal(picked.bvid, "BV1ihWu6jEx5");
+  assert.equal(pickManuscriptFromArchivePayloads([], title).identity, "unconfirmed");
 });
 
 test("resolveEgoExit maps login_required JSON to 2", () => {

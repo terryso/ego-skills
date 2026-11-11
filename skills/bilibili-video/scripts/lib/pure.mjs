@@ -269,6 +269,7 @@ export function coverSlotEvidence({ slot, width, height, target } = {}) {
 }
 
 export const COVER_MATCH_MIN = 0.82;
+export const COVER_OTHER_GAP = 0.08;
 export const COVER_GRID = 8;
 
 function paeth(left, up, upLeft) {
@@ -426,6 +427,71 @@ export function pngFingerprint(buf) {
   };
 }
 
+// Crop a buffer to the centered rectangle of the given aspect (e.g. 4/3 in a 16:9 viewport).
+export function cropRgbaToCenterRatio(rgba, width, height, target) {
+  const tw = Number(target);
+  if (!rgba || !(width >= 20) || !(height >= 20) || !Number.isFinite(tw) || tw <= 0) return null;
+  let sw = width;
+  let sh = height;
+  let sx = 0;
+  let sy = 0;
+  if (width / height > tw) {
+    sw = Math.round(height * tw);
+    sx = Math.round((width - sw) / 2);
+  } else if (width / height < tw) {
+    sh = Math.round(width / tw);
+    sy = Math.round((height - sh) / 2);
+  }
+  if (sw < 20 || sh < 20) return null;
+  if (sx === 0 && sy === 0 && sw === width && sh === height) return { rgba, width, height };
+  const out = new Uint8Array(sw * sh * 4);
+  for (let y = 0; y < sh; y += 1) {
+    const from = ((sy + y) * width + sx) * 4;
+    out.set(rgba.subarray(from, from + sw * 4), y * sw * 4);
+  }
+  return { rgba: out, width: sw, height: sh };
+}
+
+export function cropRgbaRect(rgba, width, height, rect) {
+  if (!rgba || !rect || !(width >= 20) || !(height >= 20)) return null;
+  const x = Math.max(0, Math.floor(Number(rect.x) || 0));
+  const y = Math.max(0, Math.floor(Number(rect.y) || 0));
+  const w = Math.min(Math.floor(Number(rect.width) || 0), width - x);
+  const h = Math.min(Math.floor(Number(rect.height) || 0), height - y);
+  if (w < 20 || h < 20) return null;
+  const out = new Uint8Array(w * h * 4);
+  for (let row = 0; row < h; row += 1) {
+    const from = ((y + row) * width + x) * 4;
+    out.set(rgba.subarray(from, from + w * 4), row * w * 4);
+  }
+  return { rgba: out, width: w, height: h };
+}
+
+// Fingerprint a PNG, optionally after cropping a pixel rect and/or a centered aspect.
+// Used for screenshots of the visible editor / phone preview, which can match
+// the source even when the Fabric lower-canvas or a 500×375 thumb does not.
+export function coverSampleFromPng(buf, { centerRatio = null, rect = null } = {}) {
+  const decoded = decodePngRgba(buf);
+  if (!decoded) return null;
+  let { rgba, width, height } = decoded;
+  if (rect) {
+    const cropped = cropRgbaRect(rgba, width, height, rect);
+    if (!cropped) return null;
+    rgba = cropped.rgba;
+    width = cropped.width;
+    height = cropped.height;
+  }
+  if (centerRatio) {
+    const cropped = cropRgbaToCenterRatio(rgba, width, height, centerRatio);
+    if (!cropped) return null;
+    rgba = cropped.rgba;
+    width = cropped.width;
+    height = cropped.height;
+  }
+  if (width < 20 || height < 20) return null;
+  return { w: width, h: height, grid: lumaGridFromRgba(rgba, width, height) };
+}
+
 function roundScore(score) {
   return Math.round(score * 1000) / 1000;
 }
@@ -457,7 +523,16 @@ export function judgeCoverIdentity({ samples, target, source, other, slot, requi
   if (best.own < COVER_MATCH_MIN) {
     return { status: "identity", score: roundScore(best.own), width: best.sample.w, height: best.sample.h };
   }
-  if (Number.isFinite(best.againstOther) && best.own < best.againstOther + 0.08) {
+  // Two letterboxes of the same artwork (official 4:3 vs 16:9) can correlate
+  // at ~0.95, so a sample cannot beat "other" by the usual 0.08. If the source
+  // files themselves are that similar, only require this slot's file to be the
+  // better match. Do not lower COVER_MATCH_MIN.
+  let otherGap = COVER_OTHER_GAP;
+  if (other && other.full) {
+    const related = bestFingerprintScore(source.full, other);
+    if (Number.isFinite(related) && related >= COVER_MATCH_MIN) otherGap = 0;
+  }
+  if (Number.isFinite(best.againstOther) && best.own < best.againstOther + otherGap) {
     return {
       status: "identity",
       score: roundScore(best.own),
@@ -529,6 +604,66 @@ export function manuscriptFromText(text) {
   if (!match) return { bvid: null, url: null, identity: "unconfirmed" };
   const bvid = match[0];
   return { bvid, url: `https://www.bilibili.com/video/${bvid}/`, identity: "bvid" };
+}
+
+export const ARCHIVES_STATUS_ALL = "is_pubing,pubed,not_pubed";
+export const MANUSCRIPT_LOOKUP_ATTEMPTS = 24;
+export const MANUSCRIPT_LOOKUP_INTERVAL_MS = 5000;
+
+export function archivesSearchUrls(title, { page = 1, pageSize = 20 } = {}) {
+  const pn = Number(page) > 0 ? Number(page) : 1;
+  const ps = Number(pageSize) > 0 ? Number(pageSize) : 20;
+  const kw = encodeURIComponent(String(title || "").trim());
+  const all = encodeURIComponent(ARCHIVES_STATUS_ALL);
+  const base = `${BASE}/x/web/archives`;
+  return {
+    keyword: `${base}?status=${all}&pn=${pn}&ps=${ps}&keyword=${kw}`,
+    pubing: `${base}?status=is_pubing&pn=${pn}&ps=${ps}`,
+    all: `${base}?status=${all}&pn=${pn}&ps=${ps}`,
+  };
+}
+
+function archiveRecord(item) {
+  if (!item || typeof item !== "object") return null;
+  return item.Archive || item.archive || item;
+}
+
+export function archivesRows(payload) {
+  const root = payload && typeof payload === "object" && payload.json && typeof payload.json === "object"
+    ? payload.json
+    : payload;
+  const data = root && typeof root === "object" ? root.data : null;
+  if (!data || typeof data !== "object") return [];
+  const rows = [];
+  for (const list of [data.archives, data.arc_audits]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const archive = archiveRecord(item);
+      if (!archive || typeof archive !== "object") continue;
+      const bvid = typeof archive.bvid === "string" ? archive.bvid : "";
+      const title = typeof archive.title === "string" ? archive.title : "";
+      rows.push({
+        title,
+        bvid: /BV[0-9A-Za-z]{10}/.test(bvid) ? bvid : "",
+      });
+    }
+  }
+  return rows;
+}
+
+export function manuscriptFromArchives(payload, title) {
+  const want = String(title || "").trim();
+  if (!want) return { bvid: null, url: null, identity: "unconfirmed" };
+  const match = archivesRows(payload).find((row) => row.title === want && row.bvid);
+  return match ? manuscriptFromText(match.bvid) : { bvid: null, url: null, identity: "unconfirmed" };
+}
+
+export function pickManuscriptFromArchivePayloads(payloads, title) {
+  for (const payload of Array.isArray(payloads) ? payloads : []) {
+    const found = manuscriptFromArchives(payload, title);
+    if (found.identity === "bvid") return found;
+  }
+  return { bvid: null, url: null, identity: "unconfirmed" };
 }
 
 export function resolveEgoExit({ stdout, stderr, code }) {
