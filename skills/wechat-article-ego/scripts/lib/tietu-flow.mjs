@@ -5,9 +5,9 @@ import {
   decideAccount,
   decideSave,
   howToLogin,
-  normalizeText,
 } from "./pure.mjs";
 import {
+  draftMatchesId,
   planOfTietu,
   tietuLoginTip,
   validateTietuReadback,
@@ -270,6 +270,7 @@ export async function executeTietu(config, deps) {
       autosaveId: autosave && autosave.appmsgid || "",
       autosaveImageFields: autosave && autosave.imageFields || null,
       saveRequest: confirmed.saveRequest || null,
+      saveHook: confirmed.saveHook || null,
     };
     await mark("pending", { saveClicked: true, saveConfirm });
     const appmsgid = saveConfirm.appmsgid;
@@ -411,10 +412,7 @@ export async function executeTietu(config, deps) {
       });
     }
     let listCheck = { ok: false, count: 0, found: false, error: "", itemShowType: null };
-    const want = normalizeText(post.title);
-    const sameDraft = (row) => row && (
-      String(row.id || "") === String(appmsgid) || normalizeText(row.title) === want
-    );
+    const sameDraft = (row) => draftMatchesId(row, appmsgid);
     try {
       const rows = await session.listDrafts();
       const hit = (rows || []).find(sameDraft) || null;

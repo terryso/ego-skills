@@ -411,24 +411,58 @@ export function tietuAct(payload) {
     return { ok: true, rows };
   }
 
-  if (op === "install-save-hook") {
+  if (op === "install-save-hook" || op === "read-saves") {
     const view = globalThis;
-    if (view.__egoSavesInstalled) return { ok: true, already: true };
+    const publicUrl = (url) => String(url || "")
+      .replace(/([?&#])(token|ticket|pass_ticket|cookie|session|key)=[^&#]*/gi, "$1$2=redacted")
+      .slice(0, 240);
+    const frameOf = () => {
+      let top = false;
+      try { top = view === view.top; } catch { top = false; }
+      let href = "";
+      try { href = publicUrl(view.location && view.location.href); } catch { href = ""; }
+      return { top, name: String(view.name || ""), href };
+    };
+    const noteUrl = (url) => {
+      try {
+        view.__egoRecent = view.__egoRecent || [];
+        view.__egoRecent.push({ at: Date.now(), url: publicUrl(url) });
+        if (view.__egoRecent.length > 20) view.__egoRecent.splice(0, view.__egoRecent.length - 20);
+      } catch {
+        // The ring is diagnostic. A full store must not break the request.
+      }
+    };
+    const status = () => ({
+      ok: true,
+      installed: Boolean(view.__egoSavesInstalled),
+      installedAt: view.__egoSavesInstalledAt || 0,
+      hookId: view.__egoHookId || "",
+      frame: frameOf(),
+      recentUrls: (view.__egoRecent || []).slice(-20),
+      saves: Array.isArray(view.__egoSaves) ? view.__egoSaves.slice() : [],
+    });
+    if (op === "read-saves") return status();
+    if (view.__egoSavesInstalled) return { ...status(), already: true };
     view.__egoSaves = [];
+    view.__egoRecent = [];
+    view.__egoHookId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    view.__egoSavesInstalledAt = Date.now();
     const remember = (entry) => {
       try { view.__egoSaves.push(entry); } catch { /* the page store is best-effort */ }
     };
     const asText = (body) => (typeof body === "string" ? body.slice(0, 8000) : "");
     const XHR = view.XMLHttpRequest;
-    if (XHR && XHR.prototype && typeof XHR.prototype.open === "function" && typeof XHR.prototype.send === "function") {
+    if (!view.__egoXhrWrapped && XHR && XHR.prototype && typeof XHR.prototype.open === "function" && typeof XHR.prototype.send === "function") {
       const origOpen = XHR.prototype.open;
       const origSend = XHR.prototype.send;
+      view.__egoXhrWrapped = true;
       XHR.prototype.open = function egoOpen(method, url) {
         this.__egoUrl = String(url || "");
         return origOpen.apply(this, arguments);
       };
       XHR.prototype.send = function egoSend(body) {
         const url = String(this.__egoUrl || "");
+        noteUrl(url);
         const text = asText(body);
         if (/operate_appmsg/i.test(url)) {
           remember({ at: Date.now(), url, phase: "request", body: text });
@@ -455,6 +489,7 @@ export function tietuAct(payload) {
       view.__egoFetchWrapped = true;
       view.fetch = function egoFetch(inputArg, init) {
         const url = typeof inputArg === "string" ? inputArg : String((inputArg && inputArg.url) || "");
+        noteUrl(url);
         const text = asText(init && init.body);
         const watched = /operate_appmsg/i.test(url);
         if (watched) remember({ at: Date.now(), url, phase: "request", body: text });
@@ -476,12 +511,7 @@ export function tietuAct(payload) {
       };
     }
     view.__egoSavesInstalled = true;
-    return { ok: true };
-  }
-
-  if (op === "read-saves") {
-    const saves = globalThis.__egoSaves;
-    return { ok: true, saves: Array.isArray(saves) ? saves.slice() : [] };
+    return status();
   }
 
   if (op === "upload-probe") return uploadProbe();

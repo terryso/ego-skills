@@ -109,11 +109,133 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     return null;
   }
 
+  let initPage = null;
+  let initScript = { ok: false, via: "", error: "" };
+  let navHooked = null;
+  const hookTrace = { beforeClick: null };
+
+  async function frameTargets() {
+    const seen = new Set();
+    const targets = [];
+    const add = (frame, where) => {
+      if (!frame || typeof frame.evaluate !== "function" || seen.has(frame)) return;
+      seen.add(frame);
+      targets.push({ frame, where });
+    };
+    add(current, "page");
+    let listed = [];
+    if (current && typeof current.frames === "function") {
+      try {
+        listed = await Promise.resolve(current.frames());
+      } catch {
+        listed = [];
+      }
+    }
+    if (listed && !Array.isArray(listed)) listed = listed.frames || [];
+    if (Array.isArray(listed)) listed.forEach((frame, index) => add(frame, `frame:${index}`));
+    return targets;
+  }
+
+  async function tryInitScript() {
+    const call = async (via, fn) => {
+      await fn(tietuAct, { op: "install-save-hook" });
+      initScript = { ok: true, via, error: "" };
+    };
+    if (current && typeof current.addInitScript === "function") {
+      try {
+        await call("page.addInitScript", current.addInitScript.bind(current));
+        return initScript;
+      } catch (error) {
+        initScript = { ok: false, via: "page.addInitScript", error: String(error.message || error).slice(0, 200) };
+      }
+    }
+    if (current && typeof current.context === "function") {
+      try {
+        const ctx = current.context();
+        if (ctx && typeof ctx.addInitScript === "function") {
+          await call("context.addInitScript", ctx.addInitScript.bind(ctx));
+          return initScript;
+        }
+      } catch (error) {
+        initScript = { ok: false, via: "context.addInitScript", error: String(error.message || error).slice(0, 200) };
+      }
+    }
+    if (!initScript.via) initScript = { ok: false, via: "", error: "no addInitScript" };
+    return initScript;
+  }
+
+  async function installSaveHooks() {
+    if (initPage !== current) {
+      initPage = current;
+      initScript = { ok: false, via: "", error: "" };
+      try {
+        await tryInitScript();
+      } catch (error) {
+        initScript = { ok: false, via: initScript.via, error: String(error.message || error).slice(0, 200) };
+      }
+    }
+    const frames = [];
+    for (const target of await frameTargets()) {
+      try {
+        const result = await target.frame.evaluate(tietuAct, { op: "install-save-hook" });
+        frames.push({
+          where: target.where,
+          ok: Boolean(result && result.ok),
+          already: Boolean(result && result.already),
+          installed: Boolean(result && result.installed),
+          installedAt: (result && result.installedAt) || 0,
+          hookId: (result && result.hookId) || "",
+          frame: (result && result.frame) || null,
+        });
+      } catch (error) {
+        frames.push({ where: target.where, ok: false, installed: false, error: String(error.message || error).slice(0, 200) });
+      }
+    }
+    return { at: Date.now(), initScript, frames };
+  }
+
+  async function readHookStatus() {
+    const frames = [];
+    const saves = [];
+    const seen = new Set();
+    for (const target of await frameTargets()) {
+      try {
+        const read = await target.frame.evaluate(tietuAct, { op: "read-saves" });
+        const hookId = (read && read.hookId) || "";
+        frames.push({
+          where: target.where,
+          installed: Boolean(read && read.installed),
+          installedAt: (read && read.installedAt) || 0,
+          hookId,
+          frame: (read && read.frame) || null,
+          recentUrls: ((read && read.recentUrls) || []).slice(-20),
+        });
+        if (hookId && seen.has(hookId)) continue;
+        if (hookId) seen.add(hookId);
+        saves.push(...((read && read.saves) || []));
+      } catch (error) {
+        frames.push({ where: target.where, installed: false, recentUrls: [], error: String(error.message || error).slice(0, 200) });
+      }
+    }
+    return { at: Date.now(), frames, saves };
+  }
+
+  function watchNavigation() {
+    if (!current || navHooked === current || typeof current.on !== "function") return;
+    navHooked = current;
+    try {
+      current.on("framenavigated", () => {
+        installSaveHooks().catch(() => {});
+      });
+    } catch {
+      // This page does not emit navigation events. The click reinstall still runs.
+    }
+  }
+
   async function observedSaves(watch) {
     let pageSaves = [];
     try {
-      const read = await act("read-saves");
-      pageSaves = (read && read.saves) || [];
+      pageSaves = (await readHookStatus()).saves;
     } catch {
       pageSaves = [];
     }
@@ -150,7 +272,11 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     },
     async openEditor() {
       const existing = await act("editor-state");
-      if (existing.editorReady && !existing.appmsgid) return existing;
+      if (existing.editorReady && !existing.appmsgid) {
+        await installSaveHooks();
+        watchNavigation();
+        return existing;
+      }
       const created = await current.evaluate(mpAct, { op: "click", text: "新的创作", required: true });
       if (created && created.ok) {
         await pause(waitMs);
@@ -162,15 +288,27 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
         if (picked.forbidden) throw new Error(picked.error || "refusing to click a publish control");
         await adopt(await popupPromise);
         const ready = await waitReady();
-        if (ready.editorReady && !ready.appmsgid) return ready;
+        if (ready.editorReady && !ready.appmsgid) {
+          await installSaveHooks();
+          watchNavigation();
+          return ready;
+        }
         if (!picked.ok && !ready.editorReady) {
           const direct = await openByUrl();
-          if (direct) return direct;
+          if (direct) {
+            await installSaveHooks();
+            watchNavigation();
+            return direct;
+          }
           throw new Error(picked.error || "贴图 editor did not open");
         }
       }
       const direct = await openByUrl();
-      if (direct) return direct;
+      if (direct) {
+        await installSaveHooks();
+        watchNavigation();
+        return direct;
+      }
       throw new Error((created && created.error) || "贴图 editor did not open");
     },
     async uploadImages(files, options = {}) {
@@ -374,7 +512,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     },
     async beginSaveWatch() {
       try {
-        await act("install-save-hook");
+        watchNavigation();
+        await installSaveHooks();
       } catch {
         // The in-page hook is the primary source. page.on below is only a fallback.
       }
@@ -445,6 +584,12 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       let last = { ok: false, appmsgid: "", toastText: "", url: "", imageFields: null };
       let settled = false;
       while (!settled) {
+        try {
+          const status = await readHookStatus();
+          if (!status.frames.some((frame) => frame.installed)) await installSaveHooks();
+        } catch {
+          // A missing hook is recorded later. The footer and URL can still confirm autosave.
+        }
         const state = await act("editor-state");
         const observed = await observedSaves(watch);
         const responses = observed.responses;
@@ -500,6 +645,19 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
         screenshot: "",
         screenshotError: "",
       };
+      let saveHook = null;
+      try {
+        const afterClick = await readHookStatus();
+        await installSaveHooks();
+        saveHook = {
+          initScript,
+          beforeClick: hookTrace.beforeClick,
+          afterClick,
+          afterReinstall: await readHookStatus(),
+        };
+      } catch (error) {
+        saveHook = { initScript, beforeClick: hookTrace.beforeClick, error: String(error.message || error).slice(0, 200) };
+      }
       let settled = false;
       while (!settled) {
         const state = await act("editor-state");
@@ -518,6 +676,7 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           saveResponse: matched ? { ret: matched.ret, appMsgId: matched.appMsgId || "" } : null,
           screenshot: last.screenshot,
           screenshotError: "",
+          saveHook,
         };
         const requests = observed.requests;
         const manual = [...requests].reverse().find((item) => item.at >= saveClickedAt) || null;
@@ -565,6 +724,14 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       const guard = await act("find-save-draft");
       if (!guard.ok) throw new Error(guard.error || "保存为草稿 not found");
       if (guard.forbidden) throw new Error(guard.error || "refusing to click a publish control");
+      let beforeClick = null;
+      try {
+        beforeClick = await readHookStatus();
+        const reinstalled = await installSaveHooks();
+        hookTrace.beforeClick = { status: beforeClick, reinstalled, afterReinstall: await readHookStatus() };
+      } catch (error) {
+        hookTrace.beforeClick = { status: beforeClick, error: String(error.message || error).slice(0, 200) };
+      }
       saveClickedAt = Date.now();
       if (typeof current.click === "function") {
         await current.click('text="保存为草稿"');

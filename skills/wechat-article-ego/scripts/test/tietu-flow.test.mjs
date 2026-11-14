@@ -419,6 +419,52 @@ test("a missing save request is only a warning when readback passes", async () =
   assert.equal(quiet.saves, 1);
 });
 
+test("the 贴图 list matches appmsgid, not a same title", async () => {
+  const titled = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001920",
+      savedTime: "15:47",
+      toastText: "15:47已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { missing: true, nonEmpty: false },
+    },
+    autosave: { ok: true, appmsgid: "100001920", imageFields: null },
+    drafts: [
+      { title: "【验收】贴图技能测试", id: "100001800" },
+      { title: "编程 agent 的尽头是修车", id: "100001801" },
+    ],
+    reopened: { ...readback(), appmsgid: "100001920", type: 77, imageCount: 2, savedTime: "15:47" },
+  });
+  const missed = await executeTietu(config(), { browser: browserWith(titled), receipts: memoryReceipts() });
+  assert.equal(missed.exitCode, 4);
+  assert.equal(missed.error, "draft list did not include the saved 贴图");
+  assert.equal(missed.appmsgid, "100001920");
+  assert.equal(titled.saves, 1);
+
+  const byId = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001920",
+      savedTime: "15:47",
+      toastText: "15:47已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { missing: true, nonEmpty: false },
+    },
+    autosave: { ok: true, appmsgid: "100001920", imageFields: null },
+    drafts: [{ title: "另一题", id: "100001920", itemShowType: 8 }],
+    reopened: { ...readback(), appmsgid: "100001920", type: 77, imageCount: 2, savedTime: "15:47" },
+  });
+  const saved = await executeTietu(config(), { browser: browserWith(byId), receipts: memoryReceipts() });
+  assert.equal(saved.exitCode, 0);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.listCheck.found, true);
+  assert.equal(saved.listCheck.itemShowType, 8);
+  assert.match(saved.warning, /save request was not observed/);
+});
+
 test("an empty save request is not treated as a 贴图 save", async () => {
   const wiped = session({
     confirmed: {

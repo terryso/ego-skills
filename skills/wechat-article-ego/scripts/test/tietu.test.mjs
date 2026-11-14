@@ -27,6 +27,7 @@ import {
   planOfTietu,
   redactMpUrl,
   sessionToken,
+  draftMatchesId,
   tietuEditorUrl,
   tietuListUrl,
   tietuLoginTip,
@@ -215,7 +216,11 @@ test("readback compares title, body lines, topics, images, and type 77", () => {
   const list = new URL(tietuListUrl({ token: "test-token" }));
   assert.equal(list.searchParams.get("action"), "list_card");
   assert.equal(list.searchParams.get("type"), "77");
+  assert.equal(list.searchParams.get("item_show_type"), "8");
   assert.equal(list.searchParams.get("count"), "10");
+  assert.equal(draftMatchesId({ id: "100001920", title: "另一题" }, "100001920"), true);
+  assert.equal(draftMatchesId({ id: "100001800", title: "编程 agent 的尽头是修车" }, "100001920"), false);
+  assert.equal(draftMatchesId({ title: "编程 agent 的尽头是修车" }, "100001920"), false);
   assert.equal(sessionToken(editor), "test-token");
   assert.equal(sessionToken("https://example.com/?token=test-token"), "");
   assert.equal(sessionToken("not a url"), "");

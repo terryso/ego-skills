@@ -635,8 +635,13 @@ test("in-page hook records operate_appmsg bodies", async () => {
   const previousFetch = globalThis.fetch;
   const previousFlag = globalThis.__egoSavesInstalled;
   const previousWrapped = globalThis.__egoFetchWrapped;
+  const previousXhrWrapped = globalThis.__egoXhrWrapped;
   delete globalThis.__egoSavesInstalled;
   delete globalThis.__egoFetchWrapped;
+  delete globalThis.__egoXhrWrapped;
+  delete globalThis.__egoRecent;
+  delete globalThis.__egoHookId;
+  delete globalThis.__egoSavesInstalledAt;
   class FakeXHR {
     open() {}
     send() {}
@@ -654,11 +659,24 @@ test("in-page hook records operate_appmsg bodies", async () => {
   xhr.send(body);
   xhr.responseText = '{"ret":0,"appMsgId":"100001903"}';
   xhr.listeners.load();
-  const saves = tietuAct({ op: "read-saves" }).saves;
+  const noise = new FakeXHR();
+  noise.open("POST", "https://mp.weixin.qq.com/cgi-bin/filetransfer?action=upload_material&token=secret");
+  noise.send("");
+  const read = tietuAct({ op: "read-saves" });
+  assert.equal(read.installed, true);
+  assert.equal(typeof read.installedAt, "number");
+  assert.equal(read.installedAt > 0, true);
+  assert.equal(typeof read.frame.top, "boolean");
+  assert.match(read.frame.href, /mp\.weixin\.qq\.com/);
+  const saves = read.saves;
   assert.equal(saves[0].phase, "request");
   assert.match(saves[0].body, /cdn_url0=/);
   assert.equal(saves[1].phase, "response");
   assert.equal(saves[1].appMsgId, "100001903");
+  assert.equal(read.recentUrls.some((item) => /operate_appmsg/.test(item.url)), true);
+  assert.equal(read.recentUrls.some((item) => /filetransfer/.test(item.url) && /token=redacted/.test(item.url)), true);
+  assert.equal(read.recentUrls.some((item) => /secret/.test(item.url)), false);
+  assert.equal(saves.some((item) => /filetransfer/.test(item.url)), false);
   const filled = "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}');
   globalThis.fetch = async () => ({
     clone() { return this; },
@@ -666,6 +684,7 @@ test("in-page hook records operate_appmsg bodies", async () => {
   });
   delete globalThis.__egoFetchWrapped;
   delete globalThis.__egoSavesInstalled;
+  delete globalThis.__egoFetchWrapped;
   globalThis.__egoSaves = [];
   tietuAct({ op: "install-save-hook" });
   await globalThis.fetch("https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=update&type=77", { body: filled });
@@ -675,6 +694,56 @@ test("in-page hook records operate_appmsg bodies", async () => {
   globalThis.fetch = previousFetch;
   globalThis.__egoSavesInstalled = previousFlag;
   globalThis.__egoFetchWrapped = previousWrapped;
+  globalThis.__egoXhrWrapped = previousXhrWrapped;
+});
+
+test("save hook is installed in each frame and reported around the click", async () => {
+  const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "15:47已保存" });
+  const calls = [];
+  const child = {
+    async evaluate(fn, arg) {
+      calls.push(["child", arg && arg.op]);
+      return fn(arg);
+    },
+  };
+  const page = {
+    async evaluate(fn, arg) {
+      calls.push(["page", arg && arg.op]);
+      return fn(arg);
+    },
+    frames() { return [child]; },
+    async addInitScript(fn, arg) {
+      page.initArg = arg;
+      assert.equal(typeof fn, "function");
+    },
+    on() {},
+    off() {},
+    async click(selector) { page.pointer = selector; },
+  };
+  delete globalThis.__egoSavesInstalled;
+  delete globalThis.__egoXhrWrapped;
+  delete globalThis.__egoFetchWrapped;
+  delete globalThis.__egoRecent;
+  globalThis.document = editor.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "secret-token", appmsgid: "100001920" }));
+  const session = createTietuSession({ page, timings: { waitMs: 0, saveTimeoutMs: 0, savePollMs: 0 } });
+  await session.beginSaveWatch();
+  assert.equal(page.initArg.op, "install-save-hook");
+  assert.equal(calls.some((item) => item[0] === "child" && item[1] === "install-save-hook"), true);
+  assert.equal(calls.some((item) => item[0] === "page" && item[1] === "install-save-hook"), true);
+  const clicked = await session.clickSaveDraft();
+  assert.equal(clicked.via, "page.click");
+  const confirmed = await session.confirmSave({ timeoutMs: 0, pollMs: 0 });
+  assert.equal(confirmed.appmsgid, "100001920");
+  const before = confirmed.saveHook.beforeClick;
+  assert.equal(before.status.frames.some((frame) => frame.installed && frame.installedAt > 0), true);
+  assert.equal(before.status.frames.some((frame) => frame.where === "frame:0"), true);
+  assert.match(before.status.frames[0].frame.href, /token=redacted/);
+  assert.doesNotMatch(before.status.frames[0].frame.href, /secret-token/);
+  assert.equal(confirmed.saveHook.afterClick.frames.some((frame) => frame.installed), true);
+  assert.equal(confirmed.saveHook.afterReinstall.frames.some((frame) => frame.installed), true);
+  assert.equal(confirmed.saveHook.initScript.ok, true);
+  assert.equal(confirmed.saveHook.initScript.via, "page.addInitScript");
 });
 
 test("manual save waits for autosave and uses a pointer click", async () => {

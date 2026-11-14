@@ -25,13 +25,13 @@ The 1000-character budget counts the body text, including URLs, plus the newline
 
 ## Save and check
 
-After the last keystroke, wait up to 30 seconds for the editor autosave: footer `HH:MM已保存`, an `appmsgid` on the URL, or `operate_appmsg` with `ret` 0. Record whether that request's `cdn_url0` and `share_imageinfo0` are non-empty. Ego Lite does not emit `page.on("request")`, so the hook is installed in the page (`XMLHttpRequest` and `fetch`, stashed on `window.__egoSaves`). `page.on` is only a fallback. If no save request is observed, that is a warning when the reopened draft and the 贴图 list (`item_show_type` 8, same `appmsgid`, at least one image) already agree. A request that is observed with empty image fields is a failure. Only then click 保存为草稿 with `page.click` or `locator.click`. Do not use an in-page `el.click()`; that can submit before the image list has synced. The manual save must keep the autosave `appmsgid`. If the save request's image fields are empty, or the id changes, stop and report both ids.
+After the last keystroke, wait up to 30 seconds for the editor autosave: footer `HH:MM已保存`, an `appmsgid` on the URL, or `operate_appmsg` with `ret` 0. Record whether that request's `cdn_url0` and `share_imageinfo0` are non-empty. Ego Lite does not emit `page.on("request")`, so the hook is installed in the page (`XMLHttpRequest` and `fetch`, stashed on `window.__egoSaves`) and again after the editor opens, after a frame navigation, and just before the save click. `page.addInitScript` or `context.addInitScript` is used when that page has it, so a reload does not drop the wrap. Every frame with `evaluate` is hooked. The receipt records, before the click and after it, whether the flag is set, the install timestamp, the frame URL, and the last 20 XHR or fetch URLs the hook saw. `page.on` is only a fallback. If no save request is observed, that is a warning when the reopened draft and the 贴图 list (`item_show_type` 8, same `appmsgid`, at least one image) already agree. A request that is observed with empty image fields is a failure. Only then click 保存为草稿 with `page.click` or `locator.click`. Do not use an in-page `el.click()`; that can submit before the image list has synced. The manual save must keep the autosave `appmsgid`. If the save request's image fields are empty, or the id changes, stop and report both ids.
 
 Click the exact label 保存为草稿 once. 发表 and 预览 sit next to it. Do not click them. Do not click 群发, 定时群发, or 发送预览.
 
 After the click, stay on that editor tab for up to 20 seconds. Do not open the draft list, do not reopen another URL, and do not close the tab during the wait: leaving early can discard an unsaved editor. Confirmation is an `appmsgid` on the URL, or `appMsgId` in the save response JSON when `ret` is 0. A 「已保存」 toast or `HH:MM 已保存` footer is recorded, but it is not an id. Before any later navigation, write `tietu-save-confirm.png` and a receipt with the redacted URL, the toast text, and `{ ret, appMsgId }`. If no `appmsgid` arrives, the error is `save not confirmed` and the command does not call that a readback mismatch. The editor also autosaves, so another click would update the same draft. This command clicks once.
 
-When an id exists, reopen the edit URL below and poll until the title ProseMirror is non-empty (up to 20 seconds) before comparing. Then open the type 77 draft list and check that the id or title is there. The list navigation happens only after the save wait and the editor read.
+When an id exists, reopen the edit URL below and poll until the title ProseMirror is non-empty (up to 20 seconds) before comparing. Then open the type 77 draft list and match the card by `appmsgid`. The same title with a different id is not this draft. The list navigation happens only after the save wait and the editor read.
 
 Reopen for verification, not the read-only card preview:
 
@@ -39,7 +39,9 @@ Reopen for verification, not the read-only card preview:
 
 The draft list, used only as a cross-check after the edit page has been read, is:
 
-`cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token=<session>&lang=zh_CN`
+`cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&item_show_type=8&token=<session>&lang=zh_CN`
+
+Without `item_show_type=8` that URL opens the 文章 tab when the account also has 文章 drafts.
 
 Card titles use `a.weui-desktop-publish__cover__title`. That link opens a preview. Do not use it as the verification page.
 

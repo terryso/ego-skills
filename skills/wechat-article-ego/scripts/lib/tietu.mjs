@@ -486,9 +486,18 @@ export function tietuListUrl({ token = "" } = {}) {
     count: "10",
     type: String(TIETU_TYPE),
     action: "list_card",
+    item_show_type: String(TIETU_SHOW_TYPE),
     token,
     lang: "zh_CN",
   });
+}
+
+// The 贴图 list is identified by appmsgid. A card with the same title and a
+// different id is a different draft, often an 文章 on the wrong tab.
+export function draftMatchesId(row, appmsgid) {
+  const id = String(appmsgid || "");
+  if (!/^[0-9]+$/.test(id)) return false;
+  return Boolean(row && String(row.id || "") === id);
 }
 
 export function articleListUrl({ token = "" } = {}) {
