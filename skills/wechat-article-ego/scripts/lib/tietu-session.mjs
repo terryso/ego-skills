@@ -5,6 +5,7 @@ import { mpAct } from "./mp-dom.mjs";
 import { tietuAct } from "./tietu-dom.mjs";
 import {
   TIETU_FILE_INPUT,
+  TIETU_AUTOSAVE_TIMEOUT_MS,
   TIETU_SAVE_POLL_MS,
   TIETU_SAVE_TIMEOUT_MS,
   TIETU_UPLOAD_POLL_MS,
@@ -13,6 +14,7 @@ import {
   articleListUrl,
   describeFileInputs,
   describeUpload,
+  imageFieldsFromBody,
   parseSaveResponse,
   redactMpUrl,
   sessionToken,
@@ -32,6 +34,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
   const uploadTimeoutMs = timings.uploadTimeoutMs ?? TIETU_UPLOAD_TIMEOUT_MS;
   const savePollMs = timings.savePollMs ?? TIETU_SAVE_POLL_MS;
   const saveTimeoutMs = timings.saveTimeoutMs ?? TIETU_SAVE_TIMEOUT_MS;
+  const autosaveTimeoutMs = timings.autosaveTimeoutMs ?? TIETU_AUTOSAVE_TIMEOUT_MS;
+  let saveClickedAt = 0;
   const popupMs = timings.popupMs ?? 4_000;
 
   async function pause(ms) {
@@ -291,7 +295,7 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           shot = path.join(dir, "tietu-upload-failed.png");
           try {
             await fsImpl.promises.mkdir(dir, { recursive: true });
-            await current.screenshot({ path: shot, fullPage: true, type: "png" });
+            await current.screenshot({ path: shot, fullPage: true });
           } catch (error) {
             shotError = String(error.message || error);
             shot = "";
@@ -343,17 +347,19 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       return act("read-editor");
     },
     beginSaveWatch() {
-      const found = [];
-      const handler = async (response) => {
+      const responses = [];
+      const requests = [];
+      const onResponse = async (response) => {
         try {
           const rawUrl = typeof response.url === "function" ? response.url() : String((response && response.url) || "");
-          if (rawUrl && !/appmsg|operate_appmsg|masssend|save/i.test(rawUrl)) return;
+          if (rawUrl && !/operate_appmsg/i.test(rawUrl)) return;
           let body = null;
           if (response && typeof response.json === "function") body = await response.json();
           else if (response && typeof response.text === "function") body = await response.text();
           const parsed = parseSaveResponse(body);
           if (!parsed.body.appMsgId && parsed.ret == null) return;
-          found.push({
+          responses.push({
+            at: Date.now(),
             url: redactMpUrl(rawUrl),
             ret: parsed.ret,
             appMsgId: parsed.body.appMsgId || "",
@@ -362,22 +368,85 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           // A response that is not the save JSON is ignored.
         }
       };
-      try {
-        if (typeof current.on === "function") current.on("response", handler);
-      } catch {
-        // This page does not emit network events. The URL and toast remain the other signals.
-      }
+      const onRequest = (request) => {
+        try {
+          const rawUrl = typeof request.url === "function" ? request.url() : String((request && request.url) || "");
+          if (!/operate_appmsg/i.test(rawUrl)) return;
+          const post = typeof request.postData === "function" ? request.postData() : request.postData;
+          const fields = imageFieldsFromBody(post || "");
+          requests.push({ at: Date.now(), url: redactMpUrl(rawUrl), ...fields });
+        } catch {
+          // A request without a readable body is still noted below as missing fields.
+        }
+      };
+      const listen = (event, handler) => {
+        try {
+          if (typeof current.on === "function") current.on(event, handler);
+        } catch {
+          // This page does not emit that event.
+        }
+      };
+      listen("response", onResponse);
+      listen("request", onRequest);
+      const forget = (event, handler) => {
+        try {
+          if (typeof current.off === "function") current.off(event, handler);
+          else if (typeof current.removeListener === "function") current.removeListener(event, handler);
+        } catch {
+          // The page may already be gone.
+        }
+      };
       return {
-        responses() { return found.slice(); },
+        responses() { return responses.slice(); },
+        requests() { return requests.slice(); },
         stop() {
-          try {
-            if (typeof current.off === "function") current.off("response", handler);
-            else if (typeof current.removeListener === "function") current.removeListener("response", handler);
-          } catch {
-            // The page may already be gone.
-          }
+          forget("response", onResponse);
+          forget("request", onRequest);
         },
       };
+    },
+    async waitForAutosave(options = {}) {
+      // After the last keystroke. Do not click 保存为草稿 in here.
+      const timeout = options.timeoutMs ?? autosaveTimeoutMs;
+      const interval = options.pollMs ?? savePollMs;
+      const watch = options.watch;
+      const started = Date.now();
+      let last = { ok: false, appmsgid: "", toastText: "", url: "", imageFields: null };
+      let settled = false;
+      while (!settled) {
+        const state = await act("editor-state");
+        const responses = watch && typeof watch.responses === "function" ? watch.responses() : [];
+        const requests = watch && typeof watch.requests === "function" ? watch.requests() : [];
+        const autosaveResponse = [...responses].reverse().find((item) => item.ret === 0 || item.ret === "0" || item.appMsgId);
+        const footer = /\d{1,2}:\d{2}\s*已保存/.test(`${state.toastText || ""} ${state.savedTime || ""}`);
+        const appmsgid = state.appmsgid || (autosaveResponse && autosaveResponse.appMsgId) || "";
+        const signal = Boolean(footer || appmsgid || (autosaveResponse && (autosaveResponse.ret === 0 || autosaveResponse.ret === "0")));
+        const imageFields = requests.length ? requests[requests.length - 1] : null;
+        last = {
+          ok: signal && (!imageFields || imageFields.nonEmpty),
+          appmsgid,
+          via: appmsgid && state.appmsgid ? "url" : (autosaveResponse ? "response" : (footer ? "footer" : "")),
+          toastText: state.toastText || (footer ? `${state.savedTime || ""}已保存` : ""),
+          url: state.url || "",
+          imageFields: imageFields ? {
+            cdnNonEmpty: Boolean(imageFields.cdnNonEmpty),
+            shareNonEmpty: Boolean(imageFields.shareNonEmpty),
+            nonEmpty: Boolean(imageFields.nonEmpty),
+          } : null,
+        };
+        const imagesReady = !imageFields || imageFields.nonEmpty;
+        settled = (signal && imagesReady) || !(timeout > 0 && interval > 0 && Date.now() - started < timeout);
+        if (!settled) await pause(interval);
+      }
+      if (!last.ok) {
+        const why = last.imageFields && !last.imageFields.nonEmpty
+          ? "autosave request had no image"
+          : "贴图 editor did not autosave";
+        const error = new Error(why);
+        error.autosave = last;
+        throw error;
+      }
+      return last;
     },
     async confirmSave(options = {}) {
       // Stay on the editor page. Do not goto, reopen, or close while this waits.
@@ -417,6 +486,13 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           screenshot: last.screenshot,
           screenshotError: "",
         };
+        const requests = watch && typeof watch.requests === "function" ? watch.requests() : [];
+        const manual = [...requests].reverse().find((item) => item.at >= saveClickedAt) || null;
+        last.saveRequest = manual ? {
+          cdnNonEmpty: Boolean(manual.cdnNonEmpty),
+          shareNonEmpty: Boolean(manual.shareNonEmpty),
+          nonEmpty: Boolean(manual.nonEmpty),
+        } : { missing: true, nonEmpty: false };
         settled = Boolean(picked.appmsgid) || !(timeout > 0 && interval > 0 && Date.now() - started < timeout);
         if (!settled) await pause(interval);
       }
@@ -431,9 +507,9 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           }
           let written = "";
           try {
-            written = await current.screenshot({ path: shot, fullPage: true, type: "png" });
+            written = await current.screenshot({ path: shot, fullPage: true });
           } catch {
-            written = await current.screenshot({ path: shot, type: "png" });
+            written = await current.screenshot({ path: shot });
           }
           last.screenshot = written || shot;
           if (last.screenshot && typeof fsImpl.existsSync === "function" && !fsImpl.existsSync(last.screenshot)) {
@@ -453,10 +529,19 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       return last;
     },
     async clickSaveDraft() {
-      const result = await act("click-save-draft");
-      if (!result.ok) throw new Error(result.error || "保存为草稿 not found");
-      if (result.forbidden) throw new Error(result.error || "refusing to click a publish control");
-      return result;
+      const guard = await act("find-save-draft");
+      if (!guard.ok) throw new Error(guard.error || "保存为草稿 not found");
+      if (guard.forbidden) throw new Error(guard.error || "refusing to click a publish control");
+      saveClickedAt = Date.now();
+      if (typeof current.click === "function") {
+        await current.click('text="保存为草稿"');
+        return { ok: true, via: "page.click", label: "保存为草稿" };
+      }
+      if (typeof current.locator === "function") {
+        await current.locator('text="保存为草稿"').click();
+        return { ok: true, via: "locator.click", label: "保存为草稿" };
+      }
+      throw new Error("page.click is required; refusing in-page el.click() for 保存为草稿");
     },
     async saveConfirmed() {
       let last = { ok: false, appmsgid: "", savedTime: "", saved: false };

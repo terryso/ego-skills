@@ -94,9 +94,13 @@ node skills/wechat-article-ego/scripts/cleanup.mjs
 
 The same command with `--kind tietu` saves one image post instead of an article. The first `--image` is the cover. `--title` allows 20 characters. `--text` / `--text-file` allow 1000 characters including URLs, and the typed topics have to fit in that same body. Repeat `--topic` with the name only: no `#`, no spaces.
 
-没有 `--yes` 只打印计划并退出 `3`，不开编辑器、不上传。有 `--yes` 也只点一次「保存为草稿」。不点「发表」「预览」「群发」「定时群发」「发送预览」。保存结果对不上这一篇时退出 `4`，不把保存再点一次。编辑器可能会自动保存；自动保存出来的 `appmsgid` 不会被当成可以再开一篇新草稿的理由。
+没有 `--yes` 只打印计划并退出 `3`，不开编辑器、不上传。有 `--yes` 也只点一次「保存为草稿」。不点「发表」「预览」「群发」「定时群发」「发送预览」。保存结果对不上这一篇时退出 `4`，不把保存再点一次。
 
-Without `--yes` the command prints the plan and exits `3`. With `--yes` it clicks 保存为草稿 once. It does not click 发表, 预览, 群发, 定时群发, or 发送预览. An outcome that is not this one draft exits `4` and does not click save again. An autosaved `appmsgid` is not a reason to open a second new draft.
+标题和正文打完之后，编辑器会在几秒内自动保存。页脚出现 `HH:MM已保存`，URL 带上 `appmsgid`，这次请求里应有非空的 `cdn_url0` 和 `share_imageinfo0`。所以命令如果在这之后失败，草稿箱里可能已经有一篇贴图，不要再盲目开一篇。手动「保存为草稿」要等这次自动保存完成（最多 30 秒），并用指针点击，去更新同一个 `appmsgid`。如果手动保存换成了另一个 id，或者请求里的图片字段是空的，就报错停下。
+
+Without `--yes` the command prints the plan and exits `3`. With `--yes` it clicks 保存为草稿 once, after the editor has autosaved. It does not click 发表, 预览, 群发, 定时群发, or 发送预览. An outcome that is not this one draft exits `4` and does not click save again.
+
+After the title and body are typed, the editor autosaves within a few seconds: the footer shows `HH:MM已保存`, the URL gains `appmsgid`, and that request should carry non-empty `cdn_url0` and `share_imageinfo0`. A 贴图 draft can therefore exist even if this command aborts later. Do not start another one blindly. The manual 保存为草稿 click waits for that autosave (up to 30 seconds) and is a real pointer click, so it updates the same `appmsgid`. A changed id, or a save request with empty image fields, stops the command.
 
 贴图编辑器的「链接」只接受公众号内容、小程序或小店。正文里的 `http(s)` 地址保持纯文本行，保存之后也不能点击。不要把外链填进那个链接栏。
 

@@ -25,6 +25,8 @@ The 1000-character budget counts the body text, including URLs, plus the newline
 
 ## Save and check
 
+After the last keystroke, wait up to 30 seconds for the editor autosave: footer `HH:MM已保存`, an `appmsgid` on the URL, or `operate_appmsg` with `ret` 0. Record whether that request's `cdn_url0` and `share_imageinfo0` are non-empty. Only then click 保存为草稿 with `page.click` or `locator.click`. Do not use an in-page `el.click()`; that can submit before the image list has synced. The manual save must keep the autosave `appmsgid`. If the save request's image fields are empty, or the id changes, stop and report both ids.
+
 Click the exact label 保存为草稿 once. 发表 and 预览 sit next to it. Do not click them. Do not click 群发, 定时群发, or 发送预览.
 
 After the click, stay on that editor tab for up to 20 seconds. Do not open the draft list, do not reopen another URL, and do not close the tab during the wait: leaving early can discard an unsaved editor. Confirmation is an `appmsgid` on the URL, or `appMsgId` in the save response JSON when `ret` is 0. A 「已保存」 toast or `HH:MM 已保存` footer is recorded, but it is not an id. Before any later navigation, write `tietu-save-confirm.png` and a receipt with the redacted URL, the toast text, and `{ ret, appMsgId }`. If no `appmsgid` arrives, the error is `save not confirmed` and the command does not call that a readback mismatch. The editor also autosaves, so another click would update the same draft. This command clicks once.

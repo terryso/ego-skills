@@ -18,6 +18,7 @@ import {
   describeFileInputs,
   describeUpload,
   findUrls,
+  imageFieldsFromBody,
   inspectImage,
   parseSaveResponse,
   planOfTietu,
@@ -318,6 +319,12 @@ test("upload detection accepts any later signal and describes the file inputs", 
   assert.equal(appmsgidFromSave({ urlId: "42", responses: [{ ret: 0, appMsgId: "7" }] }).via, "url");
   assert.equal(appmsgidFromSave({ responses: [{ ret: 0, appMsgId: "7" }] }).appmsgid, "7");
   assert.equal(appmsgidFromSave({ responses: [{ ret: 1, appMsgId: "7" }] }).appmsgid, "");
+  const filled = imageFieldsFromBody("cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}'));
+  assert.equal(filled.nonEmpty, true);
+  const empty = imageFieldsFromBody("cdn_url0=&share_imageinfo0=" + encodeURIComponent('{"list":[]}'));
+  assert.equal(empty.nonEmpty, false);
+  assert.equal(empty.cdnNonEmpty, false);
+  assert.equal(empty.shareNonEmpty, false);
   assert.match(redactMpUrl("https://mp.weixin.qq.com/cgi-bin/appmsg?token=secret&type=77"), /token=redacted/);
   assert.equal(redactMpUrl("not a url"), "");
 });

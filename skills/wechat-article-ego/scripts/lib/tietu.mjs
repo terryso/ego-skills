@@ -11,6 +11,7 @@ export const TIETU_UPLOAD_TIMEOUT_MS = 60_000;
 export const TIETU_UPLOAD_POLL_MS = 500;
 export const TIETU_SAVE_TIMEOUT_MS = 20_000;
 export const TIETU_SAVE_POLL_MS = 500;
+export const TIETU_AUTOSAVE_TIMEOUT_MS = 30_000;
 
 const URL_IN_TEXT = /https?:\/\/[^\s]+/gi;
 const BARE_URL = /^https?:\/\/\S+$/i;
@@ -75,6 +76,44 @@ function uploadNumber(probe, key) {
 
 export function isCdnImageSrc(src) {
   return /mmbiz\.qpic\.cn|mmbiz/i.test(String(src || ""));
+}
+
+export function imageFieldsFromBody(body) {
+  const text = String(body || "");
+  let cdn = "";
+  let share = "";
+  try {
+    const params = new URLSearchParams(text);
+    cdn = params.get("cdn_url0") || "";
+    share = params.get("share_imageinfo0") || "";
+  } catch {
+    cdn = "";
+    share = "";
+  }
+  if (!cdn) {
+    const matched = text.match(/(?:^|&)cdn_url0=([^&]*)/);
+    if (matched) cdn = decodeURIComponent(matched[1].replace(/\+/g, " "));
+  }
+  if (!share) {
+    const matched = text.match(/(?:^|&)share_imageinfo0=([^&]*)/);
+    if (matched) share = decodeURIComponent(matched[1].replace(/\+/g, " "));
+  }
+  const cdnNonEmpty = Boolean(String(cdn).trim());
+  let shareNonEmpty = false;
+  if (String(share).trim()) {
+    try {
+      const parsed = JSON.parse(share);
+      const url = parsed && parsed.list && parsed.list[0] && parsed.list[0].url;
+      shareNonEmpty = Boolean(url && String(url).trim());
+    } catch {
+      shareNonEmpty = !/^\s*\{\s*"list"\s*:\s*\[\s*\]\s*\}\s*$/.test(share);
+    }
+  }
+  return {
+    cdnNonEmpty,
+    shareNonEmpty,
+    nonEmpty: cdnNonEmpty && shareNonEmpty,
+  };
 }
 
 // A 贴图 is uploaded only when .image-selector holds the expected number of

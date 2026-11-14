@@ -363,15 +363,15 @@ export function tietuAct(payload) {
     return { ok: true, via: "focus" };
   }
 
-  if (op === "click-save-draft") {
+  if (op === "find-save-draft" || op === "click-save-draft") {
     const found = findExact("保存为草稿");
     if (!found) return { ok: false, error: "保存为草稿 not found" };
     const label = ownLabel(found);
     if (label !== "保存为草稿" || isForbidden(label)) {
       return { ok: false, forbidden: true, error: `refusing to click ${label || "保存为草稿"}` };
     }
-    if (typeof found.click === "function") found.click();
-    return { ok: true, via: "保存为草稿", label };
+    if (op === "click-save-draft" && typeof found.click === "function") found.click();
+    return { ok: true, via: op === "click-save-draft" ? "保存为草稿" : "find", label, clicked: op === "click-save-draft" };
   }
 
   if (op === "draft-cards") {

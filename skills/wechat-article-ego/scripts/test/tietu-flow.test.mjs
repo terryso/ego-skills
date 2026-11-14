@@ -84,6 +84,16 @@ function session(overrides = {}) {
       if (queue && queue.length) return queue.shift();
       return overrides.read || readback();
     },
+    async waitForAutosave() {
+      calls.push("autosave");
+      if (overrides.autosaveError) throw new Error(overrides.autosaveError);
+      return overrides.autosave || {
+        ok: true,
+        appmsgid: "100001815",
+        toastText: "01:23已保存",
+        imageFields: { cdnNonEmpty: true, shareNonEmpty: true, nonEmpty: true },
+      };
+    },
     async clickSaveDraft() {
       calls.push("save");
       api.saves += 1;
@@ -256,6 +266,8 @@ test("a confirmed 贴图 is saved once and reopened", async () => {
   assert.equal(happy.saves, 1);
   assert.deepEqual(happy.uploads, ["/absolute/path/cover.jpg", "/absolute/path/more.jpg"]);
   assert.equal(happy.steps.some((step) => step.value === "https://example.com/tietu"), true);
+  assert.ok(happy.calls.indexOf("body") < happy.calls.indexOf("autosave"));
+  assert.ok(happy.calls.indexOf("autosave") < happy.calls.indexOf("save"));
   assert.ok(happy.calls.indexOf("save") < happy.calls.indexOf("confirm"));
   assert.ok(happy.calls.indexOf("confirm") < happy.calls.indexOf("reopen:100001815"));
   assert.ok(happy.calls.indexOf("reopen:100001815") < happy.calls.indexOf("drafts"));
@@ -368,6 +380,43 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   const typed = await executeTietu(config(), { browser: browserWith(wrongType), receipts: memoryReceipts() });
   assert.equal(typed.exitCode, 4);
   assert.equal(wrongType.saves, 1);
+});
+
+test("an empty save request is not treated as a 贴图 save", async () => {
+  const wiped = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001815",
+      savedTime: "01:23",
+      toastText: "01:23已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { missing: false, cdnNonEmpty: false, shareNonEmpty: false, nonEmpty: false },
+    },
+  });
+  const failed = await executeTietu(config(), { browser: browserWith(wiped), receipts: memoryReceipts() });
+  assert.equal(failed.exitCode, 1);
+  assert.match(failed.error, /cdn_url0 and share_imageinfo0 were empty/);
+  assert.equal(failed.autosaveId, "100001815");
+  assert.equal(wiped.saves, 1);
+  assert.equal(wiped.calls.includes("reopen:100001815"), false);
+});
+
+test("a manual save that changes the autosave id reports both", async () => {
+  const moved = session({
+    autosave: { ok: true, appmsgid: "100001875", imageFields: { cdnNonEmpty: true, shareNonEmpty: true, nonEmpty: true } },
+    confirmed: {
+      ok: true,
+      appmsgid: "100001880",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { nonEmpty: true, cdnNonEmpty: true, shareNonEmpty: true },
+    },
+  });
+  const failed = await executeTietu(config(), { browser: browserWith(moved), receipts: memoryReceipts() });
+  assert.equal(failed.exitCode, 4);
+  assert.match(failed.error, /autosave 100001875, save 100001880/);
+  assert.equal(moved.saves, 1);
 });
 
 test("a placeholder uploader does not click save", async () => {

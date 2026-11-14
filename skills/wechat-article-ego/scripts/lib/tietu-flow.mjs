@@ -182,6 +182,10 @@ export async function executeTietu(config, deps) {
         } : {}),
       });
     };
+    const watch = typeof session.beginSaveWatch === "function" ? session.beginSaveWatch() : null;
+    const stopWatch = () => {
+      if (watch && typeof watch.stop === "function") watch.stop();
+    };
     try {
       await session.openEditor();
       await session.uploadImages(post.images.map((image) => image.path), {
@@ -192,6 +196,7 @@ export async function executeTietu(config, deps) {
       await session.fillTitle(post.title);
       await session.fillBody(post.steps);
     } catch (error) {
+      stopWatch();
       return beforeClick(error);
     }
     try {
@@ -203,23 +208,38 @@ export async function executeTietu(config, deps) {
         });
       }
     } catch (error) {
+      stopWatch();
       return beforeClick(error);
     }
-    // Stay on the editor until 保存为草稿 has had time to persist. listDrafts() and
-    // reopen() are the only navigations, and both happen after this wait.
-    const watch = typeof session.beginSaveWatch === "function" ? session.beginSaveWatch() : null;
+    let autosave = null;
+    try {
+      if (typeof session.waitForAutosave === "function") {
+        autosave = await session.waitForAutosave({
+          watch,
+          receiptDir: config.receiptDir,
+          screenshotDir: config.screenshotDir,
+          fs: deps.fs,
+        });
+      }
+    } catch (error) {
+      stopWatch();
+      return beforeClick(error);
+    }
+    // The pointer click happens only after autosave. listDrafts() and reopen()
+    // stay after that click has been confirmed.
     try {
       await session.clickSaveDraft();
     } catch (error) {
-      if (watch && typeof watch.stop === "function") watch.stop();
-      await mark("aborted", { error: String(error.message || error) });
-      return base({ exitCode: 1, error: String(error.message || error), account: account.account, plan });
+      stopWatch();
+      await mark("aborted", { error: String(error.message || error), autosave });
+      return base({ exitCode: 1, error: String(error.message || error), account: account.account, plan, autosave });
     }
     let confirmed = { ok: false, appmsgid: "", savedTime: "", url: "", toastText: "", saveResponse: null, screenshot: "" };
     try {
       confirmed = typeof session.confirmSave === "function"
         ? await session.confirmSave({
           watch,
+          autosaveId: autosave && autosave.appmsgid || "",
           receiptDir: config.receiptDir,
           screenshotDir: config.screenshotDir,
           fs: deps.fs,
@@ -237,7 +257,7 @@ export async function executeTietu(config, deps) {
         error: String(error.message || error),
       };
     } finally {
-      if (watch && typeof watch.stop === "function") watch.stop();
+      stopWatch();
     }
     const saveConfirm = {
       url: confirmed.url || "",
@@ -247,6 +267,9 @@ export async function executeTietu(config, deps) {
       saveResponse: confirmed.saveResponse || null,
       screenshot: confirmed.screenshot || "",
       screenshotError: confirmed.screenshotError || "",
+      autosaveId: autosave && autosave.appmsgid || "",
+      autosaveImageFields: autosave && autosave.imageFields || null,
+      saveRequest: confirmed.saveRequest || null,
     };
     await mark("pending", { saveClicked: true, saveConfirm });
     const appmsgid = saveConfirm.appmsgid;
@@ -272,6 +295,50 @@ export async function executeTietu(config, deps) {
         saveResponse: saveConfirm.saveResponse,
         screenshot: saveConfirm.screenshot,
         screenshotError: saveConfirm.screenshotError,
+        saveConfirm,
+      });
+    }
+    if (saveConfirm.autosaveId && appmsgid && saveConfirm.autosaveId !== appmsgid) {
+      const error = `manual save changed the draft id (autosave ${saveConfirm.autosaveId}, save ${appmsgid})`;
+      await mark("uncertain", {
+        saveClicked: true,
+        finishedAt: now(),
+        error,
+        saveConfirm,
+        draftId: appmsgid,
+      });
+      return base({
+        exitCode: 4,
+        action: "id-changed",
+        error,
+        account: account.account,
+        plan,
+        appmsgid,
+        draftId: appmsgid,
+        autosaveId: saveConfirm.autosaveId,
+        saveConfirm,
+      });
+    }
+    if (saveConfirm.saveRequest && saveConfirm.saveRequest.nonEmpty === false) {
+      const error = saveConfirm.saveRequest.missing
+        ? "save request was not observed"
+        : "save request had no image (cdn_url0 and share_imageinfo0 were empty)";
+      await mark("uncertain", {
+        saveClicked: true,
+        finishedAt: now(),
+        error,
+        saveConfirm,
+        draftId: appmsgid,
+      });
+      return base({
+        exitCode: 1,
+        action: "empty-image-save",
+        error,
+        account: account.account,
+        plan,
+        appmsgid,
+        draftId: appmsgid,
+        autosaveId: saveConfirm.autosaveId,
         saveConfirm,
       });
     }

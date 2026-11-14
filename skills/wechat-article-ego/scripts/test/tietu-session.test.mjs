@@ -271,6 +271,7 @@ test("upload, title, body, save, list, and reopen stay on the 贴图 editor", as
       }
     },
     async waitForLoadState() {},
+    async click(selector) { page.pointer = selector; },
     async screenshot({ path: file }) { shots.push(file); return file; },
     keyboard: {
       async insertText(value) { typed.push(value); },
@@ -629,13 +630,55 @@ test("reopen only navigates and reads; it does not discard the draft", async () 
   assert.equal(ops.includes("click-save-draft"), false);
 });
 
+test("manual save waits for autosave and uses a pointer click", async () => {
+  const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "" });
+  let polls = 0;
+  const requests = [];
+  const page = {
+    async evaluate(fn, arg) {
+      if (arg && arg.op === "editor-state") {
+        polls += 1;
+        if (polls >= 2) editor.doc.body.text = "01:23已保存";
+      }
+      return fn(arg);
+    },
+    on(event, handler) {
+      if (event === "request") requests.push(handler);
+    },
+    off() {},
+    async click(selector) { page.pointer = selector; },
+    async goto() { throw new Error("navigated"); },
+  };
+  globalThis.document = editor.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "test-token" }));
+  const session = createTietuSession({ page, timings: { autosaveTimeoutMs: 5_000, savePollMs: 1 } });
+  const watch = session.beginSaveWatch();
+  await requests[0]({
+    url: () => "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77&token=secret",
+    postData: () => "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}'),
+  });
+  const autosave = await session.waitForAutosave({ watch, timeoutMs: 5_000, pollMs: 1 });
+  assert.equal(autosave.ok, true);
+  assert.match(autosave.toastText, /01:23已保存|已保存/);
+  assert.equal(autosave.imageFields.nonEmpty, true);
+  assert.equal(page.pointer, undefined);
+  const save = editor.doc.querySelector("button");
+  const before = save ? save.clicked : 0;
+  const clicked = await session.clickSaveDraft();
+  assert.equal(clicked.via, "page.click");
+  assert.equal(page.pointer, 'text="保存为草稿"');
+  if (save) assert.equal(save.clicked, before);
+  watch.stop();
+});
+
 test("confirmSave stays on the editor until an appmsgid arrives", async () => {
   const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "01:23 已保存" });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wx-tietu-save-"));
   let navigated = false;
   const page = {
+    handlers: {},
     async evaluate(fn, arg) { return fn(arg); },
-    on(_event, handler) { page.handler = handler; },
+    on(event, handler) { page.handlers[event] = handler; },
     off() {},
     async screenshot(options) {
       page.shot = options;
@@ -648,7 +691,7 @@ test("confirmSave stays on the editor until an appmsgid arrives", async () => {
   globalThis.location = new URL(tietuEditorUrl({ token: "secret-token" }));
   const session = createTietuSession({ page, timings: { saveTimeoutMs: 0, savePollMs: 0 } });
   const watch = session.beginSaveWatch();
-  await page.handler({
+  await page.handlers.response({
     url: () => "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?action=save&token=secret-token",
     async json() { return { ret: 0, appMsgId: "100001815" }; },
   });
@@ -663,7 +706,8 @@ test("confirmSave stays on the editor until an appmsgid arrives", async () => {
   assert.doesNotMatch(confirmed.url, /secret-token/);
   assert.equal(confirmed.screenshot, path.join(dir, "tietu-save-confirm.png"));
   assert.equal(page.shot.fullPage, true);
-  assert.equal(page.shot.type, "png");
+  assert.equal(page.shot.type, undefined);
+  assert.deepEqual(Object.keys(page.shot).sort(), ["fullPage", "path"]);
   assert.equal(fs.existsSync(confirmed.screenshot), true);
 
   globalThis.location = new URL(tietuEditorUrl({ token: "secret-token", appmsgid: "100001815" }));
