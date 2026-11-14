@@ -20,7 +20,10 @@ import {
   findUrls,
   imageFieldsFromBody,
   inspectImage,
+  mergeSaveObservations,
+  pageSaveRecords,
   parseSaveResponse,
+  savesFromEvents,
   planOfTietu,
   redactMpUrl,
   sessionToken,
@@ -325,6 +328,17 @@ test("upload detection accepts any later signal and describes the file inputs", 
   assert.equal(empty.nonEmpty, false);
   assert.equal(empty.cdnNonEmpty, false);
   assert.equal(empty.shareNonEmpty, false);
+  const body = "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}');
+  const fromPage = pageSaveRecords([{ phase: "request", url: "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create", body, at: 1 }]);
+  assert.equal(fromPage.requests[0].nonEmpty, true);
+  const merged = mergeSaveObservations({
+    pageSaves: [{ phase: "response", url: "https://mp.weixin.qq.com/cgi-bin/operate_appmsg", body, ret: 0, appMsgId: "100001903", at: 2 }],
+    events: savesFromEvents([{ url: "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=update", postData: body, ret: 0, appMsgId: "100001903" }]),
+    requests: [],
+    responses: [],
+  });
+  assert.equal(merged.responses.some((item) => item.appMsgId === "100001903"), true);
+  assert.equal(merged.requests.some((item) => item.nonEmpty), true);
   assert.match(redactMpUrl("https://mp.weixin.qq.com/cgi-bin/appmsg?token=secret&type=77"), /token=redacted/);
   assert.equal(redactMpUrl("not a url"), "");
 });

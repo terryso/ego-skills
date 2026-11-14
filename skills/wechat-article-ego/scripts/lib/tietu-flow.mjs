@@ -182,7 +182,7 @@ export async function executeTietu(config, deps) {
         } : {}),
       });
     };
-    const watch = typeof session.beginSaveWatch === "function" ? session.beginSaveWatch() : null;
+    const watch = typeof session.beginSaveWatch === "function" ? await session.beginSaveWatch() : null;
     const stopWatch = () => {
       if (watch && typeof watch.stop === "function") watch.stop();
     };
@@ -319,10 +319,8 @@ export async function executeTietu(config, deps) {
         saveConfirm,
       });
     }
-    if (saveConfirm.saveRequest && saveConfirm.saveRequest.nonEmpty === false) {
-      const error = saveConfirm.saveRequest.missing
-        ? "save request was not observed"
-        : "save request had no image (cdn_url0 and share_imageinfo0 were empty)";
+    if (saveConfirm.saveRequest && saveConfirm.saveRequest.nonEmpty === false && !saveConfirm.saveRequest.missing) {
+      const error = "save request had no image (cdn_url0 and share_imageinfo0 were empty)";
       await mark("uncertain", {
         saveClicked: true,
         finishedAt: now(),
@@ -513,13 +511,21 @@ export async function executeTietu(config, deps) {
     store.write(config.receiptDir, saved);
     const shots = [];
     let warning = "";
+    if (saveConfirm.saveRequest && saveConfirm.saveRequest.missing) {
+      const imagesOk = Boolean(again && again.imagesOk && (reopened.imageCount || 0) >= 1);
+      const type8 = Number(listCheck.itemShowType) === 8;
+      const sameId = String((reopened && reopened.appmsgid) || appmsgid) === String(appmsgid);
+      if (listCheck.found && type8 && imagesOk && sameId) {
+        warning = "save request was not observed";
+      }
+    }
     if (config.screenshotDir) {
       try {
         if (typeof session.captureViews === "function") {
           shots.push(...await session.captureViews(config.screenshotDir, "tietu"));
         }
       } catch (error) {
-        warning = String(error.message || error);
+        warning = [warning, String(error.message || error)].filter(Boolean).join("; ");
       }
     }
     return {
@@ -532,6 +538,7 @@ export async function executeTietu(config, deps) {
       account: account.account,
       appmsgid,
       draftId: appmsgid,
+      autosaveId: saveConfirm.autosaveId,
       type: 77,
       title: reopened.title,
       text: reopened.text,

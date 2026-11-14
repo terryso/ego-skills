@@ -15,7 +15,9 @@ import {
   describeFileInputs,
   describeUpload,
   imageFieldsFromBody,
+  mergeSaveObservations,
   parseSaveResponse,
+  savesFromEvents,
   redactMpUrl,
   sessionToken,
   tietuEditorUrl,
@@ -105,6 +107,30 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     const ready = await waitReady();
     if (ready.editorReady) return ready;
     return null;
+  }
+
+  async function observedSaves(watch) {
+    let pageSaves = [];
+    try {
+      const read = await act("read-saves");
+      pageSaves = (read && read.saves) || [];
+    } catch {
+      pageSaves = [];
+    }
+    let events = [];
+    if (typeof current.events === "function") {
+      try {
+        events = savesFromEvents(await current.events());
+      } catch {
+        events = [];
+      }
+    }
+    return mergeSaveObservations({
+      pageSaves,
+      events,
+      requests: watch && typeof watch.requests === "function" ? watch.requests() : [],
+      responses: watch && typeof watch.responses === "function" ? watch.responses() : [],
+    });
   }
 
   return {
@@ -346,7 +372,12 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     async readEditor() {
       return act("read-editor");
     },
-    beginSaveWatch() {
+    async beginSaveWatch() {
+      try {
+        await act("install-save-hook");
+      } catch {
+        // The in-page hook is the primary source. page.on below is only a fallback.
+      }
       const responses = [];
       const requests = [];
       const onResponse = async (response) => {
@@ -415,8 +446,9 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       let settled = false;
       while (!settled) {
         const state = await act("editor-state");
-        const responses = watch && typeof watch.responses === "function" ? watch.responses() : [];
-        const requests = watch && typeof watch.requests === "function" ? watch.requests() : [];
+        const observed = await observedSaves(watch);
+        const responses = observed.responses;
+        const requests = observed.requests;
         const autosaveResponse = [...responses].reverse().find((item) => item.ret === 0 || item.ret === "0" || item.appMsgId);
         const footer = /\d{1,2}:\d{2}\s*已保存/.test(`${state.toastText || ""} ${state.savedTime || ""}`);
         const appmsgid = state.appmsgid || (autosaveResponse && autosaveResponse.appMsgId) || "";
@@ -471,7 +503,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       let settled = false;
       while (!settled) {
         const state = await act("editor-state");
-        const responses = watch && typeof watch.responses === "function" ? watch.responses() : [];
+        const observed = await observedSaves(watch);
+        const responses = observed.responses;
         const picked = appmsgidFromSave({ urlId: state.appmsgid || "", responses });
         const matched = responses.find((item) => item.appMsgId && item.appMsgId === picked.appmsgid) || responses.at(-1) || null;
         last = {
@@ -486,7 +519,7 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           screenshot: last.screenshot,
           screenshotError: "",
         };
-        const requests = watch && typeof watch.requests === "function" ? watch.requests() : [];
+        const requests = observed.requests;
         const manual = [...requests].reverse().find((item) => item.at >= saveClickedAt) || null;
         last.saveRequest = manual ? {
           cdnNonEmpty: Boolean(manual.cdnNonEmpty),

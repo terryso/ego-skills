@@ -382,6 +382,43 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   assert.equal(wrongType.saves, 1);
 });
 
+test("a missing save request is only a warning when readback passes", async () => {
+  const quiet = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001903",
+      savedTime: "15:47",
+      toastText: "15:47已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveResponse: null,
+      saveRequest: { missing: true, nonEmpty: false },
+    },
+    autosave: {
+      ok: true,
+      appmsgid: "100001903",
+      imageFields: null,
+    },
+    drafts: [{ title: "编程 agent 的尽头是修车", id: "100001903", itemShowType: 8 }],
+    reopened: {
+      ...readback(),
+      appmsgid: "100001903",
+      type: 77,
+      imageCount: 2,
+      savedTime: "15:47",
+    },
+  });
+  const saved = await executeTietu(config(), { browser: browserWith(quiet), receipts: memoryReceipts() });
+  assert.equal(saved.exitCode, 0);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.action, "saved");
+  assert.equal(saved.appmsgid, "100001903");
+  assert.equal(saved.autosaveId, "100001903");
+  assert.match(saved.warning, /save request was not observed/);
+  assert.equal(saved.listCheck.itemShowType, 8);
+  assert.equal(quiet.saves, 1);
+});
+
 test("an empty save request is not treated as a 贴图 save", async () => {
   const wiped = session({
     confirmed: {

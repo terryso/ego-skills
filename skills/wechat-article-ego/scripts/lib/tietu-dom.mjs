@@ -411,6 +411,79 @@ export function tietuAct(payload) {
     return { ok: true, rows };
   }
 
+  if (op === "install-save-hook") {
+    const view = globalThis;
+    if (view.__egoSavesInstalled) return { ok: true, already: true };
+    view.__egoSaves = [];
+    const remember = (entry) => {
+      try { view.__egoSaves.push(entry); } catch { /* the page store is best-effort */ }
+    };
+    const asText = (body) => (typeof body === "string" ? body.slice(0, 8000) : "");
+    const XHR = view.XMLHttpRequest;
+    if (XHR && XHR.prototype && typeof XHR.prototype.open === "function" && typeof XHR.prototype.send === "function") {
+      const origOpen = XHR.prototype.open;
+      const origSend = XHR.prototype.send;
+      XHR.prototype.open = function egoOpen(method, url) {
+        this.__egoUrl = String(url || "");
+        return origOpen.apply(this, arguments);
+      };
+      XHR.prototype.send = function egoSend(body) {
+        const url = String(this.__egoUrl || "");
+        const text = asText(body);
+        if (/operate_appmsg/i.test(url)) {
+          remember({ at: Date.now(), url, phase: "request", body: text });
+          const xhr = this;
+          const done = () => {
+            let ret = null;
+            let appMsgId = "";
+            try {
+              const json = JSON.parse(String(xhr.responseText || ""));
+              ret = json && json.ret != null ? json.ret : null;
+              appMsgId = String((json && (json.appMsgId || json.appmsgid)) || "");
+            } catch {
+              // The response was not JSON.
+            }
+            remember({ at: Date.now(), url, phase: "response", body: text, ret, appMsgId });
+          };
+          if (typeof xhr.addEventListener === "function") xhr.addEventListener("load", done);
+        }
+        return origSend.apply(this, arguments);
+      };
+    }
+    if (typeof view.fetch === "function" && !view.__egoFetchWrapped) {
+      const origFetch = view.fetch;
+      view.__egoFetchWrapped = true;
+      view.fetch = function egoFetch(inputArg, init) {
+        const url = typeof inputArg === "string" ? inputArg : String((inputArg && inputArg.url) || "");
+        const text = asText(init && init.body);
+        const watched = /operate_appmsg/i.test(url);
+        if (watched) remember({ at: Date.now(), url, phase: "request", body: text });
+        return Promise.resolve(origFetch.apply(this, arguments)).then((response) => {
+          if (!watched || !response || typeof response.clone !== "function") return response;
+          const read = typeof response.clone().json === "function" ? response.clone().json() : Promise.resolve(null);
+          return Promise.resolve(read).then((json) => {
+            remember({
+              at: Date.now(),
+              url,
+              phase: "response",
+              body: text,
+              ret: json && json.ret != null ? json.ret : null,
+              appMsgId: String((json && (json.appMsgId || json.appmsgid)) || ""),
+            });
+            return response;
+          }).catch(() => response);
+        });
+      };
+    }
+    view.__egoSavesInstalled = true;
+    return { ok: true };
+  }
+
+  if (op === "read-saves") {
+    const saves = globalThis.__egoSaves;
+    return { ok: true, saves: Array.isArray(saves) ? saves.slice() : [] };
+  }
+
   if (op === "upload-probe") return uploadProbe();
 
   if (op === "scroll") {

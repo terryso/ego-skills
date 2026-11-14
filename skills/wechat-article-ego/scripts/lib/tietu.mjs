@@ -116,6 +116,58 @@ export function imageFieldsFromBody(body) {
   };
 }
 
+export function pageSaveRecords(saves) {
+  const requests = [];
+  const responses = [];
+  for (const item of saves || []) {
+    if (!item || !/operate_appmsg/i.test(String(item.url || ""))) continue;
+    const fields = imageFieldsFromBody(item.body || "");
+    const base = { at: item.at || 0, url: redactMpUrl(item.url || ""), ...fields };
+    if (item.phase !== "response") requests.push(base);
+    if (item.phase === "response" || item.ret != null || item.appMsgId) {
+      responses.push({
+        ...base,
+        ret: item.ret != null ? item.ret : null,
+        appMsgId: String(item.appMsgId || ""),
+      });
+    }
+  }
+  return { requests, responses };
+}
+
+export function savesFromEvents(raw) {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : (raw.requests || raw.events || []);
+  const out = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const url = String(item.url || item.requestUrl || "");
+    if (!/operate_appmsg/i.test(url)) continue;
+    const fields = imageFieldsFromBody(item.postData || item.body || "");
+    out.push({ phase: "request", at: item.time || item.at || 0, url: redactMpUrl(url), ...fields });
+    if (item.response || item.ret != null || item.appMsgId) {
+      const parsed = parseSaveResponse(item.response || item);
+      out.push({
+        phase: "response",
+        at: item.time || item.at || 0,
+        url: redactMpUrl(url),
+        ret: parsed.ret,
+        appMsgId: parsed.body.appMsgId || "",
+        ...fields,
+      });
+    }
+  }
+  return out;
+}
+
+export function mergeSaveObservations({ pageSaves = [], events = [], requests = [], responses = [] } = {}) {
+  const fromPage = pageSaveRecords(pageSaves);
+  return {
+    requests: [...fromPage.requests, ...events.filter((item) => item.phase !== "response"), ...requests],
+    responses: [...fromPage.responses, ...events.filter((item) => item.phase === "response"), ...responses],
+  };
+}
+
 // A 贴图 is uploaded only when .image-selector holds the expected number of
 // distinct mmbiz CDN pictures. File-input, network, and placeholder changes
 // are hints that the upload started. They do not make it safe to save.

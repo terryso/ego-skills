@@ -630,6 +630,53 @@ test("reopen only navigates and reads; it does not discard the draft", async () 
   assert.equal(ops.includes("click-save-draft"), false);
 });
 
+test("in-page hook records operate_appmsg bodies", async () => {
+  const previousXhr = globalThis.XMLHttpRequest;
+  const previousFetch = globalThis.fetch;
+  const previousFlag = globalThis.__egoSavesInstalled;
+  const previousWrapped = globalThis.__egoFetchWrapped;
+  delete globalThis.__egoSavesInstalled;
+  delete globalThis.__egoFetchWrapped;
+  class FakeXHR {
+    open() {}
+    send() {}
+    addEventListener(type, fn) {
+      this.listeners = this.listeners || {};
+      this.listeners[type] = fn;
+    }
+  }
+  globalThis.XMLHttpRequest = FakeXHR;
+  createDocument(h("div", { text: "hook" }), { href: "https://mp.weixin.qq.com/" });
+  assert.equal(tietuAct({ op: "install-save-hook" }).ok, true);
+  const xhr = new FakeXHR();
+  const body = "cdn_url0=&share_imageinfo0=" + encodeURIComponent('{"list":[]}');
+  xhr.open("POST", "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77");
+  xhr.send(body);
+  xhr.responseText = '{"ret":0,"appMsgId":"100001903"}';
+  xhr.listeners.load();
+  const saves = tietuAct({ op: "read-saves" }).saves;
+  assert.equal(saves[0].phase, "request");
+  assert.match(saves[0].body, /cdn_url0=/);
+  assert.equal(saves[1].phase, "response");
+  assert.equal(saves[1].appMsgId, "100001903");
+  const filled = "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}');
+  globalThis.fetch = async () => ({
+    clone() { return this; },
+    async json() { return { ret: 0, appMsgId: "100001903" }; },
+  });
+  delete globalThis.__egoFetchWrapped;
+  delete globalThis.__egoSavesInstalled;
+  globalThis.__egoSaves = [];
+  tietuAct({ op: "install-save-hook" });
+  await globalThis.fetch("https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=update&type=77", { body: filled });
+  const again = tietuAct({ op: "read-saves" }).saves;
+  assert.equal(again.some((item) => item.phase === "request" && item.body.includes("mmbiz")), true);
+  globalThis.XMLHttpRequest = previousXhr;
+  globalThis.fetch = previousFetch;
+  globalThis.__egoSavesInstalled = previousFlag;
+  globalThis.__egoFetchWrapped = previousWrapped;
+});
+
 test("manual save waits for autosave and uses a pointer click", async () => {
   const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "" });
   let polls = 0;
@@ -652,7 +699,7 @@ test("manual save waits for autosave and uses a pointer click", async () => {
   globalThis.document = editor.doc;
   globalThis.location = new URL(tietuEditorUrl({ token: "test-token" }));
   const session = createTietuSession({ page, timings: { autosaveTimeoutMs: 5_000, savePollMs: 1 } });
-  const watch = session.beginSaveWatch();
+  const watch = await session.beginSaveWatch();
   await requests[0]({
     url: () => "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77&token=secret",
     postData: () => "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}'),
@@ -690,7 +737,7 @@ test("confirmSave stays on the editor until an appmsgid arrives", async () => {
   globalThis.document = editor.doc;
   globalThis.location = new URL(tietuEditorUrl({ token: "secret-token" }));
   const session = createTietuSession({ page, timings: { saveTimeoutMs: 0, savePollMs: 0 } });
-  const watch = session.beginSaveWatch();
+  const watch = await session.beginSaveWatch();
   await page.handlers.response({
     url: () => "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?action=save&token=secret-token",
     async json() { return { ret: 0, appMsgId: "100001815" }; },

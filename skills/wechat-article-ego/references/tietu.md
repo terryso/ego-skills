@@ -25,7 +25,7 @@ The 1000-character budget counts the body text, including URLs, plus the newline
 
 ## Save and check
 
-After the last keystroke, wait up to 30 seconds for the editor autosave: footer `HH:MM已保存`, an `appmsgid` on the URL, or `operate_appmsg` with `ret` 0. Record whether that request's `cdn_url0` and `share_imageinfo0` are non-empty. Only then click 保存为草稿 with `page.click` or `locator.click`. Do not use an in-page `el.click()`; that can submit before the image list has synced. The manual save must keep the autosave `appmsgid`. If the save request's image fields are empty, or the id changes, stop and report both ids.
+After the last keystroke, wait up to 30 seconds for the editor autosave: footer `HH:MM已保存`, an `appmsgid` on the URL, or `operate_appmsg` with `ret` 0. Record whether that request's `cdn_url0` and `share_imageinfo0` are non-empty. Ego Lite does not emit `page.on("request")`, so the hook is installed in the page (`XMLHttpRequest` and `fetch`, stashed on `window.__egoSaves`). `page.on` is only a fallback. If no save request is observed, that is a warning when the reopened draft and the 贴图 list (`item_show_type` 8, same `appmsgid`, at least one image) already agree. A request that is observed with empty image fields is a failure. Only then click 保存为草稿 with `page.click` or `locator.click`. Do not use an in-page `el.click()`; that can submit before the image list has synced. The manual save must keep the autosave `appmsgid`. If the save request's image fields are empty, or the id changes, stop and report both ids.
 
 Click the exact label 保存为草稿 once. 发表 and 预览 sit next to it. Do not click them. Do not click 群发, 定时群发, or 发送预览.
 
