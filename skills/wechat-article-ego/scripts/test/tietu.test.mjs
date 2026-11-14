@@ -26,6 +26,8 @@ import {
   savesFromEvents,
   planOfTietu,
   redactMpUrl,
+  resolveListMatch,
+  saveRequestFromObservations,
   sessionToken,
   draftMatchesId,
   tietuEditorUrl,
@@ -221,6 +223,51 @@ test("readback compares title, body lines, topics, images, and type 77", () => {
   assert.equal(draftMatchesId({ id: "100001920", title: "另一题" }, "100001920"), true);
   assert.equal(draftMatchesId({ id: "100001800", title: "编程 agent 的尽头是修车" }, "100001920"), false);
   assert.equal(draftMatchesId({ title: "编程 agent 的尽头是修车" }, "100001920"), false);
+  const byId = resolveListMatch({
+    rows: [{ id: "100001800", title: "编程 agent 的尽头是修车" }, { id: "100001937", title: "另一题", itemShowType: 8 }],
+    appmsgid: "100001937",
+    title: "编程 agent 的尽头是修车",
+    preSaveCount: 5,
+  });
+  assert.equal(byId.found, true);
+  assert.equal(byId.match, "appmsgid");
+  assert.equal(byId.weaker, false);
+  const titles = [
+    { title: "旧一", id: "" },
+    { title: "旧二", id: "" },
+    { title: "旧三", id: "" },
+    { title: "旧四", id: "" },
+    { title: "旧五", id: "" },
+    { title: "【验收】贴图技能 run8", id: "" },
+  ];
+  const weaker = resolveListMatch({ rows: titles, appmsgid: "100001937", title: "【验收】贴图技能 run8", preSaveCount: 5 });
+  assert.equal(weaker.found, true);
+  assert.equal(weaker.match, "title-and-count");
+  assert.equal(weaker.weaker, true);
+  assert.equal(weaker.itemShowType, 8);
+  const stalled = resolveListMatch({ rows: titles.slice(1), appmsgid: "100001937", title: "【验收】贴图技能 run8", preSaveCount: 5 });
+  assert.equal(stalled.found, false);
+  const filled = "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}');
+  const fields = imageFieldsFromBody(filled);
+  const accepted = saveRequestFromObservations({
+    requests: [{ at: 100, url: "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77", ...fields }],
+    responses: [{ appMsgId: "100001937", ret: 0 }],
+    clickedAt: 200,
+    appmsgid: "100001937",
+  });
+  assert.equal(accepted.via, "autosave");
+  assert.equal(accepted.nonEmpty, true);
+  assert.equal(accepted.missing, false);
+  const empty = saveRequestFromObservations({
+    requests: [{ at: 100, url: "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77", ...imageFieldsFromBody("cdn_url0=&share_imageinfo0=%7B%22list%22%3A%5B%5D%7D") }],
+    responses: [{ appMsgId: "100001937", ret: 0 }],
+    clickedAt: 200,
+    appmsgid: "100001937",
+  });
+  assert.equal(empty.via, "autosave");
+  assert.equal(empty.nonEmpty, false);
+  assert.equal(empty.missing, false);
+  assert.equal(saveRequestFromObservations({ requests: [], responses: [], clickedAt: 1, appmsgid: "100001937" }).missing, true);
   assert.equal(sessionToken(editor), "test-token");
   assert.equal(sessionToken("https://example.com/?token=test-token"), "");
   assert.equal(sessionToken("not a url"), "");

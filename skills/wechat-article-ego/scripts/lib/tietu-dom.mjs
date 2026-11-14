@@ -374,7 +374,7 @@ export function tietuAct(payload) {
     return { ok: true, via: op === "click-save-draft" ? "保存为草稿" : "find", label, clicked: op === "click-save-draft" };
   }
 
-  if (op === "draft-cards") {
+  function domCards() {
     const rows = [];
     for (const el of qsa(doc, "a.weui-desktop-publish__cover__title")) {
       const title = normalize(el.innerText || el.textContent || "");
@@ -408,7 +408,91 @@ export function tietuAct(payload) {
       rows.push({ title, id, time, itemShowType });
       if (rows.length >= 30) break;
     }
-    return { ok: true, rows };
+    return rows;
+  }
+
+  function numericId(value) {
+    return /^[0-9]+$/.test(String(value || "")) ? String(value) : "";
+  }
+
+  function pushItems(value, out, depth) {
+    if (!value || depth > 5 || out.length >= 30) return;
+    if (typeof value === "string") {
+      try { pushItems(JSON.parse(value), out, depth + 1); } catch { /* not JSON */ }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) pushItems(item, out, depth + 1);
+      return;
+    }
+    if (typeof value !== "object") return;
+    const id = numericId(value.appmsgid || value.appMsgId || value.app_msg_id || value.app_id);
+    if (id && (value.title || value.item_show_type != null || value.itemShowType != null)) {
+      const show = value.item_show_type != null ? value.item_show_type : value.itemShowType;
+      out.push({
+        id,
+        title: normalize(value.title || value.appmsg_title || ""),
+        time: "",
+        itemShowType: show == null || show === "" || !Number.isFinite(Number(show)) ? null : Number(show),
+      });
+    }
+    for (const key of ["item", "items", "list", "multi_item", "app_msg_info", "app_msg_list", "cgiData"]) {
+      if (value[key] != null) pushItems(value[key], out, depth + 1);
+    }
+  }
+
+  function embeddedItems() {
+    const out = [];
+    const view = globalThis;
+    const bags = [view.wx && view.wx.cgiData, view.cgiData];
+    for (const bag of bags) pushItems(bag, out, 0);
+    return out;
+  }
+
+  function withDomTitles(dataRows) {
+    const dom = domCards();
+    return dataRows.map((row, index) => ({
+      ...row,
+      title: row.title || (dom[index] && dom[index].title) || "",
+      time: row.time || (dom[index] && dom[index].time) || "",
+    }));
+  }
+
+  if (op === "draft-cards") {
+    return { ok: true, rows: domCards() };
+  }
+
+  if (op === "draft-list") {
+    const embedded = embeddedItems();
+    if (embedded.some((row) => row.id)) {
+      return { ok: true, source: "cgiData", rows: withDomTitles(embedded) };
+    }
+    const dom = domCards();
+    if (dom.some((row) => row.id)) return { ok: true, source: "dom", rows: dom };
+    let href = "";
+    try { href = String(globalThis.location && globalThis.location.href || ""); } catch { href = ""; }
+    if (!href || typeof globalThis.fetch !== "function") return { ok: true, source: "dom", rows: dom };
+    let target = "";
+    try {
+      const url = new URL(href);
+      url.searchParams.set("f", "json");
+      url.searchParams.set("ajax", "1");
+      target = url.toString();
+    } catch {
+      return { ok: true, source: "dom", rows: dom };
+    }
+    const signal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(8000)
+      : undefined;
+    return Promise.resolve(globalThis.fetch(target, { credentials: "same-origin", signal })).then((res) => {
+      if (!res || typeof res.json !== "function") return { ok: true, source: "dom", rows: dom };
+      return Promise.resolve(res.json()).then((json) => {
+        const parsed = [];
+        pushItems(json, parsed, 0);
+        if (!parsed.some((row) => row.id)) return { ok: true, source: "dom", rows: dom };
+        return { ok: true, source: "json", rows: withDomTitles(parsed) };
+      });
+    }).catch(() => ({ ok: true, source: "dom", rows: dom }));
   }
 
   if (op === "install-save-hook" || op === "read-saves") {

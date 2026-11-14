@@ -9,6 +9,7 @@ import {
 import {
   draftMatchesId,
   planOfTietu,
+  resolveListMatch,
   tietuLoginTip,
   validateTietuReadback,
 } from "./tietu.mjs";
@@ -182,6 +183,16 @@ export async function executeTietu(config, deps) {
         } : {}),
       });
     };
+    let preSaveCount = null;
+    if (typeof session.countDrafts === "function") {
+      try {
+        const counted = await session.countDrafts();
+        const count = counted && Number(counted.count);
+        preSaveCount = Number.isFinite(count) ? count : null;
+      } catch {
+        preSaveCount = null;
+      }
+    }
     const watch = typeof session.beginSaveWatch === "function" ? await session.beginSaveWatch() : null;
     const stopWatch = () => {
       if (watch && typeof watch.stop === "function") watch.stop();
@@ -411,19 +422,23 @@ export async function executeTietu(config, deps) {
         confirmed: Boolean(confirmed.ok),
       });
     }
-    let listCheck = { ok: false, count: 0, found: false, error: "", itemShowType: null };
+    let listCheck = { ok: false, count: 0, found: false, error: "", itemShowType: null, preSaveCount };
     const sameDraft = (row) => draftMatchesId(row, appmsgid);
     try {
       const rows = await session.listDrafts();
-      const hit = (rows || []).find(sameDraft) || null;
+      const resolved = resolveListMatch({ rows, appmsgid, title: post.title, preSaveCount });
       listCheck = {
         ok: true,
-        count: (rows || []).length,
-        found: Boolean(hit),
-        itemShowType: hit ? hit.itemShowType : null,
+        count: resolved.count,
+        found: resolved.found,
+        match: resolved.match,
+        weaker: resolved.weaker,
+        itemShowType: resolved.itemShowType,
+        preSaveCount: resolved.preSaveCount,
+        source: rows && rows.source || "",
         titles: (rows || []).map((row) => row && row.title).filter(Boolean).slice(0, 10),
       };
-      if (hit && hit.itemShowType != null && Number(hit.itemShowType) !== 8) {
+      if (resolved.found && resolved.itemShowType != null && Number(resolved.itemShowType) !== 8) {
         listCheck.article = true;
       }
     } catch (error) {

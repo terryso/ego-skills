@@ -500,6 +500,66 @@ export function draftMatchesId(row, appmsgid) {
   return Boolean(row && String(row.id || "") === id);
 }
 
+function rowId(row) {
+  return /^[0-9]+$/.test(String(row && row.id || "")) ? String(row.id) : "";
+}
+
+// Ids from the list payload win. When every card lacks an id, a single title
+// plus a list that grew by one since the pre-save count is a weaker match.
+export function resolveListMatch({ rows, appmsgid, title, preSaveCount } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const ids = list.filter((row) => rowId(row));
+  const count = list.length;
+  const prior = Number.isFinite(Number(preSaveCount)) ? Number(preSaveCount) : null;
+  if (ids.length) {
+    const hit = ids.find((row) => draftMatchesId(row, appmsgid)) || null;
+    return {
+      found: Boolean(hit),
+      match: hit ? "appmsgid" : "none",
+      weaker: false,
+      itemShowType: hit && hit.itemShowType != null ? hit.itemShowType : null,
+      count,
+      preSaveCount: prior,
+    };
+  }
+  const want = normalizeText(title);
+  const titled = list.filter((row) => row && normalizeText(row.title) === want);
+  const grew = prior != null && count === prior + 1;
+  const found = titled.length === 1 && grew;
+  return {
+    found,
+    match: found ? "title-and-count" : "none",
+    weaker: found,
+    itemShowType: found ? (titled[0].itemShowType != null ? titled[0].itemShowType : 8) : null,
+    count,
+    preSaveCount: prior,
+  };
+}
+
+function requestFields(item) {
+  return {
+    cdnNonEmpty: Boolean(item && item.cdnNonEmpty),
+    shareNonEmpty: Boolean(item && item.shareNonEmpty),
+    nonEmpty: Boolean(item && item.nonEmpty),
+    missing: false,
+  };
+}
+
+// A click that sends no new operate_appmsg still saved when the earlier
+// sub=create&type=77 autosave returned this appmsgid. Image fields come from
+// that request. An observed request with empty image fields stays a failure.
+export function saveRequestFromObservations({ requests = [], responses = [], clickedAt = 0, appmsgid = "" } = {}) {
+  const operate = (item) => /operate_appmsg/i.test(String(item && item.url || ""));
+  const create = (item) => operate(item) && /sub=create/i.test(item.url) && /(?:^|[?&])type=77(?:&|$)/.test(item.url);
+  const later = (requests || []).filter((item) => operate(item) && Number(item.at || 0) >= Number(clickedAt || 0));
+  if (later.length) return { ...requestFields(later[later.length - 1]), via: "click" };
+  const id = String(appmsgid || "");
+  const creates = (requests || []).filter(create);
+  const same = (responses || []).some((item) => id && String(item.appMsgId || "") === id);
+  if (creates.length && same) return { ...requestFields(creates[creates.length - 1]), via: "autosave" };
+  return { missing: true, nonEmpty: false };
+}
+
 export function articleListUrl({ token = "" } = {}) {
   return mpUrl("/cgi-bin/appmsg", {
     begin: "0",

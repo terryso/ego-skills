@@ -19,6 +19,7 @@ import {
   parseSaveResponse,
   savesFromEvents,
   redactMpUrl,
+  saveRequestFromObservations,
   sessionToken,
   tietuEditorUrl,
   tietuListUrl,
@@ -678,13 +679,12 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           screenshotError: "",
           saveHook,
         };
-        const requests = observed.requests;
-        const manual = [...requests].reverse().find((item) => item.at >= saveClickedAt) || null;
-        last.saveRequest = manual ? {
-          cdnNonEmpty: Boolean(manual.cdnNonEmpty),
-          shareNonEmpty: Boolean(manual.shareNonEmpty),
-          nonEmpty: Boolean(manual.nonEmpty),
-        } : { missing: true, nonEmpty: false };
+        last.saveRequest = saveRequestFromObservations({
+          requests: observed.requests,
+          responses: observed.responses,
+          clickedAt: saveClickedAt,
+          appmsgid: picked.appmsgid || "",
+        });
         settled = Boolean(picked.appmsgid) || !(timeout > 0 && interval > 0 && Date.now() - started < timeout);
         if (!settled) await pause(interval);
       }
@@ -762,8 +762,14 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       const value = await token();
       if (!value) throw new Error("贴图 draft list needs the signed-in session");
       await redactGoto(kind === "article" ? articleListUrl({ token: value }) : tietuListUrl({ token: value }));
-      const listed = await act("draft-cards");
-      return (listed && listed.rows) || [];
+      const listed = await act("draft-list");
+      const rows = (listed && listed.rows) || [];
+      rows.source = (listed && listed.source) || "";
+      return rows;
+    },
+    async countDrafts() {
+      const rows = await this.listDrafts("tietu");
+      return { count: rows.length, source: rows.source || "" };
     },
     async listArticleDrafts() {
       return this.listDrafts("article");

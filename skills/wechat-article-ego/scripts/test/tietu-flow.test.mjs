@@ -465,6 +465,61 @@ test("the 贴图 list matches appmsgid, not a same title", async () => {
   assert.match(saved.warning, /save request was not observed/);
 });
 
+test("a title match counts only when the 贴图 list grew by one", async () => {
+  const rows = [
+    { title: "旧一", id: "" },
+    { title: "旧二", id: "" },
+    { title: "旧三", id: "" },
+    { title: "旧四", id: "" },
+    { title: "旧五", id: "" },
+    { title: "编程 agent 的尽头是修车", id: "" },
+  ];
+  const grown = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001937",
+      savedTime: "16:06",
+      toastText: "16:06已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { missing: false, nonEmpty: true, cdnNonEmpty: true, shareNonEmpty: true, via: "autosave" },
+    },
+    autosave: { ok: true, appmsgid: "100001937", imageFields: { nonEmpty: true, cdnNonEmpty: true, shareNonEmpty: true } },
+    drafts: rows,
+    reopened: { ...readback(), appmsgid: "100001937", type: 77, imageCount: 2, savedTime: "16:06" },
+  });
+  grown.countDrafts = async () => ({ count: 5 });
+  const saved = await executeTietu(config(), { browser: browserWith(grown), receipts: memoryReceipts() });
+  assert.equal(saved.exitCode, 0);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.listCheck.found, true);
+  assert.equal(saved.listCheck.weaker, true);
+  assert.equal(saved.listCheck.match, "title-and-count");
+  assert.equal(saved.listCheck.preSaveCount, 5);
+  assert.equal(saved.saveConfirm.saveRequest.via, "autosave");
+  assert.equal(saved.warning, "");
+
+  const sameSize = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001937",
+      savedTime: "16:06",
+      toastText: "16:06已保存",
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+      screenshotError: "",
+      saveRequest: { missing: false, nonEmpty: true, via: "autosave" },
+    },
+    autosave: { ok: true, appmsgid: "100001937", imageFields: { nonEmpty: true } },
+    drafts: rows,
+    reopened: { ...readback(), appmsgid: "100001937", type: 77, imageCount: 2, savedTime: "16:06" },
+  });
+  sameSize.countDrafts = async () => ({ count: 6 });
+  const missed = await executeTietu(config(), { browser: browserWith(sameSize), receipts: memoryReceipts() });
+  assert.equal(missed.exitCode, 4);
+  assert.equal(missed.error, "draft list did not include the saved 贴图");
+  assert.equal(missed.listCheck.weaker, false);
+});
+
 test("an empty save request is not treated as a 贴图 save", async () => {
   const wiped = session({
     confirmed: {

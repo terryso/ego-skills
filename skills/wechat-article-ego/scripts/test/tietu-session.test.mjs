@@ -630,6 +630,89 @@ test("reopen only navigates and reads; it does not discard the draft", async () 
   assert.equal(ops.includes("click-save-draft"), false);
 });
 
+test("draft list ids come from cgiData or the json list", async () => {
+  const card = h("a", {
+    className: "weui-desktop-publish__cover__title",
+    text: "【验收】贴图技能 run8",
+    attrs: { href: "javascript:void(0)" },
+  });
+  createDocument(h("div", {}, [card]), { href: tietuListUrl({ token: "test-token" }) });
+  const previousWx = globalThis.wx;
+  globalThis.wx = {
+    cgiData: {
+      app_msg_info: {
+        item: [{ appmsgid: "100001937", title: "【验收】贴图技能 run8", item_show_type: 8 }],
+      },
+    },
+  };
+  const fromData = tietuAct({ op: "draft-list" });
+  assert.equal(fromData.source, "cgiData");
+  assert.equal(fromData.rows[0].id, "100001937");
+  assert.equal(fromData.rows[0].itemShowType, 8);
+  delete globalThis.wx;
+  const previousFetch = globalThis.fetch;
+  let fetched = "";
+  globalThis.fetch = async (url) => {
+    fetched = String(url);
+    return {
+      async json() {
+        return { app_msg_info: { item: [{ app_id: "100001937", title: "【验收】贴图技能 run8", item_show_type: 8 }] } };
+      },
+    };
+  };
+  const fromJson = await tietuAct({ op: "draft-list" });
+  assert.equal(fromJson.source, "json");
+  assert.equal(fromJson.rows[0].id, "100001937");
+  assert.match(fetched, /f=json/);
+  assert.match(fetched, /ajax=1/);
+  assert.match(fetched, /item_show_type=8/);
+  globalThis.fetch = previousFetch;
+  globalThis.wx = previousWx;
+});
+
+test("an autosave create request counts when the click sends nothing", async () => {
+  const previousXhr = globalThis.XMLHttpRequest;
+  delete globalThis.__egoSavesInstalled;
+  delete globalThis.__egoXhrWrapped;
+  delete globalThis.__egoFetchWrapped;
+  delete globalThis.__egoSaves;
+  delete globalThis.__egoRecent;
+  class FakeXHR {
+    open() {}
+    send() {}
+    addEventListener(type, fn) {
+      this.listeners = this.listeners || {};
+      this.listeners[type] = fn;
+    }
+  }
+  globalThis.XMLHttpRequest = FakeXHR;
+  const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "16:06已保存" });
+  globalThis.document = editor.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "test-token", appmsgid: "100001937" }));
+  const page = {
+    async evaluate(fn, arg) { return fn(arg); },
+    on() {},
+    off() {},
+    async click() {},
+  };
+  const session = createTietuSession({ page, timings: { saveTimeoutMs: 0, savePollMs: 0 } });
+  await session.beginSaveWatch();
+  const xhr = new FakeXHR();
+  const body = "cdn_url0=https%3A%2F%2Fmmbiz.qpic.cn%2Fa&share_imageinfo0=" + encodeURIComponent('{"list":[{"url":"https://mmbiz.qpic.cn/a"}]}');
+  xhr.open("POST", "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?sub=create&type=77&autosave_log=true");
+  xhr.send(body);
+  xhr.responseText = '{"ret":0,"appMsgId":"100001937"}';
+  xhr.listeners.load();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await session.clickSaveDraft();
+  const confirmed = await session.confirmSave({ timeoutMs: 0, pollMs: 0 });
+  assert.equal(confirmed.saveRequest.via, "autosave");
+  assert.equal(confirmed.saveRequest.nonEmpty, true);
+  assert.equal(confirmed.saveRequest.missing, false);
+  assert.equal(confirmed.appmsgid, "100001937");
+  globalThis.XMLHttpRequest = previousXhr;
+});
+
 test("in-page hook records operate_appmsg bodies", async () => {
   const previousXhr = globalThis.XMLHttpRequest;
   const previousFetch = globalThis.fetch;
