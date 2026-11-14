@@ -8,10 +8,14 @@ import { prepareTietu } from "../lib/tietu-prepare.mjs";
 import {
   TIETU_TEXT_MAX,
   TIETU_TITLE_MAX,
+  TIETU_UPLOAD_POLL_MS,
+  TIETU_UPLOAD_TIMEOUT_MS,
   appmsgidFromUrl,
   buildTietu,
   charCount,
   composeTietuBody,
+  describeFileInputs,
+  describeUpload,
   findUrls,
   inspectImage,
   planOfTietu,
@@ -19,6 +23,8 @@ import {
   tietuEditorUrl,
   tietuListUrl,
   tietuLoginTip,
+  trimUploaderHtml,
+  uploadAdvanced,
   validateTietuReadback,
 } from "../lib/tietu.mjs";
 
@@ -262,4 +268,35 @@ test("inspectImage and prepareTietu accept a local jpeg and reject the rest", as
   const empty = await prepareTietu({ title: "题", text: "正文", fsImpl: fs });
   assert.match(empty.error, /--image/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("upload detection accepts any later signal and describes the file inputs", () => {
+  assert.equal(TIETU_UPLOAD_TIMEOUT_MS, 30_000);
+  assert.equal(TIETU_UPLOAD_POLL_MS, 500);
+  const before = {
+    imageCount: 0,
+    thumbCount: 0,
+    inputValue: "",
+    inputChildren: 0,
+    placeholder: true,
+    uploadResponses: 0,
+    fileInputs: [{ index: 1, accept: "" }, { index: 2, accept: "image/jpeg,image/png" }],
+    chosenIndex: 2,
+  };
+  assert.equal(uploadAdvanced(before, { ...before }).ok, false);
+  assert.deepEqual(uploadAdvanced(before, { ...before, thumbCount: 1 }).reasons, ["thumbnail"]);
+  assert.deepEqual(uploadAdvanced(before, { ...before, imageCount: 1 }).reasons, ["image-count"]);
+  assert.deepEqual(uploadAdvanced(before, { ...before, inputValue: "cover.jpg" }).reasons, ["input-value"]);
+  assert.deepEqual(uploadAdvanced(before, { ...before, inputChildren: 1 }).reasons, ["input-children"]);
+  assert.deepEqual(uploadAdvanced(before, { ...before, placeholder: false }).reasons, ["placeholder-gone"]);
+  assert.deepEqual(uploadAdvanced(before, { ...before, uploadResponses: 1 }).reasons, ["upload-response"]);
+  assert.equal(uploadAdvanced(null, null).ok, false);
+  assert.match(describeUpload(before, { ...before, thumbCount: 1 }), /thumbs 0->1/);
+  assert.match(describeFileInputs(before), /fileInputs=2/);
+  assert.match(describeFileInputs(before), /image\/jpeg,image\/png/);
+  assert.match(describeFileInputs(before), /chosen=2/);
+  const html = trimUploaderHtml(`<div style="background-image:url(https://mp.weixin.qq.com/a?token=secret)">上传图片</div>`);
+  assert.match(html, /token=redacted/);
+  assert.doesNotMatch(html, /token=secret/);
+  assert.match(trimUploaderHtml("字".repeat(20), 8), /truncated/);
 });

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { h, createDocument } from "./dom-fixture.mjs";
 import { tietuAct } from "../lib/tietu-dom.mjs";
@@ -329,7 +332,7 @@ test("session reports a missing uploader, a missed thumbnail, and a redacted nav
   ]), { href: tietuEditorUrl({ token: "test-token" }) });
   globalThis.document = two;
   bare.evaluate = async (fn, arg) => fn(arg);
-  await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /thumbnail/);
+  await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /not detected/);
   delete bare.setInputFiles;
   globalThis.document = two;
   await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /setInputFiles/);
@@ -398,4 +401,169 @@ test("session reports a missing uploader, a missed thumbnail, and a redacted nav
   });
   globalThis.document = createDocument(h("div", { text: "空" }), { href: tietuEditorUrl({ token: "test-token" }) });
   await assert.rejects(() => stalled.reopen("100001815"), /did not open/);
+});
+
+function uploaderDocument() {
+  const menu = h("input", { type: "file", accept: "" });
+  const main = h("input", { type: "file", accept: "image/jpeg,image/png" });
+  const placeholder = h("div", { className: "upload-placeholder", text: "上传图片 token=secret" });
+  const region = h("div", { className: "image-upload" }, [main, placeholder]);
+  const root = h("div", {}, [
+    h("div", { className: "ProseMirror", text: "" }),
+    h("div", { className: "ProseMirror", text: "" }),
+    menu,
+    region,
+  ]);
+  const doc = createDocument(root, { href: tietuEditorUrl({ token: "test-token" }) });
+  return { doc, main, region, placeholder };
+}
+
+test("upload probe sees the main input, thumbs, placeholder, and upload urls", () => {
+  const built = uploaderDocument();
+  const probe = tietuAct({ op: "upload-probe" });
+  assert.equal(probe.fileInputs.length, 2);
+  assert.equal(probe.fileInputs[0].accept, "");
+  assert.equal(probe.chosenIndex, 2);
+  assert.equal(probe.chosenAccept, "image/jpeg,image/png");
+  assert.equal(probe.placeholder, true);
+  assert.equal(probe.thumbCount, 0);
+  assert.equal(probe.imageCount, 0);
+  assert.match(probe.outerHTML, /上传图片/);
+  built.region.childNodes.push(h("canvas"));
+  built.region.childNodes.push(h("div", { attrs: { style: "background-image: url(https://mmbiz.example/b.jpg)" } }));
+  built.region.childNodes.push(h("img", { attrs: { src: "blob:https://mp.weixin.qq.com/thumb" } }));
+  const previous = globalThis.performance;
+  globalThis.performance = {
+    getEntries: () => [{ name: "https://mp.weixin.qq.com/cgi-bin/filetransfer?action=uploadimg&token=secret" }],
+  };
+  const again = tietuAct({ op: "upload-probe", networkHits: 1 });
+  assert.ok(again.thumbCount >= 3);
+  assert.equal(again.placeholder, false);
+  assert.ok(again.imageCount >= 1);
+  assert.ok(again.uploadResponses >= 2);
+  assert.doesNotMatch(JSON.stringify(again.fileInputs), /token=secret/);
+  globalThis.performance = previous;
+  assert.equal(built.placeholder.text.includes("token=secret"), true);
+});
+
+test("upload waits for a thumbnail, a filename, or an upload response", async () => {
+  const canvasDoc = uploaderDocument();
+  let probes = 0;
+  const canvasPage = {
+    async evaluate(fn, arg) {
+      if (arg && arg.op === "upload-probe") {
+        probes += 1;
+        if (probes >= 3) canvasDoc.region.childNodes.push(h("canvas"));
+      }
+      return fn(arg);
+    },
+    async setInputFiles(selector) { assert.equal(selector, TIETU_FILE_INPUT); },
+    async waitForTimeout() {},
+    on() {},
+    off() {},
+  };
+  const canvasSession = createTietuSession({
+    page: canvasPage,
+    timings: { uploadWaitMs: 1, uploadTimeoutMs: 5_000 },
+  });
+  const canvasUpload = await canvasSession.uploadImages(["/absolute/path/cover.jpg"]);
+  assert.ok(canvasUpload.imageCount >= 1);
+  assert.ok(canvasUpload.uploads[0].via.includes("thumbnail"));
+  assert.equal(canvasUpload.uploads[0].chosenAccept, "image/jpeg,image/png");
+
+  const named = uploaderDocument();
+  const namedPage = {
+    async evaluate(fn, arg) { return fn(arg); },
+    async setInputFiles() { named.main.value = "C:\\fakepath\\cover.jpg"; },
+    async waitForTimeout() {},
+  };
+  const namedSession = createTietuSession({ page: namedPage, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
+  const namedUpload = await namedSession.uploadImages(["/absolute/path/cover.jpg"]);
+  assert.ok(namedUpload.uploads[0].via.includes("input-value"));
+
+  const listeners = [];
+  const netDoc = uploaderDocument();
+  const netPage = {
+    async evaluate(fn, arg) { return fn(arg); },
+    async setInputFiles() {
+      for (const handler of listeners) handler({ url: () => "https://mp.weixin.qq.com/cgi-bin/filetransfer?action=uploadimg" });
+    },
+    on(event, handler) { if (event === "response") listeners.push(handler); },
+    off() {},
+  };
+  globalThis.document = netDoc.doc;
+  const netSession = createTietuSession({ page: netPage, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
+  const netUpload = await netSession.uploadImages(["/absolute/path/cover.jpg"]);
+  assert.ok(netUpload.uploads[0].via.includes("upload-response"));
+  assert.equal(netDoc.region.childNodes.some((node) => node.tagName === "IMG"), false);
+});
+
+test("a missed upload writes a screenshot and a redacted uploader dump", async () => {
+  const built = uploaderDocument();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wx-tietu-upload-"));
+  const page = {
+    async evaluate(fn, arg) { return fn(arg); },
+    async setInputFiles() {},
+    async screenshot({ path: file }) {
+      fs.writeFileSync(file, "png");
+      return file;
+    },
+  };
+  globalThis.document = built.doc;
+  const session = createTietuSession({ page, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
+  await assert.rejects(
+    () => session.uploadImages(["/absolute/path/cover.jpg"], { screenshotDir: dir }),
+    (error) => {
+      assert.match(error.message, /not detected/);
+      assert.match(error.message, /fileInputs=2/);
+      assert.match(error.message, /image\/jpeg,image\/png/);
+      assert.match(error.message, /chosen=2/);
+      assert.match(error.message, /tietu-upload-failed\.png/);
+      assert.match(error.message, /tietu-upload-failed\.html/);
+      assert.equal(error.uploadDebug.screenshot, path.join(dir, "tietu-upload-failed.png"));
+      assert.equal(error.uploadDebug.uploaderHtml, path.join(dir, "tietu-upload-failed.html"));
+      assert.equal(error.uploadDebug.fileInputs[1].accept, "image/jpeg,image/png");
+      return true;
+    },
+  );
+  const html = fs.readFileSync(path.join(dir, "tietu-upload-failed.html"), "utf8");
+  assert.match(html, /token=redacted/);
+  assert.doesNotMatch(html, /token=secret/);
+  assert.equal(fs.existsSync(path.join(dir, "tietu-upload-failed.png")), true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("reopen only navigates and reads; it does not discard the draft", async () => {
+  const editor = editorTree();
+  const ops = [];
+  const page = {
+    async evaluate(fn, arg) {
+      ops.push(arg && arg.op);
+      assert.equal(/删除|废弃|丢弃|不保存/.test(JSON.stringify(arg || {})), false);
+      return fn(arg);
+    },
+    async url() { return globalThis.location.href; },
+    async goto(url) {
+      page.gone = String(url);
+      assert.doesNotMatch(page.gone, /delete|discard|del/i);
+      globalThis.document = editor.doc;
+      globalThis.location = new URL(url);
+    },
+    async waitForLoadState() {},
+  };
+  globalThis.document = editor.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "test-token" }));
+  const session = createTietuSession({
+    page,
+    task: { async finish() {} },
+    timings: { attempts: 2, waitMs: 0 },
+  });
+  const read = await session.reopen("100001815");
+  assert.equal(read.appmsgid, "100001815");
+  assert.equal(read.type, 77);
+  assert.match(page.gone, /appmsgid=100001815/);
+  assert.match(page.gone, /action=edit/);
+  assert.ok(ops.length > 0);
+  assert.ok(ops.every((op) => op === "session-token" || op === "editor-state" || op === "read-editor"));
+  assert.equal(ops.includes("click-save-draft"), false);
 });

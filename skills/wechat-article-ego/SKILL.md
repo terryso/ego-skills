@@ -102,7 +102,7 @@ Without `--yes` the command prints the plan and exits `3`. With `--yes` it click
 
 The 贴图 link field only accepts Official Account content, a mini program, or a store. Bare `http(s)` URLs stay plain text lines and are not clickable after saving. Do not put an external URL in that link field.
 
-保存成功后会重新打开这篇草稿。JSON 里带回 `appmsgid`、`type` 77、`title`、正文 `text`（innerText）、`topics`、`imageCount` 和 `savedTime`。编辑器地址、上传控件和话题输入见 `references/tietu.md`。
+保存成功后会重新打开这篇草稿。重新打开只进入编辑地址并读取，不会点「删除」「废弃」或「不保存」。JSON 里带回 `appmsgid`、`type` 77、`title`、正文 `text`（innerText）、`topics`、`imageCount` 和 `savedTime`。上传若 30 秒内看不到缩略图、文件名、占位消失或上传响应，会把截图和上传区域 HTML 写到截图或回执目录，并把路径放进错误 JSON。编辑器地址、上传控件和话题输入见 `references/tietu.md`。
 
 After a save, the draft is reopened. The JSON includes `appmsgid`, `type` 77, `title`, body `text` (innerText), `topics`, `imageCount`, and `savedTime`. The editor URL, uploader, and topic typing are in `references/tietu.md`.
 

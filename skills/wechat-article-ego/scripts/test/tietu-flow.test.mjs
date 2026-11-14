@@ -339,6 +339,35 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   assert.equal(wrongType.saves, 1);
 });
 
+test("a missed upload keeps the debug paths and does not save", async () => {
+  const missed = session();
+  missed.uploadImages = async () => {
+    const error = new Error("image upload was not detected within 30000ms; fileInputs=2 accept=[\"\",\"image/jpeg\"] chosen=2; screenshot=/absolute/path/tietu-upload-failed.png; uploaderHtml=/absolute/path/tietu-upload-failed.html");
+    error.uploadDebug = {
+      screenshot: "/absolute/path/tietu-upload-failed.png",
+      uploaderHtml: "/absolute/path/tietu-upload-failed.html",
+      fileInputs: [{ index: 1, accept: "" }, { index: 2, accept: "image/jpeg" }],
+      chosenIndex: 2,
+      chosenAccept: "image/jpeg",
+    };
+    throw error;
+  };
+  const store = memoryReceipts();
+  const failed = await executeTietu(config(), { browser: browserWith(missed), receipts: store });
+  assert.equal(failed.exitCode, 1);
+  assert.equal(failed.action, "aborted");
+  assert.equal(failed.saved, false);
+  assert.match(failed.error, /tietu-upload-failed\.png/);
+  assert.match(failed.error, /tietu-upload-failed\.html/);
+  assert.equal(failed.screenshot, "/absolute/path/tietu-upload-failed.png");
+  assert.equal(failed.uploaderHtml, "/absolute/path/tietu-upload-failed.html");
+  assert.equal(failed.uploadDebug.chosenAccept, "image/jpeg");
+  assert.equal(failed.uploadDebug.fileInputs.length, 2);
+  assert.equal(store.saved.at(-1).status, "aborted");
+  assert.equal(store.saved.at(-1).uploadDebug.fileInputs[1].accept, "image/jpeg");
+  assert.equal(missed.saves, 0);
+});
+
 test("editor, receipt, and browser failures stay unsaved", async () => {
   const store = memoryReceipts();
   store.write = () => { throw new Error("disk full"); };

@@ -161,7 +161,12 @@ export async function executeTietu(config, deps) {
         appmsgid = "";
       }
       const uncertain = Boolean(appmsgid);
-      await mark(uncertain ? "uncertain" : "aborted", { error: String(error.message || error), draftId: appmsgid });
+      const debug = error && error.uploadDebug;
+      await mark(uncertain ? "uncertain" : "aborted", {
+        error: String(error.message || error),
+        draftId: appmsgid,
+        ...(debug ? { uploadDebug: debug } : {}),
+      });
       return base({
         exitCode: uncertain ? 4 : 1,
         action: uncertain ? "uncertain" : "aborted",
@@ -170,11 +175,20 @@ export async function executeTietu(config, deps) {
         plan,
         appmsgid,
         draftId: appmsgid,
+        ...(debug ? {
+          uploadDebug: debug,
+          screenshot: debug.screenshot || "",
+          uploaderHtml: debug.uploaderHtml || "",
+        } : {}),
       });
     };
     try {
       await session.openEditor();
-      await session.uploadImages(post.images.map((image) => image.path));
+      await session.uploadImages(post.images.map((image) => image.path), {
+        receiptDir: config.receiptDir,
+        screenshotDir: config.screenshotDir,
+        fs: deps.fs,
+      });
       await session.fillTitle(post.title);
       await session.fillBody(post.steps);
     } catch (error) {

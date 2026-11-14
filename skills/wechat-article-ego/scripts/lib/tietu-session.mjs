@@ -1,12 +1,19 @@
 // One 贴图 editor tab. Account probing stays on the shared mp.weixin.qq.com page.
+import fs from "node:fs";
 import path from "node:path";
 import { mpAct } from "./mp-dom.mjs";
 import { tietuAct } from "./tietu-dom.mjs";
 import {
   TIETU_FILE_INPUT,
+  TIETU_UPLOAD_POLL_MS,
+  TIETU_UPLOAD_TIMEOUT_MS,
+  describeFileInputs,
+  describeUpload,
   sessionToken,
   tietuEditorUrl,
   tietuListUrl,
+  trimUploaderHtml,
+  uploadAdvanced,
 } from "./tietu.mjs";
 
 export function createTietuSession({ task, page, timings = {} } = {}) {
@@ -15,7 +22,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
   let finished = false;
   const attempts = timings.attempts ?? 8;
   const waitMs = timings.waitMs ?? 100;
-  const uploadWaitMs = timings.uploadWaitMs ?? 300;
+  const uploadWaitMs = timings.uploadWaitMs ?? TIETU_UPLOAD_POLL_MS;
+  const uploadTimeoutMs = timings.uploadTimeoutMs ?? TIETU_UPLOAD_TIMEOUT_MS;
   const popupMs = timings.popupMs ?? 4_000;
 
   async function pause(ms) {
@@ -127,28 +135,132 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       if (direct) return direct;
       throw new Error((created && created.error) || "贴图 editor did not open");
     },
-    async uploadImages(files) {
+    async uploadImages(files, options = {}) {
       const list = [...(files || [])];
       if (!list.length) throw new Error("--image is required");
+      const timeout = options.timeoutMs ?? uploadTimeoutMs;
+      const interval = options.pollMs ?? uploadWaitMs;
+      const fsImpl = options.fs || fs;
+      const dir = options.screenshotDir || options.receiptDir || "";
       let count = 0;
-      for (const file of list) {
-        const beforeState = await act("editor-state");
-        if ((beforeState.fileInputs || 0) < 2) {
-          throw new Error("the 贴图 uploader is the second file input");
+      const uploads = [];
+
+      function watchUploads() {
+        let seen = 0;
+        const handler = (response) => {
+          try {
+            const url = typeof response.url === "function" ? response.url() : String((response && response.url) || "");
+            if (/filetransfer|uploadimg/i.test(url)) seen += 1;
+          } catch {
+            // A response without a URL is not an upload.
+          }
+        };
+        try {
+          if (typeof current.on === "function") current.on("response", handler);
+        } catch {
+          // This page does not emit network events. The DOM probe still counts resource entries.
         }
-        const before = beforeState.imageCount || 0;
-        if (typeof current.setInputFiles !== "function") throw new Error("setInputFiles is required");
-        await current.setInputFiles(TIETU_FILE_INPUT, [file]);
-        let after = before;
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          after = (await act("editor-state")).imageCount || 0;
-          if (after >= before + 1) break;
-          await pause(uploadWaitMs);
-        }
-        if (after < before + 1) throw new Error(`image thumbnail did not appear (${before} -> ${after})`);
-        count = after;
+        return {
+          count() { return seen; },
+          stop() {
+            try {
+              if (typeof current.off === "function") current.off("response", handler);
+              else if (typeof current.removeListener === "function") current.removeListener("response", handler);
+            } catch {
+              // The page may already be gone.
+            }
+          },
+        };
       }
-      return { imageCount: count };
+
+      async function probe(networkHits) {
+        return act("upload-probe", { networkHits });
+      }
+
+      async function writeDebug(html) {
+        const written = { screenshot: "", uploaderHtml: "" };
+        if (!dir) return written;
+        try {
+          await fsImpl.promises.mkdir(dir, { recursive: true });
+          const htmlPath = path.join(dir, "tietu-upload-failed.html");
+          await fsImpl.promises.writeFile(htmlPath, trimUploaderHtml(html), "utf8");
+          written.uploaderHtml = htmlPath;
+        } catch (error) {
+          written.htmlError = String(error.message || error);
+        }
+        if (typeof current.screenshot === "function") {
+          const shot = path.join(dir, "tietu-upload-failed.png");
+          try {
+            const saved = await current.screenshot({ path: shot });
+            written.screenshot = saved || shot;
+          } catch (error) {
+            written.screenshotError = String(error.message || error);
+          }
+        }
+        return written;
+      }
+
+      function summaryOf(probe) {
+        return {
+          imageCount: probe && probe.imageCount || 0,
+          thumbCount: probe && probe.thumbCount || 0,
+          placeholder: Boolean(probe && probe.placeholder),
+          inputValue: probe && probe.inputValue || "",
+          inputChildren: probe && probe.inputChildren || 0,
+          uploadResponses: probe && probe.uploadResponses || 0,
+        };
+      }
+
+      async function failUpload(message, before, after) {
+        const debug = await writeDebug(after && after.outerHTML || before && before.outerHTML || "");
+        const paths = [debug.screenshot && `screenshot=${debug.screenshot}`, debug.uploaderHtml && `uploaderHtml=${debug.uploaderHtml}`]
+          .filter(Boolean)
+          .join("; ");
+        const error = new Error(`${message}; ${describeFileInputs(before)}; ${describeUpload(before, after)}${paths ? `; ${paths}` : ""}`);
+        error.uploadDebug = {
+          ...debug,
+          fileInputs: (before && before.fileInputs) || [],
+          chosenIndex: before && before.chosenIndex || 0,
+          chosenAccept: before && before.chosenAccept || "",
+          before: summaryOf(before),
+          after: summaryOf(after),
+        };
+        throw error;
+      }
+
+      for (const file of list) {
+        const watcher = watchUploads();
+        try {
+          const before = await probe(watcher.count());
+          if ((before.fileInputs || []).length < 2) {
+            await failUpload("the 贴图 uploader is the second file input", before, before);
+          }
+          if (typeof current.setInputFiles !== "function") throw new Error("setInputFiles is required");
+          await current.setInputFiles(TIETU_FILE_INPUT, [file]);
+          const started = Date.now();
+          let after = await probe(watcher.count());
+          let decision = uploadAdvanced(before, after);
+          while (!decision.ok && timeout > 0 && interval > 0 && Date.now() - started < timeout) {
+            await pause(interval);
+            after = await probe(watcher.count());
+            decision = uploadAdvanced(before, after);
+          }
+          if (!decision.ok) {
+            await failUpload(`image upload was not detected within ${timeout}ms`, before, after);
+          }
+          count = Math.max(after.imageCount || 0, after.thumbCount || 0);
+          uploads.push({
+            file: path.basename(String(file || "")),
+            via: decision.reasons,
+            fileInputs: before.fileInputs,
+            chosenIndex: before.chosenIndex,
+            chosenAccept: before.chosenAccept,
+          });
+        } finally {
+          watcher.stop();
+        }
+      }
+      return { imageCount: count, uploads };
     },
     async fillTitle(title) {
       const focused = await act("focus-title");
@@ -212,6 +324,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       return (listed && listed.rows) || [];
     },
     async reopen(appmsgid) {
+      // Read-only. Open the edit URL and read fields. Do not click 删除, 废弃,
+      // 丢弃, 不保存, or any confirm that would discard the draft.
       const id = String(appmsgid || "");
       if (!/^[0-9]+$/.test(id)) throw new Error("贴图 draft id is missing");
       const value = await token();

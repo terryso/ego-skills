@@ -97,6 +97,129 @@ export function tietuAct(payload) {
     }).length;
   }
 
+  function styleImage(el) {
+    const style = `${(el.getAttribute && el.getAttribute("style")) || ""} ${(el.style && el.style.backgroundImage) || ""}`;
+    return /background-image\s*:\s*url\(/i.test(style) || /url\((['"]?)(?!about:blank)[^)]+\1\)/i.test(style);
+  }
+
+  function thumbCount(root) {
+    if (!root) return 0;
+    let count = imageCount(root);
+    count += qsa(root, "canvas").length;
+    for (const el of qsa(root, "*")) {
+      if (styleImage(el)) count += 1;
+    }
+    return count;
+  }
+
+  function uploaderRoot(inputEl) {
+    if (!inputEl) return doc.body || null;
+    let node = inputEl;
+    let fallback = inputEl.parentElement || inputEl;
+    for (let depth = 0; depth < 8 && node; depth += 1) {
+      const cls = `${node.className || ""} ${node.id || ""}`;
+      if (node !== inputEl && /upload|image|picture|photo|thumb|cover|pic|media/i.test(cls)) return node;
+      if (node.parentElement && node.parentElement !== doc.body) fallback = node.parentElement;
+      node = node.parentElement;
+    }
+    return fallback;
+  }
+
+  function placeholderVisible(root) {
+    if (!root || thumbCount(root) > 0) return false;
+    const text = normalize(root.innerText || root.textContent || "");
+    if (/拖拽|上传图片|添加图片|选择图片|点击上传|暂无图片/.test(text)) return true;
+    return qsaAny(["[class*='placeholder']", "[class*='empty']"], root).some((el) => visible(el));
+  }
+
+  function resourceUploads() {
+    let count = Number(input.networkHits) || 0;
+    try {
+      const entries = globalThis.performance && typeof globalThis.performance.getEntries === "function"
+        ? globalThis.performance.getEntries()
+        : [];
+      for (const entry of entries) {
+        if (/filetransfer|uploadimg/i.test(String(entry && entry.name || ""))) count += 1;
+      }
+    } catch {
+      // performance entries are optional.
+    }
+    return count;
+  }
+
+  function baseName(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    const parts = text.split(/[/\\]/);
+    return parts[parts.length - 1] || text;
+  }
+
+  function inputSnapshot(el, index) {
+    const files = el && el.files && typeof el.files.length === "number" ? el.files.length : 0;
+    return {
+      index,
+      accept: String((el.getAttribute && el.getAttribute("accept")) || el.accept || ""),
+      id: String(el.id || ""),
+      className: String(el.className || "").slice(0, 120),
+      value: baseName(el.value),
+      files,
+      childCount: (el.childNodes || []).length,
+    };
+  }
+
+  function collectText(el) {
+    if (!el) return "";
+    if (el.nodeType === 3) return String(el.textContent || "");
+    const own = String(el.text || "");
+    const kids = (el.childNodes || []).map((child) => collectText(child)).join(" ");
+    if (own && kids && !own.includes(kids)) return `${own} ${kids}`;
+    return own || kids || String(el.innerText || el.textContent || "");
+  }
+
+  function htmlOf(el) {
+    if (!el) return "";
+    if (typeof el.outerHTML === "string" && el.outerHTML) return el.outerHTML;
+    const tag = String(el.tagName || "div").toLowerCase();
+    const cls = el.className ? ` class="${String(el.className).replace(/"/g, "")}"` : "";
+    const accept = el.getAttribute && el.getAttribute("accept");
+    const acc = accept ? ` accept="${accept}"` : "";
+    return `<${tag}${cls}${acc}>${collectText(el).slice(0, 1500)}</${tag}>`;
+  }
+
+  function visibleImageCount() {
+    const bodyCount = imageCount(mirrors()[1]);
+    const inputs = fileInputs();
+    const region = uploaderRoot(inputs[1] || inputs[0]);
+    const thumbs = thumbCount(region);
+    let cdn = 0;
+    for (const img of qsa(doc, "img")) {
+      const src = (img.getAttribute && img.getAttribute("src")) || "";
+      if (/mmbiz|wx_fmt|blob:|data:image/i.test(src)) cdn += 1;
+    }
+    return Math.max(bodyCount, thumbs, cdn);
+  }
+
+  function uploadProbe() {
+    const inputs = fileInputs();
+    const listed = inputs.map((el, index) => inputSnapshot(el, index + 1));
+    const chosen = inputs[1] || null;
+    const region = uploaderRoot(chosen || inputs[0]);
+    const chosenSnap = chosen ? inputSnapshot(chosen, 2) : null;
+    return {
+      ok: true,
+      fileInputs: listed,
+      chosenIndex: chosen ? 2 : 0,
+      chosenAccept: chosenSnap ? chosenSnap.accept : "",
+      imageCount: visibleImageCount(),
+      thumbCount: thumbCount(region),
+      inputValue: chosenSnap ? chosenSnap.value : "",
+      inputChildren: chosenSnap ? chosenSnap.childCount + chosenSnap.files : 0,
+      placeholder: placeholderVisible(region),
+      uploadResponses: resourceUploads(),
+      outerHTML: htmlOf(region),
+    };
+  }
+
   function topicTexts(body) {
     if (!body) return [];
     return qsa(body, "a.wx_topic_link").map((el) => String(el.innerText || el.textContent || "").trim()).filter(Boolean);
@@ -122,7 +245,7 @@ export function tietuAct(payload) {
       title: title ? String(title.innerText || title.textContent || "") : "",
       text: bodyText,
       topics: topicTexts(body),
-      imageCount: imageCount(body),
+      imageCount: visibleImageCount(),
       fileInputs: fileInputs().length,
       appmsgid: /^[0-9]+$/.test(id) ? id : "",
       type: typeRaw ? Number(typeRaw) : null,
@@ -208,6 +331,8 @@ export function tietuAct(payload) {
     }
     return { ok: true, rows };
   }
+
+  if (op === "upload-probe") return uploadProbe();
 
   if (op === "scroll") {
     const body = mirrors()[1] || doc.body;

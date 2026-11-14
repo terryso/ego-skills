@@ -14,7 +14,7 @@ Ready when two `.ProseMirror` fields are present. The URL's `type` is `77`.
 
 ## Write
 
-- Images: `page.setInputFiles('xpath=(//input[@type="file"])[2]', [path])`. The first file input belongs to a menu. The second is the main uploader. Upload one path at a time, in order. The first image is the cover. Wait until a thumbnail appears in the body. A fixed sleep is not the check.
+- Images: `page.setInputFiles('xpath=(//input[@type="file"])[2]', [path])`. The first file input belongs to a menu. The second is the main uploader. Upload one path at a time, in order. The first image is the cover. The body ProseMirror often stays at 0 images; the thumbnail is elsewhere in the uploader. Poll for up to 30 seconds. Any one of these is enough: an `img`, `canvas`, or `background-image` thumbnail in the uploader area; a higher image count; the chosen file input's value or children changing; the empty-upload placeholder disappearing; or a response whose URL contains `filetransfer` or `uploadimg`. On failure, write `tietu-upload-failed.png` and a trimmed `tietu-upload-failed.html` of the uploader region under the screenshot or receipt directory, and put both paths plus every file input's `accept` in the error JSON. Do not click 删除 or 不保存 while dumping that debug.
 - Title: the first `.ProseMirror` (counter `n/20`). Click it, then `keyboard.insertText`. 20 characters is the limit. A longer title fails before the browser opens.
 - Body: the second `.ProseMirror` (counter `n/1000`). Clicking it fails because another `div` intercepts pointer events. Call `focus()` and move the caret to the end instead.
 - `keyboard.insertText` drops `\n`. Put each line in its own `insertText`, and press Enter between lines. Enter becomes a `<br>`.
@@ -40,5 +40,7 @@ The draft list, if needed to find an id, is:
 Card titles use `a.weui-desktop-publish__cover__title`. That link opens a preview. Do not use it as the verification page.
 
 Read the reopened editor: title from the first `.ProseMirror`, body `innerText` from the second, topic texts from `a.wx_topic_link`, image count, `type` 77, `appmsgid`, and the footer time. Those fields are the success JSON.
+
+Reopen only navigates to that edit URL and reads. It does not click 删除, 废弃, 丢弃, 不保存, or a confirm that would discard the draft. Clearing `onbeforeunload` only stops the close dialog; it does not delete the draft.
 
 Before `finish({ keep: [] })`, clear `onbeforeunload` so the close dialog cannot turn into another save.

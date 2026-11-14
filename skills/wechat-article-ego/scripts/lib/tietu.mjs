@@ -6,6 +6,8 @@ export const TIETU_TYPE = 77;
 export const TIETU_TITLE_MAX = 20;
 export const TIETU_TEXT_MAX = 1000;
 export const TIETU_FILE_INPUT = 'xpath=(//input[@type="file"])[2]';
+export const TIETU_UPLOAD_TIMEOUT_MS = 30_000;
+export const TIETU_UPLOAD_POLL_MS = 500;
 
 const URL_IN_TEXT = /https?:\/\/[^\s]+/gi;
 const BARE_URL = /^https?:\/\/\S+$/i;
@@ -48,6 +50,55 @@ export function normalizeTopic(raw) {
 
 export function topicLabel(value) {
   return String(value ?? "").trim().replace(/^#/, "");
+}
+
+export function fileBaseName(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const parts = text.split(/[/\\]/);
+  return parts[parts.length - 1] || text;
+}
+
+export function trimUploaderHtml(html, limit = 4000) {
+  const text = String(html ?? "").replace(/token=[^&"'\s<]+/gi, "token=redacted");
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n<!-- truncated -->`;
+}
+
+function uploadNumber(probe, key) {
+  const value = Number(probe && probe[key]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+// Any one of these means the file input was accepted by the 贴图 uploader.
+// The body ProseMirror often stays at 0 images; the thumbnail lives elsewhere.
+export function uploadAdvanced(before, after) {
+  const prev = before || {};
+  const next = after || {};
+  const reasons = [];
+  if (uploadNumber(next, "thumbCount") > uploadNumber(prev, "thumbCount")) reasons.push("thumbnail");
+  if (uploadNumber(next, "imageCount") > uploadNumber(prev, "imageCount")) reasons.push("image-count");
+  const prevValue = String(prev.inputValue || "");
+  const nextValue = String(next.inputValue || "");
+  if (nextValue && nextValue !== prevValue) reasons.push("input-value");
+  if (uploadNumber(next, "inputChildren") > uploadNumber(prev, "inputChildren")) reasons.push("input-children");
+  if (prev.placeholder && !next.placeholder) reasons.push("placeholder-gone");
+  if (uploadNumber(next, "uploadResponses") > uploadNumber(prev, "uploadResponses")) reasons.push("upload-response");
+  return { ok: reasons.length > 0, reasons };
+}
+
+export function describeUpload(before, after) {
+  const bit = (probe, key) => uploadNumber(probe, key);
+  const flag = (probe) => Boolean(probe && probe.placeholder);
+  const name = (probe) => fileBaseName(probe && probe.inputValue);
+  return `imageCount ${bit(before, "imageCount")}->${bit(after, "imageCount")}, thumbs ${bit(before, "thumbCount")}->${bit(after, "thumbCount")}, placeholder ${flag(before)}->${flag(after)}, inputValue ${JSON.stringify(name(before))}->${JSON.stringify(name(after))}, responses ${bit(before, "uploadResponses")}->${bit(after, "uploadResponses")}`;
+}
+
+export function describeFileInputs(probe) {
+  const inputs = (probe && probe.fileInputs) || [];
+  const accepts = inputs.map((item) => String((item && item.accept) || ""));
+  const chosen = probe && probe.chosenIndex ? probe.chosenIndex : 0;
+  return `fileInputs=${inputs.length} accept=${JSON.stringify(accepts)} chosen=${chosen}`;
 }
 
 export function composeTietuBody(text, topics) {
