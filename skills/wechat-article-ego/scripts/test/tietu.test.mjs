@@ -10,6 +10,7 @@ import {
   TIETU_TITLE_MAX,
   TIETU_UPLOAD_POLL_MS,
   TIETU_UPLOAD_TIMEOUT_MS,
+  appmsgidFromSave,
   appmsgidFromUrl,
   buildTietu,
   charCount,
@@ -18,7 +19,9 @@ import {
   describeUpload,
   findUrls,
   inspectImage,
+  parseSaveResponse,
   planOfTietu,
+  redactMpUrl,
   sessionToken,
   tietuEditorUrl,
   tietuListUrl,
@@ -299,4 +302,14 @@ test("upload detection accepts any later signal and describes the file inputs", 
   assert.match(html, /token=redacted/);
   assert.doesNotMatch(html, /token=secret/);
   assert.match(trimUploaderHtml("字".repeat(20), 8), /truncated/);
+  const saved = parseSaveResponse('{"ret":0,"appMsgId":"100001815"}');
+  assert.equal(saved.ok, true);
+  assert.equal(saved.appmsgid, "100001815");
+  assert.equal(parseSaveResponse({ ret: -1, appMsgId: "9" }).ok, false);
+  assert.equal(parseSaveResponse("not json").ok, false);
+  assert.equal(appmsgidFromSave({ urlId: "42", responses: [{ ret: 0, appMsgId: "7" }] }).via, "url");
+  assert.equal(appmsgidFromSave({ responses: [{ ret: 0, appMsgId: "7" }] }).appmsgid, "7");
+  assert.equal(appmsgidFromSave({ responses: [{ ret: 1, appMsgId: "7" }] }).appmsgid, "");
+  assert.match(redactMpUrl("https://mp.weixin.qq.com/cgi-bin/appmsg?token=secret&type=77"), /token=redacted/);
+  assert.equal(redactMpUrl("not a url"), "");
 });

@@ -81,6 +81,15 @@ export function tietuAct(payload) {
     }
   }
 
+  function redactedHref() {
+    const url = pageUrl();
+    if (!url) return "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/token|ticket|pass|cookie|session|key/i.test(key)) url.searchParams.set(key, "redacted");
+    }
+    return url.toString();
+  }
+
   function mirrors() {
     return qsa(doc, ".ProseMirror");
   }
@@ -250,8 +259,11 @@ export function tietuAct(payload) {
       appmsgid: /^[0-9]+$/.test(id) ? id : "",
       type: typeRaw ? Number(typeRaw) : null,
       savedTime: savedClock(blob) || savedClock(bodyText),
+      toastText: (String(blob).match(/\d{1,2}:\d{2}\s*已保存/) || String(bodyText).match(/\d{1,2}:\d{2}\s*已保存/) || [])[0]
+        || (/已保存/.test(blob) || /已保存/.test(bodyText) ? "已保存" : ""),
       saved: /已保存/.test(blob) || /已保存/.test(bodyText),
       hasToken: Boolean(url && url.searchParams.get("token")),
+      url: redactedHref(),
     };
   }
 

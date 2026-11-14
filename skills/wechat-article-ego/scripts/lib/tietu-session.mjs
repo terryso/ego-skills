@@ -5,10 +5,15 @@ import { mpAct } from "./mp-dom.mjs";
 import { tietuAct } from "./tietu-dom.mjs";
 import {
   TIETU_FILE_INPUT,
+  TIETU_SAVE_POLL_MS,
+  TIETU_SAVE_TIMEOUT_MS,
   TIETU_UPLOAD_POLL_MS,
   TIETU_UPLOAD_TIMEOUT_MS,
+  appmsgidFromSave,
   describeFileInputs,
   describeUpload,
+  parseSaveResponse,
+  redactMpUrl,
   sessionToken,
   tietuEditorUrl,
   tietuListUrl,
@@ -24,6 +29,8 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
   const waitMs = timings.waitMs ?? 100;
   const uploadWaitMs = timings.uploadWaitMs ?? TIETU_UPLOAD_POLL_MS;
   const uploadTimeoutMs = timings.uploadTimeoutMs ?? TIETU_UPLOAD_TIMEOUT_MS;
+  const savePollMs = timings.savePollMs ?? TIETU_SAVE_POLL_MS;
+  const saveTimeoutMs = timings.saveTimeoutMs ?? TIETU_SAVE_TIMEOUT_MS;
   const popupMs = timings.popupMs ?? 4_000;
 
   async function pause(ms) {
@@ -295,6 +302,94 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
     async readEditor() {
       return act("read-editor");
     },
+    beginSaveWatch() {
+      const found = [];
+      const handler = async (response) => {
+        try {
+          const rawUrl = typeof response.url === "function" ? response.url() : String((response && response.url) || "");
+          if (rawUrl && !/appmsg|operate_appmsg|masssend|save/i.test(rawUrl)) return;
+          let body = null;
+          if (response && typeof response.json === "function") body = await response.json();
+          else if (response && typeof response.text === "function") body = await response.text();
+          const parsed = parseSaveResponse(body);
+          if (!parsed.body.appMsgId && parsed.ret == null) return;
+          found.push({
+            url: redactMpUrl(rawUrl),
+            ret: parsed.ret,
+            appMsgId: parsed.body.appMsgId || "",
+          });
+        } catch {
+          // A response that is not the save JSON is ignored.
+        }
+      };
+      try {
+        if (typeof current.on === "function") current.on("response", handler);
+      } catch {
+        // This page does not emit network events. The URL and toast remain the other signals.
+      }
+      return {
+        responses() { return found.slice(); },
+        stop() {
+          try {
+            if (typeof current.off === "function") current.off("response", handler);
+            else if (typeof current.removeListener === "function") current.removeListener("response", handler);
+          } catch {
+            // The page may already be gone.
+          }
+        },
+      };
+    },
+    async confirmSave(options = {}) {
+      // Stay on the editor page. Do not goto, reopen, or close while this waits.
+      const timeout = options.timeoutMs ?? saveTimeoutMs;
+      const interval = options.pollMs ?? savePollMs;
+      const watch = options.watch;
+      const fsImpl = options.fs || fs;
+      const dir = options.screenshotDir || options.receiptDir || "";
+      const started = Date.now();
+      let last = {
+        ok: false,
+        appmsgid: "",
+        via: "",
+        url: "",
+        toastText: "",
+        savedTime: "",
+        saved: false,
+        saveResponse: null,
+        screenshot: "",
+      };
+      let settled = false;
+      while (!settled) {
+        const state = await act("editor-state");
+        const responses = watch && typeof watch.responses === "function" ? watch.responses() : [];
+        const picked = appmsgidFromSave({ urlId: state.appmsgid || "", responses });
+        const matched = responses.find((item) => item.appMsgId && item.appMsgId === picked.appmsgid) || responses.at(-1) || null;
+        last = {
+          ok: Boolean(picked.appmsgid),
+          appmsgid: picked.appmsgid,
+          via: picked.via,
+          url: state.url || "",
+          toastText: state.toastText || "",
+          savedTime: state.savedTime || "",
+          saved: Boolean(state.saved || state.toastText),
+          saveResponse: matched ? { ret: matched.ret, appMsgId: matched.appMsgId || "" } : null,
+          screenshot: last.screenshot,
+        };
+        settled = Boolean(picked.appmsgid) || !(timeout > 0 && interval > 0 && Date.now() - started < timeout);
+        if (!settled) await pause(interval);
+      }
+      if (dir && typeof current.screenshot === "function") {
+        const shot = path.join(dir, "tietu-save-confirm.png");
+        try {
+          await fsImpl.promises.mkdir(dir, { recursive: true });
+          const written = await current.screenshot({ path: shot });
+          last.screenshot = written || shot;
+        } catch (error) {
+          last.screenshotError = String(error.message || error);
+        }
+      }
+      return last;
+    },
     async clickSaveDraft() {
       const result = await act("click-save-draft");
       if (!result.ok) throw new Error(result.error || "保存为草稿 not found");
@@ -331,12 +426,18 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       const value = await token();
       if (!value) throw new Error("cannot reopen the 贴图 draft");
       await redactGoto(tietuEditorUrl({ token: value, appmsgid: id }));
-      for (let index = 0; index < attempts; index += 1) {
+      const interval = timings.reopenPollMs ?? waitMs;
+      const timeout = timings.reopenTimeoutMs ?? (interval > 0 ? saveTimeoutMs : 0);
+      const started = Date.now();
+      let ready = false;
+      while (!ready) {
         const state = await act("editor-state");
-        if (state.editorReady) return act("read-editor");
-        await pause(waitMs);
+        ready = Boolean(state.editorReady && String(state.title || "").trim());
+        if (ready) return act("read-editor");
+        if (!(timeout > 0 && interval > 0 && Date.now() - started < timeout)) break;
+        await pause(interval);
       }
-      throw new Error("贴图 draft editor did not open");
+      throw new Error("贴图 draft editor did not show a title");
     },
     async captureViews(dir, prefix) {
       if (!dir || typeof current.screenshot !== "function") return [];

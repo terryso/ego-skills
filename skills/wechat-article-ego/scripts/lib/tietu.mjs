@@ -8,6 +8,8 @@ export const TIETU_TEXT_MAX = 1000;
 export const TIETU_FILE_INPUT = 'xpath=(//input[@type="file"])[2]';
 export const TIETU_UPLOAD_TIMEOUT_MS = 30_000;
 export const TIETU_UPLOAD_POLL_MS = 500;
+export const TIETU_SAVE_TIMEOUT_MS = 20_000;
+export const TIETU_SAVE_POLL_MS = 500;
 
 const URL_IN_TEXT = /https?:\/\/[^\s]+/gi;
 const BARE_URL = /^https?:\/\/\S+$/i;
@@ -92,6 +94,58 @@ export function describeUpload(before, after) {
   const flag = (probe) => Boolean(probe && probe.placeholder);
   const name = (probe) => fileBaseName(probe && probe.inputValue);
   return `imageCount ${bit(before, "imageCount")}->${bit(after, "imageCount")}, thumbs ${bit(before, "thumbCount")}->${bit(after, "thumbCount")}, placeholder ${flag(before)}->${flag(after)}, inputValue ${JSON.stringify(name(before))}->${JSON.stringify(name(after))}, responses ${bit(before, "uploadResponses")}->${bit(after, "uploadResponses")}`;
+}
+
+export function redactMpUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    for (const key of [...url.searchParams.keys()]) {
+      if (/token|ticket|pass|cookie|session|key/i.test(key)) url.searchParams.set(key, "redacted");
+    }
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+export function parseSaveResponse(payload) {
+  let data = payload;
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) return { ok: false, appmsgid: "", ret: null, body: { ret: null, appMsgId: "" } };
+    try {
+      data = JSON.parse(trimmed);
+    } catch {
+      return { ok: false, appmsgid: "", ret: null, body: { ret: null, appMsgId: "" } };
+    }
+  }
+  if (!data || typeof data !== "object") {
+    return { ok: false, appmsgid: "", ret: null, body: { ret: null, appMsgId: "" } };
+  }
+  const base = data.base_resp && typeof data.base_resp === "object" ? data.base_resp : null;
+  const ret = data.ret != null ? data.ret : (base && base.ret != null ? base.ret : null);
+  const raw = data.appMsgId ?? data.appmsgid ?? data.app_msg_id ?? (base && (base.appMsgId ?? base.appmsgid)) ?? "";
+  const appmsgid = /^[0-9]+$/.test(String(raw)) ? String(raw) : "";
+  const retOk = ret == null || ret === 0 || ret === "0";
+  return {
+    ok: Boolean(appmsgid) && retOk,
+    appmsgid: retOk ? appmsgid : "",
+    ret,
+    body: { ret, appMsgId: appmsgid },
+  };
+}
+
+export function appmsgidFromSave({ urlId = "", responses = [] } = {}) {
+  if (/^[0-9]+$/.test(String(urlId || ""))) {
+    return { appmsgid: String(urlId), via: "url" };
+  }
+  const hits = Array.isArray(responses) ? responses : [];
+  const hit = [...hits].reverse().find((item) => (
+    item && /^[0-9]+$/.test(String(item.appMsgId || ""))
+    && (item.ret == null || item.ret === 0 || item.ret === "0")
+  ));
+  if (hit) return { appmsgid: String(hit.appMsgId), via: "response" };
+  return { appmsgid: "", via: "" };
 }
 
 export function describeFileInputs(probe) {

@@ -194,68 +194,70 @@ export async function executeTietu(config, deps) {
     } catch (error) {
       return beforeClick(error);
     }
-    let readback;
-    try {
-      readback = await session.readEditor();
-    } catch (error) {
-      return beforeClick(error);
-    }
-    const check = validateTietuReadback(post, readback);
-    if (!check.ok) {
-      const message = `readback did not match the 贴图 (title=${readback && readback.title ? readback.title : ""}; missing=${(check.missing || []).slice(0, 2).join(" | ")}; topics=${(check.missingTopics || []).join(" | ")})`;
-      return beforeClick(new Error(message));
-    }
+    // Stay on the editor until 保存为草稿 has had time to persist. listDrafts() and
+    // reopen() are the only navigations, and both happen after this wait.
+    const watch = typeof session.beginSaveWatch === "function" ? session.beginSaveWatch() : null;
     try {
       await session.clickSaveDraft();
     } catch (error) {
+      if (watch && typeof watch.stop === "function") watch.stop();
       await mark("aborted", { error: String(error.message || error) });
       return base({ exitCode: 1, error: String(error.message || error), account: account.account, plan });
     }
-    let confirmed = { ok: false, appmsgid: "", savedTime: "" };
+    let confirmed = { ok: false, appmsgid: "", savedTime: "", url: "", toastText: "", saveResponse: null, screenshot: "" };
     try {
-      confirmed = await session.saveConfirmed();
-    } catch {
-      confirmed = { ok: false, appmsgid: "", savedTime: "" };
+      confirmed = typeof session.confirmSave === "function"
+        ? await session.confirmSave({
+          watch,
+          receiptDir: config.receiptDir,
+          screenshotDir: config.screenshotDir,
+          fs: deps.fs,
+        })
+        : await session.saveConfirmed();
+    } catch (error) {
+      confirmed = {
+        ok: false,
+        appmsgid: "",
+        savedTime: "",
+        url: "",
+        toastText: "",
+        saveResponse: null,
+        screenshot: "",
+        error: String(error.message || error),
+      };
+    } finally {
+      if (watch && typeof watch.stop === "function") watch.stop();
     }
-    let appmsgid = (confirmed && confirmed.appmsgid) || "";
-    let savedTime = (confirmed && confirmed.savedTime) || "";
+    const saveConfirm = {
+      url: confirmed.url || "",
+      toastText: confirmed.toastText || "",
+      savedTime: confirmed.savedTime || "",
+      appmsgid: confirmed.appmsgid || "",
+      saveResponse: confirmed.saveResponse || null,
+      screenshot: confirmed.screenshot || "",
+    };
+    await mark("pending", { saveClicked: true, saveConfirm });
+    const appmsgid = saveConfirm.appmsgid;
+    let savedTime = saveConfirm.savedTime;
     if (!appmsgid) {
-      try {
-        const fresh = await session.readEditor();
-        appmsgid = (fresh && fresh.appmsgid) || "";
-        if (!savedTime && fresh && fresh.savedTime) savedTime = fresh.savedTime;
-      } catch {
-        appmsgid = "";
-      }
-    }
-    if (!appmsgid) {
-      let drafts = [];
-      try {
-        drafts = await session.listDrafts();
-      } catch {
-        drafts = [];
-      }
-      const want = normalizeText(post.title);
-      const matches = drafts.filter((row) => row && normalizeText(row.title) === want && row.id);
-      if (matches.length !== 1) {
-        await mark("uncertain", {
-          saveClicked: true,
-          confirmed: Boolean(confirmed.ok),
-          finishedAt: now(),
-          error: matches.length > 1 ? "ambiguous-draft" : "save outcome uncertain",
-        });
-        return base({
-          exitCode: 4,
-          error: matches.length > 1 ? "ambiguous-draft" : "save outcome uncertain",
-          account: account.account,
-          plan,
-          action: "uncertain",
-          confirmed: Boolean(confirmed.ok),
-          matches,
-        });
-      }
-      appmsgid = matches[0].id;
-      if (!savedTime) savedTime = matches[0].time || "";
+      await mark("uncertain", {
+        saveClicked: true,
+        finishedAt: now(),
+        error: "save not confirmed",
+        saveConfirm,
+      });
+      return base({
+        exitCode: 4,
+        action: "save-not-confirmed",
+        error: "save not confirmed",
+        account: account.account,
+        plan,
+        url: saveConfirm.url,
+        toastText: saveConfirm.toastText,
+        saveResponse: saveConfirm.saveResponse,
+        screenshot: saveConfirm.screenshot,
+        saveConfirm,
+      });
     }
     let reopened;
     try {
@@ -306,6 +308,50 @@ export async function executeTietu(config, deps) {
         confirmed: Boolean(confirmed.ok),
       });
     }
+    let listCheck = { ok: false, count: 0, found: false, error: "" };
+    try {
+      const rows = await session.listDrafts();
+      const want = normalizeText(post.title);
+      const found = (rows || []).some((row) => row && (
+        String(row.id || "") === String(appmsgid) || normalizeText(row.title) === want
+      ));
+      listCheck = {
+        ok: true,
+        count: (rows || []).length,
+        found,
+        titles: (rows || []).map((row) => row && row.title).filter(Boolean).slice(0, 10),
+      };
+    } catch (error) {
+      listCheck = { ok: false, count: 0, found: false, error: String(error.message || error) };
+    }
+    if (listCheck.ok && !listCheck.found) {
+      await mark("uncertain", {
+        saveClicked: true,
+        confirmed: Boolean(confirmed.ok),
+        draftId: appmsgid,
+        finishedAt: now(),
+        error: "draft list did not include the saved 贴图",
+        saveConfirm,
+        listCheck,
+      });
+      return base({
+        exitCode: 4,
+        error: "draft list did not include the saved 贴图",
+        account: account.account,
+        plan,
+        action: "uncertain",
+        appmsgid,
+        draftId: appmsgid,
+        title: reopened && reopened.title,
+        text: reopened && reopened.text,
+        topics: reopened && reopened.topics,
+        imageCount: reopened && reopened.imageCount,
+        readback: again,
+        saveConfirm,
+        listCheck,
+        confirmed: Boolean(confirmed.ok),
+      });
+    }
     const clock = (reopened && reopened.savedTime) || savedTime || now();
     const saved = {
       ...pending,
@@ -316,6 +362,8 @@ export async function executeTietu(config, deps) {
       draftTime: clock,
       savedTime: clock,
       confirmed: Boolean(confirmed.ok),
+      saveConfirm,
+      listCheck,
     };
     store.write(config.receiptDir, saved);
     const shots = [];
@@ -352,8 +400,13 @@ export async function executeTietu(config, deps) {
       urls: post.urls,
       confirmed: Boolean(confirmed.ok),
       readback: again,
+      saveConfirm,
+      listCheck,
+      url: saveConfirm.url,
+      toastText: saveConfirm.toastText,
+      saveResponse: saveConfirm.saveResponse,
       screenshots: shots,
-      warning,
+      warning: [warning, listCheck.error].filter(Boolean).join("; "),
       ...tip,
     };
   } catch (error) {

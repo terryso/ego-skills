@@ -66,7 +66,8 @@ function session(overrides = {}) {
     async listDrafts() {
       calls.push("drafts");
       if (overrides.listError) throw new Error(overrides.listError);
-      return overrides.drafts || [];
+      if (Object.prototype.hasOwnProperty.call(overrides, "drafts")) return overrides.drafts || [];
+      return [{ title: "编程 agent 的尽头是修车", id: "100001815", time: "01:23" }];
     },
     async openEditor() { calls.push("editor"); if (overrides.editorError) throw new Error(overrides.editorError); },
     async uploadImages(files) {
@@ -88,10 +89,27 @@ function session(overrides = {}) {
       api.saves += 1;
       if (overrides.saveError) throw new Error(overrides.saveError);
     },
-    async saveConfirmed() {
-      calls.push("confirmed");
+    async confirmSave() {
+      calls.push("confirm");
       if (overrides.confirmError) throw new Error(overrides.confirmError);
-      return overrides.confirmed || { ok: true, appmsgid: "100001815", savedTime: "01:23" };
+      const given = overrides.confirmed || {
+        ok: true,
+        appmsgid: "100001815",
+        savedTime: "01:23",
+        toastText: "01:23 已保存",
+        url: "https://mp.weixin.qq.com/cgi-bin/appmsg?type=77&appmsgid=100001815&token=redacted",
+        saveResponse: { ret: 0, appMsgId: "100001815" },
+        screenshot: "/absolute/path/tietu-save-confirm.png",
+      };
+      return {
+        ok: Boolean(given.appmsgid),
+        toastText: "",
+        url: "",
+        saveResponse: null,
+        screenshot: "",
+        saved: false,
+        ...given,
+      };
     },
     async reopen(id) {
       calls.push(`reopen:${id}`);
@@ -238,7 +256,13 @@ test("a confirmed 贴图 is saved once and reopened", async () => {
   assert.equal(happy.saves, 1);
   assert.deepEqual(happy.uploads, ["/absolute/path/cover.jpg", "/absolute/path/more.jpg"]);
   assert.equal(happy.steps.some((step) => step.value === "https://example.com/tietu"), true);
-  assert.equal(happy.calls.includes("drafts"), false);
+  assert.ok(happy.calls.indexOf("save") < happy.calls.indexOf("confirm"));
+  assert.ok(happy.calls.indexOf("confirm") < happy.calls.indexOf("reopen:100001815"));
+  assert.ok(happy.calls.indexOf("reopen:100001815") < happy.calls.indexOf("drafts"));
+  assert.equal(saved.saveResponse.appMsgId, "100001815");
+  assert.equal(saved.toastText, "01:23 已保存");
+  assert.match(saved.url, /token=redacted/);
+  assert.equal(store.saved.find((row) => row.saveConfirm && row.status === "pending").saveConfirm.appmsgid, "100001815");
   assert.equal(saved.screenshots.length, 1);
   assert.equal(store.saved.at(-1).status, "saved");
   assert.equal(happy.calls.at(-1), "finish");
@@ -255,9 +279,10 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   const built = post();
   const badRead = session({ read: { ...readback(), text: "缺了", topics: [] } });
   const rejected = await executeTietu(config(), { browser: browserWith(badRead), receipts: memoryReceipts() });
-  assert.match(rejected.error, /readback/);
-  assert.equal(badRead.saves, 0);
-  assert.equal(rejected.action, "aborted");
+  assert.equal(rejected.saved, true);
+  assert.equal(badRead.saves, 1);
+  assert.equal(rejected.action, "saved");
+  assert.ok(badRead.calls.indexOf("confirm") < badRead.calls.indexOf("drafts"));
 
   const autosaved = session({
     uploadError: "thumbnail missing",
@@ -275,43 +300,49 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   assert.equal(broken.saves, 1);
 
   const unsure = session({
-    confirmed: { ok: false, appmsgid: "", savedTime: "" },
-    readQueue: [readback(), readback()],
+    confirmed: {
+      ok: false,
+      appmsgid: "",
+      savedTime: "",
+      toastText: "01:23 已保存",
+      url: "https://mp.weixin.qq.com/cgi-bin/appmsg?token=redacted",
+      saveResponse: { ret: 0, appMsgId: "" },
+      screenshot: "/absolute/path/tietu-save-confirm.png",
+    },
     drafts: [],
   });
   const uncertain = await executeTietu(config(), { browser: browserWith(unsure), receipts: memoryReceipts() });
   assert.equal(uncertain.exitCode, 4);
-  assert.equal(uncertain.action, "uncertain");
+  assert.equal(uncertain.error, "save not confirmed");
+  assert.equal(uncertain.action, "save-not-confirmed");
+  assert.equal(uncertain.toastText, "01:23 已保存");
+  assert.equal(uncertain.screenshot, "/absolute/path/tietu-save-confirm.png");
   assert.equal(unsure.saves, 1);
-  assert.equal(unsure.calls.filter((call) => call === "save").length, 1);
+  assert.equal(unsure.calls.includes("drafts"), false);
+  assert.equal(unsure.calls.includes("reopen:100001815"), false);
 
   const many = session({
     confirmed: { ok: true, appmsgid: "", savedTime: "" },
-    readQueue: [readback(), { ...readback(), appmsgid: "" }],
     drafts: [{ title: built.title, id: "1" }, { title: built.title, id: "2" }],
   });
   const ambiguous = await executeTietu(config(), { browser: browserWith(many), receipts: memoryReceipts() });
-  assert.equal(ambiguous.error, "ambiguous-draft");
+  assert.equal(ambiguous.error, "save not confirmed");
   assert.equal(many.saves, 1);
+  assert.equal(many.calls.includes("drafts"), false);
 
   const listed = session({
-    confirmed: { ok: false, appmsgid: "", savedTime: "" },
-    confirmError: "",
-    readQueue: [readback(), { ...readback(), appmsgid: "", savedTime: "" }],
-    drafts: [{ title: built.title, id: "100001815", time: "02:02" }],
+    confirmed: { ok: true, appmsgid: "100001815", savedTime: "02:02", toastText: "02:02 已保存" },
+    drafts: [],
     reopened: { ...readback(), appmsgid: "100001815", type: 77, savedTime: "" },
-    captureViews: undefined,
   });
-  delete listed.captureViews;
-  const fromList = await executeTietu(config({ screenshotDir: "/absolute/path/shots" }), {
+  const fromList = await executeTietu(config(), {
     browser: browserWith(listed),
     receipts: memoryReceipts(),
     now: () => "2026-11-14T00:00:00.000Z",
   });
-  assert.equal(fromList.saved, true);
+  assert.equal(fromList.saved, false);
+  assert.equal(fromList.error, "draft list did not include the saved 贴图");
   assert.equal(fromList.appmsgid, "100001815");
-  assert.equal(fromList.savedTime, "02:02");
-  assert.deepEqual(fromList.screenshots, []);
   assert.equal(listed.saves, 1);
 
   const lost = session({
@@ -382,8 +413,8 @@ test("editor, receipt, and browser failures stay unsaved", async () => {
 
   const unread = session({ readError: "read failed" });
   const noRead = await executeTietu(config(), { browser: browserWith(unread), receipts: memoryReceipts() });
-  assert.match(noRead.error, /read failed/);
-  assert.equal(unread.saves, 0);
+  assert.equal(noRead.saved, true);
+  assert.equal(unread.saves, 1);
 
   const warned = session({ shotError: "shot failed" });
   const partial = await executeTietu(config({ screenshotDir: "/absolute/path/shots" }), {
@@ -426,11 +457,11 @@ test("editor, receipt, and browser failures stay unsaved", async () => {
   assert.equal(closed, 1);
 
   const listedDown = session({
-    confirmed: { ok: true, appmsgid: "", savedTime: "" },
-    readQueue: [readback(), readback()],
+    confirmed: { ok: true, appmsgid: "100001815", savedTime: "01:23" },
     listError: "list down",
   });
   const afterSave = await executeTietu(config(), { browser: browserWith(listedDown), receipts: memoryReceipts() });
-  assert.equal(afterSave.exitCode, 4);
+  assert.equal(afterSave.saved, true);
+  assert.match(afterSave.warning, /list down/);
   assert.equal(listedDown.saves, 1);
 });

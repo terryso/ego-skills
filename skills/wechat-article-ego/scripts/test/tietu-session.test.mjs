@@ -400,7 +400,7 @@ test("session reports a missing uploader, a missed thumbnail, and a redacted nav
     timings: { attempts: 1, waitMs: 0 },
   });
   globalThis.document = createDocument(h("div", { text: "空" }), { href: tietuEditorUrl({ token: "test-token" }) });
-  await assert.rejects(() => stalled.reopen("100001815"), /did not open/);
+  await assert.rejects(() => stalled.reopen("100001815"), /did not show a title/);
 });
 
 function uploaderDocument() {
@@ -534,7 +534,7 @@ test("a missed upload writes a screenshot and a redacted uploader dump", async (
 });
 
 test("reopen only navigates and reads; it does not discard the draft", async () => {
-  const editor = editorTree();
+  const editor = editorTree({ titleText: "编程 agent 的尽头是修车" });
   const ops = [];
   const page = {
     async evaluate(fn, arg) {
@@ -566,4 +566,74 @@ test("reopen only navigates and reads; it does not discard the draft", async () 
   assert.ok(ops.length > 0);
   assert.ok(ops.every((op) => op === "session-token" || op === "editor-state" || op === "read-editor"));
   assert.equal(ops.includes("click-save-draft"), false);
+});
+
+test("confirmSave stays on the editor until an appmsgid arrives", async () => {
+  const editor = editorTree({ titleText: "编程 agent 的尽头是修车", saved: "01:23 已保存" });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wx-tietu-save-"));
+  let navigated = false;
+  const page = {
+    async evaluate(fn, arg) { return fn(arg); },
+    on(_event, handler) { page.handler = handler; },
+    off() {},
+    async screenshot({ path: file }) {
+      fs.writeFileSync(file, "png");
+      return file;
+    },
+    async goto() { navigated = true; },
+  };
+  globalThis.document = editor.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "secret-token" }));
+  const session = createTietuSession({ page, timings: { saveTimeoutMs: 0, savePollMs: 0 } });
+  const watch = session.beginSaveWatch();
+  await page.handler({
+    url: () => "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?action=save&token=secret-token",
+    async json() { return { ret: 0, appMsgId: "100001815" }; },
+  });
+  const confirmed = await session.confirmSave({ watch, screenshotDir: dir, timeoutMs: 0, pollMs: 0 });
+  watch.stop();
+  assert.equal(navigated, false);
+  assert.equal(confirmed.appmsgid, "100001815");
+  assert.equal(confirmed.via, "response");
+  assert.deepEqual(confirmed.saveResponse, { ret: 0, appMsgId: "100001815" });
+  assert.equal(confirmed.toastText, "01:23 已保存");
+  assert.match(confirmed.url, /token=redacted/);
+  assert.doesNotMatch(confirmed.url, /secret-token/);
+  assert.equal(confirmed.screenshot, path.join(dir, "tietu-save-confirm.png"));
+  assert.equal(fs.existsSync(confirmed.screenshot), true);
+
+  globalThis.location = new URL(tietuEditorUrl({ token: "secret-token", appmsgid: "100001815" }));
+  const fromUrl = await session.confirmSave({ timeoutMs: 0, pollMs: 0 });
+  assert.equal(fromUrl.via, "url");
+  assert.equal(fromUrl.appmsgid, "100001815");
+  assert.equal(navigated, false);
+
+  let probes = 0;
+  const late = editorTree({ titleText: "" });
+  const latePage = {
+    async evaluate(fn, arg) {
+      if (arg && arg.op === "editor-state") {
+        probes += 1;
+        if (probes >= 2) late.title.text = "编程 agent 的尽头是修车";
+      }
+      return fn(arg);
+    },
+    async goto(url) { latePage.gone = String(url); globalThis.location = new URL(url); },
+    async url() { return tietuEditorUrl({ token: "test-token" }); },
+    async waitForTimeout() {},
+    async waitForLoadState() {},
+  };
+  globalThis.document = late.doc;
+  globalThis.location = new URL(tietuEditorUrl({ token: "test-token" }));
+  const lateSession = createTietuSession({
+    page: latePage,
+    timings: { waitMs: 0, reopenPollMs: 1, reopenTimeoutMs: 5_000 },
+  });
+  const read = await lateSession.reopen("100001815");
+  assert.equal(read.title, "编程 agent 的尽头是修车");
+  assert.match(latePage.gone, /action=edit/);
+  assert.match(latePage.gone, /type=77/);
+  assert.match(latePage.gone, /appmsgid=100001815/);
+  assert.doesNotMatch(latePage.gone, /delete|discard/i);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -25,15 +25,17 @@ The 1000-character budget counts the body text, including URLs, plus the newline
 
 ## Save and check
 
-Click the exact label 保存为草稿. 发表 and 预览 sit next to it. Do not click them. Do not click 群发, 定时群发, or 发送预览.
+Click the exact label 保存为草稿 once. 发表 and 预览 sit next to it. Do not click them. Do not click 群发, 定时群发, or 发送预览.
 
-After the click, the page toasts 已保存, the URL gains `appmsgid`, and the footer shows `HH:MM 已保存`. The editor also autosaves, so another click would update the same draft. This command clicks once. If that click's result is not one identifiable draft, exit `4` and do not click again.
+After the click, stay on that editor tab for up to 20 seconds. Do not open the draft list, do not reopen another URL, and do not close the tab during the wait: leaving early can discard an unsaved editor. Confirmation is an `appmsgid` on the URL, or `appMsgId` in the save response JSON when `ret` is 0. A 「已保存」 toast or `HH:MM 已保存` footer is recorded, but it is not an id. Before any later navigation, write `tietu-save-confirm.png` and a receipt with the redacted URL, the toast text, and `{ ret, appMsgId }`. If no `appmsgid` arrives, the error is `save not confirmed` and the command does not call that a readback mismatch. The editor also autosaves, so another click would update the same draft. This command clicks once.
+
+When an id exists, reopen the edit URL below and poll until the title ProseMirror is non-empty (up to 20 seconds) before comparing. Then open the type 77 draft list and check that the id or title is there. The list navigation happens only after the save wait and the editor read.
 
 Reopen for verification, not the read-only card preview:
 
 `cgi-bin/appmsg?t=media/appmsg_edit&action=edit&type=77&appmsgid=<id>&token=<session>&lang=zh_CN`
 
-The draft list, if needed to find an id, is:
+The draft list, used only as a cross-check after the edit page has been read, is:
 
 `cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token=<session>&lang=zh_CN`
 
