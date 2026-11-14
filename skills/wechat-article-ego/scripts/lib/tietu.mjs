@@ -3,10 +3,11 @@ import crypto from "node:crypto";
 import { IMAGE_MAX_BYTES, normalizeText, sniffImage } from "./pure.mjs";
 
 export const TIETU_TYPE = 77;
+export const TIETU_SHOW_TYPE = 8;
 export const TIETU_TITLE_MAX = 20;
 export const TIETU_TEXT_MAX = 1000;
 export const TIETU_FILE_INPUT = 'xpath=(//input[@type="file"])[2]';
-export const TIETU_UPLOAD_TIMEOUT_MS = 30_000;
+export const TIETU_UPLOAD_TIMEOUT_MS = 60_000;
 export const TIETU_UPLOAD_POLL_MS = 500;
 export const TIETU_SAVE_TIMEOUT_MS = 20_000;
 export const TIETU_SAVE_POLL_MS = 500;
@@ -72,28 +73,36 @@ function uploadNumber(probe, key) {
   return Number.isFinite(value) ? value : 0;
 }
 
-// Any one of these means the file input was accepted by the 贴图 uploader.
-// The body ProseMirror often stays at 0 images; the thumbnail lives elsewhere.
-export function uploadAdvanced(before, after) {
+export function isCdnImageSrc(src) {
+  return /mmbiz\.qpic\.cn|mmbiz/i.test(String(src || ""));
+}
+
+// A 贴图 is uploaded only when .image-selector holds the expected number of
+// distinct mmbiz CDN pictures. File-input, network, and placeholder changes
+// are hints that the upload started. They do not make it safe to save.
+export function uploadAdvanced(before, after, { expected } = {}) {
   const prev = before || {};
   const next = after || {};
-  const reasons = [];
-  if (uploadNumber(next, "thumbCount") > uploadNumber(prev, "thumbCount")) reasons.push("thumbnail");
-  if (uploadNumber(next, "imageCount") > uploadNumber(prev, "imageCount")) reasons.push("image-count");
+  const hints = [];
+  if (uploadNumber(next, "thumbCount") > uploadNumber(prev, "thumbCount")) hints.push("thumbnail");
+  if (uploadNumber(next, "imageCount") > uploadNumber(prev, "imageCount")) hints.push("image-count");
   const prevValue = String(prev.inputValue || "");
   const nextValue = String(next.inputValue || "");
-  if (nextValue && nextValue !== prevValue) reasons.push("input-value");
-  if (uploadNumber(next, "inputChildren") > uploadNumber(prev, "inputChildren")) reasons.push("input-children");
-  if (prev.placeholder && !next.placeholder) reasons.push("placeholder-gone");
-  if (uploadNumber(next, "uploadResponses") > uploadNumber(prev, "uploadResponses")) reasons.push("upload-response");
-  return { ok: reasons.length > 0, reasons };
+  if (nextValue && nextValue !== prevValue) hints.push("input-value");
+  if (uploadNumber(next, "inputChildren") > uploadNumber(prev, "inputChildren")) hints.push("input-children");
+  if (prev.placeholder && !next.placeholder) hints.push("placeholder-gone");
+  if (uploadNumber(next, "uploadResponses") > uploadNumber(prev, "uploadResponses")) hints.push("upload-response");
+  const cdn = uploadNumber(next, "cdnImageCount");
+  const prevCdn = uploadNumber(prev, "cdnImageCount");
+  const ready = expected == null ? cdn > prevCdn && cdn > 0 : cdn >= expected && cdn > 0;
+  return { ok: ready, reasons: ready ? ["cdn-image"] : [], hints };
 }
 
 export function describeUpload(before, after) {
   const bit = (probe, key) => uploadNumber(probe, key);
   const flag = (probe) => Boolean(probe && probe.placeholder);
   const name = (probe) => fileBaseName(probe && probe.inputValue);
-  return `imageCount ${bit(before, "imageCount")}->${bit(after, "imageCount")}, thumbs ${bit(before, "thumbCount")}->${bit(after, "thumbCount")}, placeholder ${flag(before)}->${flag(after)}, inputValue ${JSON.stringify(name(before))}->${JSON.stringify(name(after))}, responses ${bit(before, "uploadResponses")}->${bit(after, "uploadResponses")}`;
+  return `cdn ${bit(before, "cdnImageCount")}->${bit(after, "cdnImageCount")}, imageCount ${bit(before, "imageCount")}->${bit(after, "imageCount")}, thumbs ${bit(before, "thumbCount")}->${bit(after, "thumbCount")}, placeholder ${flag(before)}->${flag(after)}, inputValue ${JSON.stringify(name(before))}->${JSON.stringify(name(after))}, responses ${bit(before, "uploadResponses")}->${bit(after, "uploadResponses")}`;
 }
 
 export function redactMpUrl(value) {
@@ -385,6 +394,17 @@ export function tietuListUrl({ token = "" } = {}) {
     begin: "0",
     count: "10",
     type: String(TIETU_TYPE),
+    action: "list_card",
+    token,
+    lang: "zh_CN",
+  });
+}
+
+export function articleListUrl({ token = "" } = {}) {
+  return mpUrl("/cgi-bin/appmsg", {
+    begin: "0",
+    count: "10",
+    type: "10",
     action: "list_card",
     token,
     lang: "zh_CN",

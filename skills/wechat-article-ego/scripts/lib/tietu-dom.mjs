@@ -137,7 +137,7 @@ export function tietuAct(payload) {
   function placeholderVisible(root) {
     if (!root || thumbCount(root) > 0) return false;
     const text = normalize(root.innerText || root.textContent || "");
-    if (/拖拽|上传图片|添加图片|选择图片|点击上传|暂无图片/.test(text)) return true;
+    if (/选择或拖拽|拖拽|上传图片|添加图片|选择图片|点击上传|暂无图片/.test(text)) return true;
     return qsaAny(["[class*='placeholder']", "[class*='empty']"], root).some((el) => visible(el));
   }
 
@@ -241,9 +241,19 @@ export function tietuAct(payload) {
     return nodes;
   }
 
+  function cdnNodes(nodes) {
+    return (nodes || []).filter((el) => /mmbiz\.qpic\.cn|mmbiz/i.test(mediaSrc(el)));
+  }
+
+  function cdnContentCount() {
+    const structured = selectorImages();
+    if (!structured) return 0;
+    return distinctCount(cdnNodes(structured));
+  }
+
   function visibleImageCount() {
     const structured = selectorImages();
-    if (structured) return distinctCount(structured);
+    if (structured) return cdnContentCount();
     const nodes = [...qsa(mirrors()[1], "img")];
     const region = uploaderRoot(fileInputs()[1] || fileInputs()[0]);
     if (region && region !== doc.body) nodes.push(...qsa(region, "img"));
@@ -262,6 +272,7 @@ export function tietuAct(payload) {
       chosenIndex: chosen ? 2 : 0,
       chosenAccept: chosenSnap ? chosenSnap.accept : "",
       imageCount: visibleImageCount(),
+      cdnImageCount: cdnContentCount(),
       thumbCount: thumbCount(region),
       inputValue: chosenSnap ? chosenSnap.value : "",
       inputChildren: chosenSnap ? chosenSnap.childCount + chosenSnap.files : 0,
@@ -380,7 +391,21 @@ export function tietuAct(payload) {
         if (matched && blob !== title) time = matched[1] || matched[0];
         node = node.parentElement;
       }
-      rows.push({ title, id, time });
+      let itemShowType = null;
+      let typed = el;
+      for (let depth = 0; depth < 6 && typed && itemShowType == null; depth += 1) {
+        const attr = typed.getAttribute && (
+          typed.getAttribute("data-item_show_type")
+          || typed.getAttribute("data-item-show-type")
+          || typed.getAttribute("item_show_type")
+        );
+        const href = (typed.getAttribute && typed.getAttribute("href")) || "";
+        const fromHref = String(href).match(/item_show_type=(\d+)/);
+        if (attr != null && /^\d+$/.test(String(attr))) itemShowType = Number(attr);
+        else if (fromHref) itemShowType = Number(fromHref[1]);
+        typed = typed.parentElement;
+      }
+      rows.push({ title, id, time, itemShowType });
       if (rows.length >= 30) break;
     }
     return { ok: true, rows };

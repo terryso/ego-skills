@@ -10,6 +10,7 @@ import {
   TIETU_UPLOAD_POLL_MS,
   TIETU_UPLOAD_TIMEOUT_MS,
   appmsgidFromSave,
+  articleListUrl,
   describeFileInputs,
   describeUpload,
   parseSaveResponse,
@@ -245,20 +246,23 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           if (typeof current.setInputFiles !== "function") throw new Error("setInputFiles is required");
           await current.setInputFiles(TIETU_FILE_INPUT, [file]);
           const started = Date.now();
+          const expected = uploads.length + 1;
           let after = await probe(watcher.count());
-          let decision = uploadAdvanced(before, after);
+          let decision = uploadAdvanced(before, after, { expected });
           while (!decision.ok && timeout > 0 && interval > 0 && Date.now() - started < timeout) {
             await pause(interval);
             after = await probe(watcher.count());
-            decision = uploadAdvanced(before, after);
+            decision = uploadAdvanced(before, after, { expected });
           }
           if (!decision.ok) {
-            await failUpload(`image upload was not detected within ${timeout}ms`, before, after);
+            const hinted = (decision.hints || []).join(",") || "none";
+            await failUpload(`贴图 image is not on the CDN yet (${after.cdnImageCount || 0}/${expected}); hints=${hinted}; not saving`, before, after);
           }
-          count = Math.max(after.imageCount || 0, after.thumbCount || 0);
+          count = after.cdnImageCount || 0;
           uploads.push({
             file: path.basename(String(file || "")),
             via: decision.reasons,
+            hints: decision.hints,
             fileInputs: before.fileInputs,
             chosenIndex: before.chosenIndex,
             chosenAccept: before.chosenAccept,
@@ -268,6 +272,42 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
         }
       }
       return { imageCount: count, uploads };
+    },
+    async assertContentImages(expected, options = {}) {
+      const timeout = options.timeoutMs ?? uploadTimeoutMs;
+      const interval = options.pollMs ?? uploadWaitMs;
+      const started = Date.now();
+      const fsImpl = options.fs || fs;
+      const dir = options.screenshotDir || options.receiptDir || "";
+      let last = await act("upload-probe");
+      while ((last.cdnImageCount || 0) < expected && timeout > 0 && interval > 0 && Date.now() - started < timeout) {
+        await pause(interval);
+        last = await act("upload-probe");
+      }
+      if ((last.cdnImageCount || 0) < expected) {
+        let shot = "";
+        let shotError = "";
+        if (dir && typeof current.screenshot === "function") {
+          shot = path.join(dir, "tietu-upload-failed.png");
+          try {
+            await fsImpl.promises.mkdir(dir, { recursive: true });
+            await current.screenshot({ path: shot, fullPage: true, type: "png" });
+          } catch (error) {
+            shotError = String(error.message || error);
+            shot = "";
+          }
+        }
+        const error = new Error(`贴图 image is not on the CDN yet (${last.cdnImageCount || 0}/${expected}); not saving`);
+        error.uploadDebug = {
+          screenshot: shot,
+          screenshotError: shotError,
+          cdnImageCount: last.cdnImageCount || 0,
+          expected,
+          placeholder: Boolean(last.placeholder),
+        };
+        throw error;
+      }
+      return { cdnImageCount: last.cdnImageCount, expected };
     },
     async fillTitle(title) {
       const focused = await act("focus-title");
@@ -357,6 +397,7 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
         saved: false,
         saveResponse: null,
         screenshot: "",
+        screenshotError: "",
       };
       let settled = false;
       while (!settled) {
@@ -374,6 +415,7 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
           saved: Boolean(state.saved || state.toastText),
           saveResponse: matched ? { ret: matched.ret, appMsgId: matched.appMsgId || "" } : null,
           screenshot: last.screenshot,
+          screenshotError: "",
         };
         settled = Boolean(picked.appmsgid) || !(timeout > 0 && interval > 0 && Date.now() - started < timeout);
         if (!settled) await pause(interval);
@@ -394,10 +436,20 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
             written = await current.screenshot({ path: shot, type: "png" });
           }
           last.screenshot = written || shot;
+          if (last.screenshot && typeof fsImpl.existsSync === "function" && !fsImpl.existsSync(last.screenshot)) {
+            last.screenshotError = `screenshot file was not written: ${last.screenshot}`;
+            last.screenshot = "";
+          }
         } catch (error) {
           last.screenshotError = String(error.message || error);
+          last.screenshot = "";
         }
+      } else if (!dir) {
+        last.screenshotError = "no directory for the save confirm screenshot";
+      } else {
+        last.screenshotError = "screenshot is not available";
       }
+      if (last.screenshotError) last.ok = false;
       return last;
     },
     async clickSaveDraft() {
@@ -421,12 +473,15 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
       }
       return last;
     },
-    async listDrafts() {
+    async listDrafts(kind = "tietu") {
       const value = await token();
       if (!value) throw new Error("贴图 draft list needs the signed-in session");
-      await redactGoto(tietuListUrl({ token: value }));
+      await redactGoto(kind === "article" ? articleListUrl({ token: value }) : tietuListUrl({ token: value }));
       const listed = await act("draft-cards");
       return (listed && listed.rows) || [];
+    },
+    async listArticleDrafts() {
+      return this.listDrafts("article");
     },
     async reopen(appmsgid) {
       // Read-only. Open the edit URL and read fields. Do not click 删除, 废弃,

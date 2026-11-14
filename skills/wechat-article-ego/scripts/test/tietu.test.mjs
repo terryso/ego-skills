@@ -274,7 +274,7 @@ test("inspectImage and prepareTietu accept a local jpeg and reject the rest", as
 });
 
 test("upload detection accepts any later signal and describes the file inputs", () => {
-  assert.equal(TIETU_UPLOAD_TIMEOUT_MS, 30_000);
+  assert.equal(TIETU_UPLOAD_TIMEOUT_MS, 60_000);
   assert.equal(TIETU_UPLOAD_POLL_MS, 500);
   const before = {
     imageCount: 0,
@@ -287,12 +287,20 @@ test("upload detection accepts any later signal and describes the file inputs", 
     chosenIndex: 2,
   };
   assert.equal(uploadAdvanced(before, { ...before }).ok, false);
-  assert.deepEqual(uploadAdvanced(before, { ...before, thumbCount: 1 }).reasons, ["thumbnail"]);
-  assert.deepEqual(uploadAdvanced(before, { ...before, imageCount: 1 }).reasons, ["image-count"]);
-  assert.deepEqual(uploadAdvanced(before, { ...before, inputValue: "cover.jpg" }).reasons, ["input-value"]);
-  assert.deepEqual(uploadAdvanced(before, { ...before, inputChildren: 1 }).reasons, ["input-children"]);
-  assert.deepEqual(uploadAdvanced(before, { ...before, placeholder: false }).reasons, ["placeholder-gone"]);
-  assert.deepEqual(uploadAdvanced(before, { ...before, uploadResponses: 1 }).reasons, ["upload-response"]);
+  const hinted = uploadAdvanced(before, {
+    ...before,
+    thumbCount: 1,
+    inputValue: "cover.jpg",
+    placeholder: false,
+    uploadResponses: 1,
+  });
+  assert.equal(hinted.ok, false);
+  assert.ok(hinted.hints.includes("input-value"));
+  assert.ok(hinted.hints.includes("upload-response"));
+  assert.ok(hinted.hints.includes("thumbnail"));
+  const ready = uploadAdvanced(before, { ...before, cdnImageCount: 1 }, { expected: 1 });
+  assert.equal(ready.ok, true);
+  assert.deepEqual(ready.reasons, ["cdn-image"]);
   assert.equal(uploadAdvanced(null, null).ok, false);
   assert.match(describeUpload(before, { ...before, thumbCount: 1 }), /thumbs 0->1/);
   assert.match(describeFileInputs(before), /fileInputs=2/);

@@ -67,7 +67,7 @@ function session(overrides = {}) {
       calls.push("drafts");
       if (overrides.listError) throw new Error(overrides.listError);
       if (Object.prototype.hasOwnProperty.call(overrides, "drafts")) return overrides.drafts || [];
-      return [{ title: "编程 agent 的尽头是修车", id: "100001815", time: "01:23" }];
+      return [{ title: "编程 agent 的尽头是修车", id: "100001815", time: "01:23", itemShowType: 8 }];
     },
     async openEditor() { calls.push("editor"); if (overrides.editorError) throw new Error(overrides.editorError); },
     async uploadImages(files) {
@@ -368,6 +368,57 @@ test("save clicks 保存为草稿 once and does not retry an ambiguous result", 
   const typed = await executeTietu(config(), { browser: browserWith(wrongType), receipts: memoryReceipts() });
   assert.equal(typed.exitCode, 4);
   assert.equal(wrongType.saves, 1);
+});
+
+test("a placeholder uploader does not click save", async () => {
+  const blocked = session();
+  blocked.assertContentImages = async () => {
+    const error = new Error("贴图 image is not on the CDN yet (0/1); not saving");
+    error.uploadDebug = { cdnImageCount: 0, expected: 1 };
+    throw error;
+  };
+  const skipped = await executeTietu(config(), { browser: browserWith(blocked), receipts: memoryReceipts() });
+  assert.equal(skipped.exitCode, 1);
+  assert.equal(skipped.action, "aborted");
+  assert.match(skipped.error, /not saving/);
+  assert.equal(blocked.saves, 0);
+  assert.equal(blocked.calls.includes("confirm"), false);
+});
+
+test("a missing confirm screenshot is returned instead of success", async () => {
+  const blind = session({
+    confirmed: {
+      ok: true,
+      appmsgid: "100001858",
+      savedTime: "01:23",
+      toastText: "01:23 已保存",
+      url: "https://mp.weixin.qq.com/cgi-bin/appmsg?appmsgid=100001858&token=redacted",
+      saveResponse: { ret: 0, appMsgId: "100001858" },
+      screenshot: "",
+      screenshotError: "screenshot timed out",
+    },
+  });
+  const failed = await executeTietu(config(), { browser: browserWith(blind), receipts: memoryReceipts() });
+  assert.equal(failed.exitCode, 1);
+  assert.equal(failed.saved, false);
+  assert.equal(failed.screenshotError, "screenshot timed out");
+  assert.match(failed.error, /screenshot timed out/);
+  assert.equal(failed.appmsgid, "100001858");
+  assert.equal(blind.saves, 1);
+  assert.equal(blind.calls.includes("reopen:100001858"), false);
+});
+
+test("an article-tab draft is not reported as a 贴图", async () => {
+  const filed = session({
+    confirmed: { ok: true, appmsgid: "100001815", savedTime: "01:23", screenshot: "/absolute/path/tietu-save-confirm.png", screenshotError: "" },
+    drafts: [],
+  });
+  filed.listArticleDrafts = async () => [{ title: "编程 agent 的尽头是修车", id: "100001815", itemShowType: 0 }];
+  const wrong = await executeTietu(config(), { browser: browserWith(filed), receipts: memoryReceipts() });
+  assert.equal(wrong.exitCode, 4);
+  assert.equal(wrong.error, "draft was saved as an article, not a 贴图");
+  assert.equal(wrong.action, "wrong-type");
+  assert.equal(filed.saves, 1);
 });
 
 test("a missed upload keeps the debug paths and does not save", async () => {

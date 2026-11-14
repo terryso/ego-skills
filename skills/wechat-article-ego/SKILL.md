@@ -102,7 +102,7 @@ Without `--yes` the command prints the plan and exits `3`. With `--yes` it click
 
 The 贴图 link field only accepts Official Account content, a mini program, or a store. Bare `http(s)` URLs stay plain text lines and are not clickable after saving. Do not put an external URL in that link field.
 
-点「保存为草稿」之后留在编辑页最多 20 秒，等 URL 或保存响应里的 `appmsgid`。这期间不打开草稿列表、不关掉标签页。截图、脱敏后的 URL、toast 和保存响应会先写入回执。没有 `appmsgid` 时错误是 `save not confirmed`，不会当成正文回读失败。拿到 id 之后才重新打开编辑地址，等到标题出现再比对，并对照贴图草稿列表。重新打开只读取，不会点「删除」「废弃」或「不保存」。JSON 里带回 `appmsgid`、`type` 77、`title`、正文 `text`（innerText）、`topics`、`imageCount` 和 `savedTime`。上传若 30 秒内看不到缩略图、文件名、占位消失或上传响应，会把截图和上传区域 HTML 写到截图或回执目录，并把路径放进错误 JSON。编辑器地址、上传控件和话题输入见 `references/tietu.md`。
+`.image-selector` 里要先出现预期张数的 `mmbiz` 图片，才点「保存为草稿」；只有文件名或上传响应不算成功，最多等 60 秒，对不上就退出 `1` 且不保存。点「保存为草稿」之后留在编辑页最多 20 秒，等 URL 或保存响应里的 `appmsgid`。这期间不打开草稿列表、不关掉标签页。截图、脱敏后的 URL、toast 和保存响应会先写入回执。没有 `appmsgid` 时错误是 `save not confirmed`，不会当成正文回读失败。拿到 id 之后才重新打开编辑地址，等到标题出现再比对，并对照贴图草稿列表。重新打开只读取，不会点「删除」「废弃」或「不保存」。JSON 里带回 `appmsgid`、`type` 77、`title`、正文 `text`（innerText）、`topics`、`imageCount` 和 `savedTime`。上传若 30 秒内看不到缩略图、文件名、占位消失或上传响应，会把截图和上传区域 HTML 写到截图或回执目录，并把路径放进错误 JSON。编辑器地址、上传控件和话题输入见 `references/tietu.md`。
 
 After a save, the draft is reopened. The JSON includes `appmsgid`, `type` 77, `title`, body `text` (innerText), `topics`, `imageCount`, and `savedTime`. The editor URL, uploader, and topic typing are in `references/tietu.md`.
 

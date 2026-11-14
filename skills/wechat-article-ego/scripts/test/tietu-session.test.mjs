@@ -6,7 +6,7 @@ import test from "node:test";
 import { h, createDocument } from "./dom-fixture.mjs";
 import { tietuAct } from "../lib/tietu-dom.mjs";
 import { createTietuSession } from "../lib/tietu-session.mjs";
-import { TIETU_FILE_INPUT, tietuEditorUrl, tietuListUrl } from "../lib/tietu.mjs";
+import { TIETU_FILE_INPUT, tietuEditorUrl, tietuListUrl, uploadAdvanced } from "../lib/tietu.mjs";
 
 function editorTree({ titleText = "", saved = "01:23 已保存", appmsgid = "" } = {}) {
   const title = h("div", { className: "ProseMirror", editable: true, text: titleText });
@@ -245,8 +245,18 @@ test("upload, title, body, save, list, and reopen stay on the 贴图 editor", as
       assert.equal(selector, TIETU_FILE_INPUT);
       typed.push(files[0]);
       images += 1;
-      const body = active.querySelectorAll(".ProseMirror")[1];
-      body.childNodes.push(h("img", { attrs: { src: `https://mmbiz.example/${images}.jpg` } }));
+      let selectorRoot = active.querySelector(".image-selector");
+      if (!selectorRoot) {
+        selectorRoot = h("div", { className: "image-selector" });
+        active.body.childNodes.push(selectorRoot);
+      }
+      selectorRoot.childNodes.push(h("img", {
+        className: "image-selector__preview-center-img",
+        attrs: { src: `https://mmbiz.qpic.cn/content/${images}` },
+      }));
+      selectorRoot.childNodes.push(h("div", { className: "image-selector__strip" }, [
+        h("img", { attrs: { src: `https://mmbiz.qpic.cn/content/${images}?wx_fmt=jpeg` } }),
+      ]));
     },
     async goto(url) {
       typed.push(url);
@@ -332,7 +342,7 @@ test("session reports a missing uploader, a missed thumbnail, and a redacted nav
   ]), { href: tietuEditorUrl({ token: "test-token" }) });
   globalThis.document = two;
   bare.evaluate = async (fn, arg) => fn(arg);
-  await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /not detected/);
+  await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /not on the CDN/);
   delete bare.setInputFiles;
   globalThis.document = two;
   await assert.rejects(() => waiting.uploadImages(["/absolute/path/cover.jpg"]), /setInputFiles/);
@@ -470,62 +480,83 @@ test("upload probe sees the main input, thumbs, placeholder, and upload urls", (
   assert.ok(again.thumbCount >= 3);
   assert.equal(again.placeholder, false);
   assert.ok(again.imageCount >= 1);
+  assert.equal(again.cdnImageCount, 0);
   assert.ok(again.uploadResponses >= 2);
   assert.doesNotMatch(JSON.stringify(again.fileInputs), /token=secret/);
   globalThis.performance = previous;
   assert.equal(built.placeholder.text.includes("token=secret"), true);
 });
 
-test("upload waits for a thumbnail, a filename, or an upload response", async () => {
-  const canvasDoc = uploaderDocument();
+test("a placeholder uploader is not an uploaded 贴图 image", () => {
+  const selector = h("div", { className: "image-selector" }, [
+    h("div", { className: "upload-placeholder", text: "选择或拖拽图片" }),
+    h("input", { type: "file" }),
+    h("input", { type: "file" }),
+  ]);
+  createDocument(h("div", {}, [
+    h("div", { className: "ProseMirror", text: "标题" }),
+    h("div", { className: "ProseMirror", text: "正文" }),
+    selector,
+    h("img", { attrs: { src: "https://mmbiz.qpic.cn/card-only" } }),
+  ]), { href: tietuEditorUrl({ token: "test-token" }) });
+  const probe = tietuAct({ op: "upload-probe" });
+  assert.equal(probe.cdnImageCount, 0);
+  assert.equal(probe.imageCount, 0);
+  assert.equal(probe.placeholder, true);
+  const started = uploadAdvanced(
+    { cdnImageCount: 0, inputValue: "", uploadResponses: 0, placeholder: true, thumbCount: 0 },
+    { cdnImageCount: 0, inputValue: "cover.jpg", uploadResponses: 1, placeholder: false, thumbCount: 1 },
+    { expected: 1 },
+  );
+  assert.equal(started.ok, false);
+  assert.ok(started.hints.includes("input-value"));
+  assert.ok(started.hints.includes("upload-response"));
+});
+
+test("upload waits for a mmbiz image and ignores placeholder hints", async () => {
+  const placeholder = uploaderDocument();
+  const hinted = {
+    async evaluate(fn, arg) { return fn(arg); },
+    async setInputFiles() { placeholder.main.value = "C:\\fakepath\\cover.jpg"; },
+    on() {},
+    off() {},
+  };
+  globalThis.document = placeholder.doc;
+  const hintedSession = createTietuSession({ page: hinted, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
+  await assert.rejects(() => hintedSession.uploadImages(["/absolute/path/cover.jpg"]), /not on the CDN/);
+
+  const host = uploaderDocument();
+  const selector = h("div", { className: "image-selector" }, [
+    h("div", { text: "选择或拖拽图片" }),
+  ]);
+  host.doc.body.childNodes.push(selector);
   let probes = 0;
-  const canvasPage = {
+  const page = {
     async evaluate(fn, arg) {
       if (arg && arg.op === "upload-probe") {
         probes += 1;
-        if (probes >= 3) canvasDoc.region.childNodes.push(h("canvas"));
+        if (probes >= 3) {
+          selector.childNodes.push(h("img", {
+            className: "image-selector__preview-center-img",
+            attrs: { src: "https://mmbiz.qpic.cn/content/cover" },
+          }));
+          selector.childNodes.push(h("div", { className: "image-selector__strip" }, [
+            h("img", { attrs: { src: "https://mmbiz.qpic.cn/content/cover?wx_fmt=jpeg" } }),
+          ]));
+        }
       }
       return fn(arg);
     },
-    async setInputFiles(selector) { assert.equal(selector, TIETU_FILE_INPUT); },
+    async setInputFiles(selectorText) { assert.equal(selectorText, TIETU_FILE_INPUT); },
     async waitForTimeout() {},
     on() {},
     off() {},
   };
-  const canvasSession = createTietuSession({
-    page: canvasPage,
-    timings: { uploadWaitMs: 1, uploadTimeoutMs: 5_000 },
-  });
-  const canvasUpload = await canvasSession.uploadImages(["/absolute/path/cover.jpg"]);
-  assert.ok(canvasUpload.imageCount >= 1);
-  assert.ok(canvasUpload.uploads[0].via.includes("thumbnail"));
-  assert.equal(canvasUpload.uploads[0].chosenAccept, "image/jpeg,image/png");
-
-  const named = uploaderDocument();
-  const namedPage = {
-    async evaluate(fn, arg) { return fn(arg); },
-    async setInputFiles() { named.main.value = "C:\\fakepath\\cover.jpg"; },
-    async waitForTimeout() {},
-  };
-  const namedSession = createTietuSession({ page: namedPage, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
-  const namedUpload = await namedSession.uploadImages(["/absolute/path/cover.jpg"]);
-  assert.ok(namedUpload.uploads[0].via.includes("input-value"));
-
-  const listeners = [];
-  const netDoc = uploaderDocument();
-  const netPage = {
-    async evaluate(fn, arg) { return fn(arg); },
-    async setInputFiles() {
-      for (const handler of listeners) handler({ url: () => "https://mp.weixin.qq.com/cgi-bin/filetransfer?action=uploadimg" });
-    },
-    on(event, handler) { if (event === "response") listeners.push(handler); },
-    off() {},
-  };
-  globalThis.document = netDoc.doc;
-  const netSession = createTietuSession({ page: netPage, timings: { uploadWaitMs: 0, uploadTimeoutMs: 0 } });
-  const netUpload = await netSession.uploadImages(["/absolute/path/cover.jpg"]);
-  assert.ok(netUpload.uploads[0].via.includes("upload-response"));
-  assert.equal(netDoc.region.childNodes.some((node) => node.tagName === "IMG"), false);
+  globalThis.document = host.doc;
+  const session = createTietuSession({ page, timings: { uploadWaitMs: 1, uploadTimeoutMs: 5_000 } });
+  const uploaded = await session.uploadImages(["/absolute/path/cover.jpg"]);
+  assert.equal(uploaded.imageCount, 1);
+  assert.deepEqual(uploaded.uploads[0].via, ["cdn-image"]);
 });
 
 test("a missed upload writes a screenshot and a redacted uploader dump", async () => {
@@ -544,7 +575,7 @@ test("a missed upload writes a screenshot and a redacted uploader dump", async (
   await assert.rejects(
     () => session.uploadImages(["/absolute/path/cover.jpg"], { screenshotDir: dir }),
     (error) => {
-      assert.match(error.message, /not detected/);
+      assert.match(error.message, /not on the CDN/);
       assert.match(error.message, /fileInputs=2/);
       assert.match(error.message, /image\/jpeg,image\/png/);
       assert.match(error.message, /chosen=2/);

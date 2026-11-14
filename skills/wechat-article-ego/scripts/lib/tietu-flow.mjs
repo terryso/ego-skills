@@ -194,6 +194,17 @@ export async function executeTietu(config, deps) {
     } catch (error) {
       return beforeClick(error);
     }
+    try {
+      if (typeof session.assertContentImages === "function") {
+        await session.assertContentImages(post.imageCount, {
+          receiptDir: config.receiptDir,
+          screenshotDir: config.screenshotDir,
+          fs: deps.fs,
+        });
+      }
+    } catch (error) {
+      return beforeClick(error);
+    }
     // Stay on the editor until 保存为草稿 has had time to persist. listDrafts() and
     // reopen() are the only navigations, and both happen after this wait.
     const watch = typeof session.beginSaveWatch === "function" ? session.beginSaveWatch() : null;
@@ -235,10 +246,35 @@ export async function executeTietu(config, deps) {
       appmsgid: confirmed.appmsgid || "",
       saveResponse: confirmed.saveResponse || null,
       screenshot: confirmed.screenshot || "",
+      screenshotError: confirmed.screenshotError || "",
     };
     await mark("pending", { saveClicked: true, saveConfirm });
     const appmsgid = saveConfirm.appmsgid;
     let savedTime = saveConfirm.savedTime;
+    if (saveConfirm.screenshotError) {
+      await mark("uncertain", {
+        saveClicked: true,
+        finishedAt: now(),
+        error: `cannot write save confirm screenshot: ${saveConfirm.screenshotError}`,
+        saveConfirm,
+        draftId: appmsgid,
+      });
+      return base({
+        exitCode: 1,
+        action: "screenshot-failed",
+        error: `cannot write save confirm screenshot: ${saveConfirm.screenshotError}`,
+        account: account.account,
+        plan,
+        appmsgid,
+        draftId: appmsgid,
+        url: saveConfirm.url,
+        toastText: saveConfirm.toastText,
+        saveResponse: saveConfirm.saveResponse,
+        screenshot: saveConfirm.screenshot,
+        screenshotError: saveConfirm.screenshotError,
+        saveConfirm,
+      });
+    }
     if (!appmsgid) {
       await mark("uncertain", {
         saveClicked: true,
@@ -256,6 +292,7 @@ export async function executeTietu(config, deps) {
         toastText: saveConfirm.toastText,
         saveResponse: saveConfirm.saveResponse,
         screenshot: saveConfirm.screenshot,
+        screenshotError: saveConfirm.screenshotError,
         saveConfirm,
       });
     }
@@ -308,21 +345,62 @@ export async function executeTietu(config, deps) {
         confirmed: Boolean(confirmed.ok),
       });
     }
-    let listCheck = { ok: false, count: 0, found: false, error: "" };
+    let listCheck = { ok: false, count: 0, found: false, error: "", itemShowType: null };
+    const want = normalizeText(post.title);
+    const sameDraft = (row) => row && (
+      String(row.id || "") === String(appmsgid) || normalizeText(row.title) === want
+    );
     try {
       const rows = await session.listDrafts();
-      const want = normalizeText(post.title);
-      const found = (rows || []).some((row) => row && (
-        String(row.id || "") === String(appmsgid) || normalizeText(row.title) === want
-      ));
+      const hit = (rows || []).find(sameDraft) || null;
       listCheck = {
         ok: true,
         count: (rows || []).length,
-        found,
+        found: Boolean(hit),
+        itemShowType: hit ? hit.itemShowType : null,
         titles: (rows || []).map((row) => row && row.title).filter(Boolean).slice(0, 10),
       };
+      if (hit && hit.itemShowType != null && Number(hit.itemShowType) !== 8) {
+        listCheck.article = true;
+      }
     } catch (error) {
-      listCheck = { ok: false, count: 0, found: false, error: String(error.message || error) };
+      listCheck = { ok: false, count: 0, found: false, error: String(error.message || error), itemShowType: null };
+    }
+    if (!listCheck.article && !listCheck.found && typeof session.listArticleDrafts === "function") {
+      try {
+        const articles = await session.listArticleDrafts();
+        if ((articles || []).some(sameDraft)) listCheck.article = true;
+      } catch (error) {
+        listCheck.articleListError = String(error.message || error);
+      }
+    }
+    if (listCheck.article) {
+      await mark("uncertain", {
+        saveClicked: true,
+        confirmed: Boolean(confirmed.ok),
+        draftId: appmsgid,
+        finishedAt: now(),
+        error: "draft was saved as an article, not a 贴图",
+        saveConfirm,
+        listCheck,
+      });
+      return base({
+        exitCode: 4,
+        error: "draft was saved as an article, not a 贴图",
+        account: account.account,
+        plan,
+        action: "wrong-type",
+        appmsgid,
+        draftId: appmsgid,
+        title: reopened && reopened.title,
+        text: reopened && reopened.text,
+        topics: reopened && reopened.topics,
+        imageCount: reopened && reopened.imageCount,
+        readback: again,
+        saveConfirm,
+        listCheck,
+        confirmed: Boolean(confirmed.ok),
+      });
     }
     if (listCheck.ok && !listCheck.found) {
       await mark("uncertain", {

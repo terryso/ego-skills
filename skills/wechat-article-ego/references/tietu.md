@@ -43,7 +43,11 @@ Card titles use `a.weui-desktop-publish__cover__title`. That link opens a previe
 
 Read the reopened editor: title from the first `.ProseMirror`, body `innerText` from the second, topic texts from `a.wx_topic_link`, image count, `type` 77, `appmsgid`, and the footer time. Those fields are the success JSON. Image count is the number of distinct picture URLs in `.image-selector` (the main preview `.image-selector__preview-center-img` and the strip). The same upload shown again as the preview, a strip thumb, and the left card is one image. Do not count every `mmbiz` image on the page.
 
-The save-confirm screenshot is a full-page capture of the editor after the toast, `tietu-save-confirm.png`.
+The save-confirm screenshot is a full-page capture of the editor after the toast, `tietu-save-confirm.png`. If that file cannot be written, the command fails and the JSON includes `screenshotError`.
+
+Do not click 保存为草稿 until `.image-selector` shows the expected number of distinct `mmbiz` / `mmbiz.qpic.cn` pictures (the preview and the strip, deduped). A file-input value, an upload response, or the empty 「选择或拖拽图片」 placeholder is only a hint. The wait is up to 60 seconds. If the pictures are not on the CDN, exit `1` and do not save.
+
+After a confirmed id, the type 77 draft list must contain that draft with `item_show_type` 8. A card on the 文章 list, or a show type other than 8, is `draft was saved as an article, not a 贴图`.
 
 Reopen only navigates to that edit URL and reads. It does not click 删除, 废弃, 丢弃, 不保存, or a confirm that would discard the draft. Clearing `onbeforeunload` only stops the close dialog; it does not delete the draft.
 
