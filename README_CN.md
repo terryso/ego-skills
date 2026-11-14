@@ -61,7 +61,7 @@ cd ego-skills
 | [`pinterest-download`](./skills/pinterest-download/) | 用 Ego 会话搜索、相关 Pin、画板、给模型看的缩略图，以及图片和 MP4 下载。可选 `--min-width` / `--min-height`。 |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | 下载你自己的 Instagram 收藏。每个技能自己检查登录。 |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | 用 Ego 会话把视频号视频存成草稿。先检查登录。不点「发表」。描述回读、上传等待或封面预览没确认时也不点「保存草稿」。 |
-| [`wechat-article-ego`](./skills/wechat-article-ego/) | 在微信公众平台把一篇 Markdown 存成一篇图文草稿。先检查登录。没有 `--yes` 不上传。`--yes` 只点「保存」。不点「发表」「群发」或「发送预览」。 |
+| [`wechat-article-ego`](./skills/wechat-article-ego/) | 在微信公众平台把一篇 Markdown 存成一篇图文草稿，或用 `--kind tietu` 存一篇贴图（type 77）。先检查登录。没有 `--yes` 不上传。`--yes` 只点「保存」或「保存为草稿」。不点「发表」「群发」或「发送预览」。 |
 | [`kuaishou-video`](./skills/kuaishou-video/) | 把本地视频发到快手创作者平台。先检查登录。成功标准是「审核中」。上传超时、失败或一直没就绪时不会点发布。 |
 | [`bilibili-video`](./skills/bilibili-video/) | 把本地视频投到 B 站。先检查登录。没有 `--yes` 不投稿。`--type` 必须点选并回读，否则停在投稿之前。两张封面各自带回尺寸。成功是审核中，并带 BV 链接，读不到则为 `identity: unconfirmed`。 |
 | [`youtube-video`](./skills/youtube-video/) | 把本地视频发到 YouTube Studio。先检查登录。公开范围默认 private，儿童向默认否。成功标准是视频链接加上处理状态。 |
@@ -88,6 +88,12 @@ node skills/wechat-channels-video/scripts/check-login.mjs
 node skills/wechat-article-ego/scripts/check-login.mjs
 node skills/wechat-article-ego/scripts/save-draft.mjs \
   --markdown /absolute/path/to/article.md
+node skills/wechat-article-ego/scripts/save-draft.mjs \
+  --kind tietu \
+  --title "标题最多二十字" \
+  --text "正文。外链保持纯文本。" \
+  --image /absolute/path/to/cover.jpg \
+  --topic 话题
 ```
 
 ```bash

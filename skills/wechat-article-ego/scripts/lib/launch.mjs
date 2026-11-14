@@ -4,6 +4,8 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareArticle } from "./prepare.mjs";
+import { prepareTietu } from "./tietu-prepare.mjs";
+import { planOfTietu } from "./tietu.mjs";
 import {
   RESULT_TAG,
   USAGE,
@@ -67,9 +69,11 @@ export async function runCli(kind, argv, deps = {}) {
     mkdtemp: deps.mkdtemp || ((prefix) => fs.promises.mkdtemp(prefix)),
     tmp: deps.tmp || os.tmpdir(),
     prepare: deps.prepare || prepareArticle,
+    prepareTietu: deps.prepareTietu || prepareTietu,
     home: deps.home || os.homedir(),
     env: deps.env || process.env,
     runModule: deps.runModule || path.join(here, "editor-flow.mjs"),
+    tietuModule: deps.tietuModule || path.join(here, "tietu-flow.mjs"),
     egoModule: deps.egoModule || path.join(here, "ego-deps.mjs"),
   };
   if (!runner) {
@@ -89,8 +93,31 @@ export async function runCli(kind, argv, deps = {}) {
   }
 
   const receiptDir = args.receiptDir || defaultReceiptDir(io.home, io.env);
+  const tietu = kind === "save" && args.kind === "tietu";
   let article = null;
-  if (kind === "save") {
+  let post = null;
+  if (tietu) {
+    const prepared = await io.prepareTietu({
+      images: args.images,
+      title: args.title,
+      text: args.text,
+      textFile: args.textFile,
+      topics: args.topics,
+      fsImpl: io.fs,
+    });
+    if (!prepared.ok) {
+      io.stdout.write(formatResult({
+        ok: false,
+        exitCode: 1,
+        command: runner.command,
+        kind: "tietu",
+        saved: false,
+        error: prepared.error,
+      }, { asJson: true }));
+      return 1;
+    }
+    post = prepared.post;
+  } else if (kind === "save") {
     const prepared = await io.prepare({
       markdownPath: args.markdown,
       assetRoot: args.assetRoot,
@@ -118,17 +145,20 @@ export async function runCli(kind, argv, deps = {}) {
   if (!egoBin) {
     const summary = egoMissingSummary(runner.command);
     if (article) summary.plan = planOf(article, "");
+    if (post) summary.plan = planOfTietu(post, "");
     io.stdout.write(formatResult(summary, { asJson: true }));
     return 2;
   }
 
   const config = {
     command: runner.command,
+    kind: tietu ? "tietu" : "article",
     yes: Boolean(args.yes),
     expectAccount: args.expectAccount || "",
     receiptDir,
     screenshotDir: args.screenshotDir || "",
     article,
+    post,
   };
   const dir = await io.mkdtemp(path.join(io.tmp, "ego-wechat-article-"));
   const entry = path.join(dir, "entry.mjs");
@@ -144,9 +174,9 @@ export async function runCli(kind, argv, deps = {}) {
   try {
     await writeFile(entry, renderEntry({
       config,
-      runHref: pathToFileURL(io.runModule).href,
+      runHref: pathToFileURL(tietu ? io.tietuModule : io.runModule).href,
       depsHref: pathToFileURL(io.egoModule).href,
-      exportName: runner.exportName,
+      exportName: tietu ? "executeTietu" : runner.exportName,
     }));
     const href = pathToFileURL(entry).href;
     const child = io.spawn(egoBin, ["nodejs", "-e", `await import(${JSON.stringify(href)})`], {

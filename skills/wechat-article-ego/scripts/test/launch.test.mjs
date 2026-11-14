@@ -142,6 +142,71 @@ test("--yes prints the saved line and --json keeps the summary", async () => {
   assert.match(plain.stdout.text(), /^saved 题/);
 });
 
+test("tietu mode plans a type 77 draft and does not upload without a browser", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wx-tietu-launch-"));
+  const image = path.join(dir, "cover.jpg");
+  fs.writeFileSync(image, Buffer.from([0xff, 0xd8, 0xff, 0x00]));
+  let spawned = 0;
+  const longTitle = io({ fs, spawn() { spawned += 1; } });
+  assert.equal(await runCli("save", [
+    "--kind", "tietu",
+    "--title", "标".repeat(21),
+    "--text", "正文",
+    "--image", image,
+  ], longTitle), 1);
+  assert.match(longTitle.stdout.text(), /20/);
+  assert.equal(spawned, 0);
+  const missingBrowser = io({ fs, whichEgo: () => null, spawn() { throw new Error("should not spawn"); } });
+  assert.equal(await runCli("save", [
+    "--kind", "tietu",
+    "--title", "编程 agent 的尽头是修车",
+    "--text", "贴图说明\nhttps://example.com/tietu",
+    "--image", image,
+    "--topic", "编程Agent",
+  ], missingBrowser), 2);
+  assert.match(missingBrowser.stdout.text(), /ego-browser not found/);
+  assert.match(missingBrowser.stdout.text(), /编程 agent 的尽头是修车/);
+  assert.match(missingBrowser.stdout.text(), /not clickable/);
+  const bad = io();
+  assert.equal(await runCli("save", ["--kind", "tietu", "--title", "题"], bad), 1);
+  assert.match(bad.stderr.text(), /--image/);
+  let entry = "";
+  const wired = io({
+    prepareTietu: async () => ({
+      ok: true,
+      post: {
+        title: "贴图题",
+        hash: "abc",
+        text: "正文",
+        topics: ["话题"],
+        urls: [],
+        bareUrls: [],
+        imageCount: 1,
+        images: [{ name: "cover.jpg", bytes: 4, sha256: "abc", cover: true }],
+        charCount: 2,
+        composedCount: 2,
+        fidelity: ["external URLs stay plain text and are not clickable"],
+        type: 77,
+        kind: "tietu",
+      },
+    }),
+    fs: { promises: { writeFile: async (_file, source) => { entry = source; }, rm: async () => {} } },
+    spawn() {
+      return childWith({
+        stdout: `${RESULT_TAG}${JSON.stringify({ exitCode: 0, saved: true, title: "贴图题", account: "听懂 AI", draftId: "100001815" })}\n`,
+      });
+    },
+  });
+  assert.equal(await runCli("save", [
+    "--kind", "tietu", "--title", "贴图题", "--text", "正文", "--image", image, "--yes",
+  ], wired), 0);
+  assert.match(entry, /executeTietu/);
+  assert.match(entry, /tietu-flow/);
+  assert.match(entry, /"kind":"tietu"/);
+  assert.match(wired.stdout.text(), /^saved 贴图题/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("spawn failures and untagged output stay visible", async () => {
   const broken = io({
     spawn() { return childWith({ error: new Error("spawn failed") }); },

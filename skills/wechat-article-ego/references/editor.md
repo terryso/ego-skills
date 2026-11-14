@@ -2,6 +2,8 @@
 
 The only page is the public Official Account console at `https://mp.weixin.qq.com/`. Use the visible editor. Do not replay a private API, copy a token out of the URL, or sniff uploads.
 
+贴图 drafts (`--kind tietu`, type 77) use `references/tietu.md`. That mode does not click 预览.
+
 ## Open
 
 1. Land on the console.

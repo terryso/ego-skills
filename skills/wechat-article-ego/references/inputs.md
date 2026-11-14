@@ -30,6 +30,38 @@ Images may be local files or `http(s)` URLs already written in the markdown. Rem
 
 Author, 原创, categories, and tags are left unset. Do not invent them.
 
+## 贴图 (`--kind tietu`)
+
+```bash
+node skills/wechat-article-ego/scripts/save-draft.mjs \
+  --kind tietu \
+  --title "标题最多二十字" \
+  --text "正文。外链单独成行。" \
+  --image /absolute/path/to/cover.jpg \
+  --image /absolute/path/to/more.jpg \
+  --topic 话题 \
+  --expect-account "账号名称" \
+  --yes --json
+```
+
+| Flag | Required | Meaning |
+|------|----------|---------|
+| `--kind tietu` | yes | Save a type 77 image post instead of an article. |
+| `--image` | yes, repeatable | Local image. The first path is the cover. |
+| `--title` | yes | At most 20 characters. Longer titles fail before the browser opens. |
+| `--text` | one of text or text-file | Body. At most 1000 characters, URLs included. |
+| `--text-file` | one of text or text-file | UTF-8 file used as the body. Do not pass both. |
+| `--topic` | no, repeatable | Topic name without `#` and without spaces. |
+| `--yes` | no | Click 保存为草稿 once. Without it, exit `3`. |
+| `--expect-account` | no | The visible nickname must match exactly. |
+| `--receipt-dir` / `--screenshot-dir` / `--json` | no | Same as an article. Screenshots do not open 预览. |
+
+`--markdown`, `--digest`, `--source-url`, and `--asset-root` belong to article mode.
+
+External URLs in the body stay plain text. The 贴图 链接 field is not used, because it only accepts 公众号内容, a 小程序, or a 小店. The plan says those URLs are not clickable.
+
+The same receipt file is used. A `saved` or reconciled `pending` / `uncertain` row for this hash does not create another 贴图. An uncertain save is listed before any new write. If the list itself fails, the command exits `4` and does not open a new editor.
+
 Receipt statuses:
 
 - `pending` — a save was about to start or was in progress
