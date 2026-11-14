@@ -61,7 +61,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`pinterest-download`](./skills/pinterest-download/) | Search, related pins, board feed, model thumbnails, image and MP4 download through the Ego session. Optional `--min-width` / `--min-height`. |
 | [`instagram-saved-download`](./skills/instagram-saved-download/) | Download your own Instagram Saved posts. Each skill checks its own login. |
 | [`wechat-channels-video`](./skills/wechat-channels-video/) | Save a WeChat Channels video draft. Login-check first. Does not click Publish. Does not save the draft when the description readback, upload wait, or cover preview is unresolved. |
-| [`wechat-article-ego`](./skills/wechat-article-ego/) | Save one WeChat Official Account article draft on mp.weixin.qq.com. Login-check first. Nothing uploads without `--yes`. `--yes` only clicks 保存. It does not click 发表, 群发, or 发送预览. |
+| [`wechat-article-ego`](./skills/wechat-article-ego/) | Save one WeChat Official Account article draft, or a 贴图 image post (`--kind tietu`, type 77), on mp.weixin.qq.com. Login-check first. Nothing uploads without `--yes`. `--yes` only clicks 保存 or 保存为草稿. It does not click 发表, 群发, or 发送预览. |
 | [`kuaishou-video`](./skills/kuaishou-video/) | Publish a local video to the Kuaishou creator platform. Login-check first. Success means the work shows as under review. An upload that times out, fails, or never becomes ready does not publish. |
 | [`bilibili-video`](./skills/bilibili-video/) | Publish a local video to Bilibili. Login-check first. Nothing is submitted without `--yes`. `--type` must be selected and read back, or the submit stops. Two covers report their own slot sizes. Success is under review, with a BV URL or `identity: unconfirmed`. |
 | [`youtube-video`](./skills/youtube-video/) | Publish a local video to YouTube Studio. Login-check first. Default visibility is private and Made for kids is No. Success is a video URL plus a processing status. |
@@ -88,6 +88,12 @@ node skills/wechat-channels-video/scripts/check-login.mjs
 node skills/wechat-article-ego/scripts/check-login.mjs
 node skills/wechat-article-ego/scripts/save-draft.mjs \
   --markdown /absolute/path/to/article.md
+node skills/wechat-article-ego/scripts/save-draft.mjs \
+  --kind tietu \
+  --title "标题最多二十字" \
+  --text "正文。外链保持纯文本。" \
+  --image /absolute/path/to/cover.jpg \
+  --topic 话题
 ```
 
 ```bash

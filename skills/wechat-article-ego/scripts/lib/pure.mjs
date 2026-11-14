@@ -16,10 +16,19 @@ export const USAGE = `Usage:
       [--asset-root /absolute/path/to/assets] [--expect-account NAME]
       [--receipt-dir /absolute/path/to/receipts]
       [--screenshot-dir /absolute/path/to/screenshots]
+  node scripts/save-draft.mjs --kind tietu --title TEXT
+      (--text TEXT | --text-file /absolute/path/to/body.txt)
+      --image /absolute/path/to/cover.jpg [--image /absolute/path/to/more.jpg]
+      [--topic NAME] [--expect-account NAME] [--yes] [--json]
+      [--receipt-dir /absolute/path/to/receipts]
+      [--screenshot-dir /absolute/path/to/screenshots]
   node scripts/cleanup.mjs [--json]
 
 Without --yes, save-draft only checks the login and prints a plan (exit 3).
 --yes saves one new draft. It never clicks 发表, 群发, 定时群发, or 发送预览.
+--kind tietu saves one 贴图 draft (type 77) and clicks 保存为草稿 only.
+It does not click 发表, 预览, 群发, 定时群发, or 发送预览.
+External URLs in a 贴图 stay plain text; they are not clickable.
 The task space is always closed. --keep is not supported.
 `;
 
@@ -85,6 +94,13 @@ function parseCommon(argv, { allowMarkdown }) {
     expectAccount: "",
     receiptDir: "",
     screenshotDir: "",
+    kind: "article",
+    images: [],
+    text: "",
+    textFile: "",
+    textSet: false,
+    textFileSet: false,
+    topics: [],
   };
   for (let index = 0; index < argv.length;) {
     const token = argv[index];
@@ -105,20 +121,27 @@ function parseCommon(argv, { allowMarkdown }) {
       continue;
     }
     if (token === "--keep") throw new Error("--keep is not supported; the task space always closes");
-    const named = token.startsWith("--expect-account")
-      || token.startsWith("--receipt-dir")
-      || token.startsWith("--screenshot-dir")
-      || token.startsWith("--markdown")
-      || token.startsWith("--asset-root")
-      || token.startsWith("--source-url")
-      || token.startsWith("--title")
-      || token.startsWith("--digest");
-    if (!named) throw new Error(`Unknown argument: ${token}`);
-    if (!allowMarkdown && !token.startsWith("--expect-account") && token !== "--json") {
-      throw new Error(`${token.split("=")[0]} is only valid for save-draft`);
+    const key = token.split("=")[0];
+    const named = new Set([
+      "--expect-account",
+      "--receipt-dir",
+      "--screenshot-dir",
+      "--markdown",
+      "--asset-root",
+      "--source-url",
+      "--title",
+      "--digest",
+      "--kind",
+      "--image",
+      "--text",
+      "--text-file",
+      "--topic",
+    ]);
+    if (!named.has(key)) throw new Error(`Unknown argument: ${token}`);
+    if (!allowMarkdown && key !== "--expect-account") {
+      throw new Error(`${key} is only valid for save-draft`);
     }
     const taken = takeFlag(argv, index);
-    const key = token.split("=")[0];
     if (key === "--expect-account") out.expectAccount = taken.value;
     else if (key === "--receipt-dir") out.receiptDir = taken.value;
     else if (key === "--screenshot-dir") out.screenshotDir = taken.value;
@@ -127,6 +150,16 @@ function parseCommon(argv, { allowMarkdown }) {
     else if (key === "--source-url") out.sourceUrl = taken.value;
     else if (key === "--title") out.title = taken.value;
     else if (key === "--digest") out.digest = taken.value;
+    else if (key === "--kind") out.kind = unquote(taken.value).trim();
+    else if (key === "--image") out.images.push(taken.value);
+    else if (key === "--text") {
+      out.text = taken.value;
+      out.textSet = true;
+    } else if (key === "--text-file") {
+      out.textFile = taken.value;
+      out.textFileSet = true;
+    }
+    else if (key === "--topic") out.topics.push(taken.value);
     index = taken.next;
   }
   return out;
@@ -142,7 +175,26 @@ export function parseCleanupArgs(argv) {
 
 export function parseSaveArgs(argv) {
   const args = parseCommon(argv, { allowMarkdown: true });
-  if (!args.help && !args.markdown) throw new Error("--markdown is required");
+  if (args.help) return args;
+  const kind = args.kind || "article";
+  if (kind !== "article" && kind !== "tietu") {
+    throw new Error(`Unknown --kind ${JSON.stringify(kind)}; expected article or tietu`);
+  }
+  args.kind = kind;
+  if (kind === "article") {
+    if (args.images.length || args.text || args.textFile || args.topics.length) {
+      throw new Error("--image, --text, --text-file, and --topic require --kind tietu");
+    }
+    if (!args.markdown) throw new Error("--markdown is required");
+    return args;
+  }
+  if (args.markdown || args.digest || args.sourceUrl || args.assetRoot) {
+    throw new Error("--markdown, --digest, --source-url, and --asset-root are only valid for an article draft");
+  }
+  if (!args.images.length) throw new Error("--image is required for --kind tietu");
+  if (!args.title) throw new Error("--title is required for --kind tietu");
+  if (!args.textSet && !args.textFileSet) throw new Error("--text or --text-file is required for --kind tietu");
+  if (args.textSet && args.textFileSet) throw new Error("pass only one of --text or --text-file");
   return args;
 }
 
