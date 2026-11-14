@@ -41,7 +41,9 @@ The draft list, used only as a cross-check after the edit page has been read, is
 
 Card titles use `a.weui-desktop-publish__cover__title`. That link opens a preview. Do not use it as the verification page.
 
-Read the reopened editor: title from the first `.ProseMirror`, body `innerText` from the second, topic texts from `a.wx_topic_link`, image count, `type` 77, `appmsgid`, and the footer time. Those fields are the success JSON.
+Read the reopened editor: title from the first `.ProseMirror`, body `innerText` from the second, topic texts from `a.wx_topic_link`, image count, `type` 77, `appmsgid`, and the footer time. Those fields are the success JSON. Image count is the number of distinct picture URLs in `.image-selector` (the main preview `.image-selector__preview-center-img` and the strip). The same upload shown again as the preview, a strip thumb, and the left card is one image. Do not count every `mmbiz` image on the page.
+
+The save-confirm screenshot is a full-page capture of the editor after the toast, `tietu-save-confirm.png`.
 
 Reopen only navigates to that edit URL and reads. It does not click 删除, 废弃, 丢弃, 不保存, or a confirm that would discard the draft. Clearing `onbeforeunload` only stops the close dialog; it does not delete the draft.
 

@@ -418,6 +418,36 @@ function uploaderDocument() {
   return { doc, main, region, placeholder };
 }
 
+function postedImages(srcs) {
+  const preview = h("img", {
+    className: "image-selector__preview-center-img",
+    attrs: { src: `${srcs[0]}?wx_fmt=jpeg` },
+  });
+  const strip = h("div", { className: "image-selector__strip" }, srcs.map((src) => h("img", { attrs: { src } })));
+  const selector = h("div", { className: "image-selector" }, [preview, strip]);
+  const card = h("img", { className: "card-thumb", attrs: { src: srcs[0] } });
+  const decoy = h("img", { attrs: { src: "https://mmbiz.qpic.cn/unrelated/icon" } });
+  const root = h("div", {}, [
+    h("div", { className: "ProseMirror", text: "标题" }),
+    h("div", { className: "ProseMirror", text: "正文" }),
+    selector,
+    card,
+    decoy,
+  ]);
+  createDocument(root, { href: tietuEditorUrl({ token: "test-token", appmsgid: "100001831" }) });
+  return tietuAct({ op: "read-editor" }).imageCount;
+}
+
+test("image count is distinct selector pictures, not every mmbiz img", () => {
+  const one = "https://mmbiz.qpic.cn/content/one";
+  assert.equal(postedImages([one]), 1);
+  assert.equal(postedImages([
+    "https://mmbiz.qpic.cn/content/one",
+    "https://mmbiz.qpic.cn/content/two",
+    "https://mmbiz.qpic.cn/content/three",
+  ]), 3);
+});
+
 test("upload probe sees the main input, thumbs, placeholder, and upload urls", () => {
   const built = uploaderDocument();
   const probe = tietuAct({ op: "upload-probe" });
@@ -576,9 +606,10 @@ test("confirmSave stays on the editor until an appmsgid arrives", async () => {
     async evaluate(fn, arg) { return fn(arg); },
     on(_event, handler) { page.handler = handler; },
     off() {},
-    async screenshot({ path: file }) {
-      fs.writeFileSync(file, "png");
-      return file;
+    async screenshot(options) {
+      page.shot = options;
+      fs.writeFileSync(options.path, "png");
+      return options.path;
     },
     async goto() { navigated = true; },
   };
@@ -600,6 +631,8 @@ test("confirmSave stays on the editor until an appmsgid arrives", async () => {
   assert.match(confirmed.url, /token=redacted/);
   assert.doesNotMatch(confirmed.url, /secret-token/);
   assert.equal(confirmed.screenshot, path.join(dir, "tietu-save-confirm.png"));
+  assert.equal(page.shot.fullPage, true);
+  assert.equal(page.shot.type, "png");
   assert.equal(fs.existsSync(confirmed.screenshot), true);
 
   globalThis.location = new URL(tietuEditorUrl({ token: "secret-token", appmsgid: "100001815" }));

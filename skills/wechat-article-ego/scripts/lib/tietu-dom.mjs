@@ -195,17 +195,59 @@ export function tietuAct(payload) {
     return `<${tag}${cls}${acc}>${collectText(el).slice(0, 1500)}</${tag}>`;
   }
 
-  function visibleImageCount() {
-    const bodyCount = imageCount(mirrors()[1]);
-    const inputs = fileInputs();
-    const region = uploaderRoot(inputs[1] || inputs[0]);
-    const thumbs = thumbCount(region);
-    let cdn = 0;
-    for (const img of qsa(doc, "img")) {
-      const src = (img.getAttribute && img.getAttribute("src")) || "";
-      if (/mmbiz|wx_fmt|blob:|data:image/i.test(src)) cdn += 1;
+  function mediaSrc(el) {
+    const attr = String((el.getAttribute && el.getAttribute("src")) || "");
+    if (attr && attr !== "about:blank") return attr;
+    const style = `${(el.getAttribute && el.getAttribute("style")) || ""} ${(el.style && el.style.backgroundImage) || ""}`;
+    const matched = style.match(/url\((['"]?)(.*?)\1\)/i);
+    const url = matched && matched[2];
+    if (url && url !== "about:blank") return url;
+    return "";
+  }
+
+  function srcKey(src) {
+    try {
+      const url = new URL(src);
+      if (url.protocol === "blob:" || url.protocol === "data:") return src;
+      return `${url.origin}${url.pathname}`;
+    } catch {
+      return String(src || "").split("?")[0];
     }
-    return Math.max(bodyCount, thumbs, cdn);
+  }
+
+  function distinctCount(nodes) {
+    const srcs = new Set();
+    for (const el of nodes || []) {
+      const src = mediaSrc(el);
+      if (src) srcs.add(srcKey(src));
+    }
+    return srcs.size;
+  }
+
+  // Preview and the image strip show the same uploads again, and the left card
+  // adds another mmbiz <img>. Count distinct content srcs inside .image-selector
+  // only. Never scan the whole page for mmbiz.
+  function selectorImages() {
+    const roots = qsa(doc, ".image-selector");
+    const preview = qsa(doc, ".image-selector__preview-center-img");
+    if (!roots.length && !preview.length) return null;
+    const nodes = [...preview];
+    for (const root of roots) {
+      nodes.push(...qsa(root, "img"));
+      for (const el of qsa(root, "*")) {
+        if (styleImage(el)) nodes.push(el);
+      }
+    }
+    return nodes;
+  }
+
+  function visibleImageCount() {
+    const structured = selectorImages();
+    if (structured) return distinctCount(structured);
+    const nodes = [...qsa(mirrors()[1], "img")];
+    const region = uploaderRoot(fileInputs()[1] || fileInputs()[0]);
+    if (region && region !== doc.body) nodes.push(...qsa(region, "img"));
+    return distinctCount(nodes);
   }
 
   function uploadProbe() {

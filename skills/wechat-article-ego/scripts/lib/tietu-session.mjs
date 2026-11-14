@@ -382,7 +382,17 @@ export function createTietuSession({ task, page, timings = {} } = {}) {
         const shot = path.join(dir, "tietu-save-confirm.png");
         try {
           await fsImpl.promises.mkdir(dir, { recursive: true });
-          const written = await current.screenshot({ path: shot });
+          try {
+            await act("scroll", { where: "top" });
+          } catch {
+            // The editor can still be captured from the current scroll position.
+          }
+          let written = "";
+          try {
+            written = await current.screenshot({ path: shot, fullPage: true, type: "png" });
+          } catch {
+            written = await current.screenshot({ path: shot, type: "png" });
+          }
           last.screenshot = written || shot;
         } catch (error) {
           last.screenshotError = String(error.message || error);
