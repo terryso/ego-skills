@@ -134,6 +134,46 @@ test("homepage feed authors are not the signed-in account", () => {
   assert.equal(decideAccount(hidden, "示例作者").reason, "identity-not-visible");
 });
 
+test("header avatar alt is the signed-in name, with or without spaces", () => {
+  const feed = [
+    ["八云的饭团", "/people/a"],
+    ["木寸上春树", "/people/b"],
+    ["冷哲", "/people/c"],
+  ].map(([name, href]) => h("a", { attrs: { href, "aria-label": `点击打开${name}的主页` } }, [name]));
+  function page(alt) {
+    const logo = h("img", { attrs: { alt: "知乎" } });
+    const avatar = h("img", { className: "Avatar", attrs: { alt } });
+    const header = h("header", { className: "AppHeader" }, [
+      logo,
+      h("a", { attrs: { href: "/people/self" } }, [avatar]),
+      h("a", {}, ["创作中心"]),
+      h("a", {}, ["私信"]),
+      h("a", {}, ["消息"]),
+    ]);
+    createDocument(h("body", {}, [header, h("main", {}, feed)]), {
+      href: "https://www.zhihu.com/",
+      title: "(5 封私信 / 10 条消息) 首页 - 知乎",
+    });
+    return zhihuAct({ op: "probe" });
+  }
+  for (const alt of ["点击打开BMAD实验室的主页", "点击打开 BMAD实验室 的主页"]) {
+    const probe = page(alt);
+    assert.equal(probe.loggedIn, true, alt);
+    assert.equal(probe.ambiguous, false, alt);
+    assert.equal(probe.identityVisible, true, alt);
+    assert.deepEqual(probe.accounts, ["BMAD实验室"], alt);
+    assert.equal(decideAccount(probe, "BMAD实验室").reason, "ok", alt);
+    assert.equal(decideAccount(probe, "八云的饭团").reason, "account-mismatch", alt);
+  }
+  createDocument(h("body", {}, [
+    h("main", {}, [h("img", { className: "Avatar", attrs: { alt: "点击打开BMAD实验室的主页" } }), ...feed]),
+  ]), { href: "https://www.zhihu.com/" });
+  const outside = zhihuAct({ op: "probe" });
+  assert.deepEqual(outside.accounts, []);
+  assert.equal(outside.identityVisible, false);
+  assert.equal(outside.loggedIn, false);
+});
+
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {
   const parts = mount(editorParts());
   const probe = zhihuAct({ op: "probe" });

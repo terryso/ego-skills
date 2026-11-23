@@ -12,7 +12,7 @@ Exit `2`, `login_required: true`, and `how_to_login` / `how_to_login_zh` when:
 - `--expect-account` does not match the one visible name
 - the session expires after the flow has started (`error: login-expired`)
 
-The signed-in name comes only from the top identity control: a `header`, a `banner`, or an `AppHeader` profile link. A plain nickname on that control is used as-is. An accessible name of the form `点击打开 <name> 的主页` contributes `<name>` only when that control is inside the identity surface. Links in the recommendation feed, including other `/people/` authors, are ignored.
+The signed-in name comes only from the top identity control: a `header`, a `banner`, or an `AppHeader` profile link or avatar. A plain nickname on a `/people/` control in that surface is used as-is. `alt`, `aria-label`, `title`, and the control's own text are also read when they match `点击打开<name>的主页`. Spaces around `<name>` are optional, so `点击打开BMAD实验室的主页` and `点击打开 BMAD实验室 的主页` both yield `BMAD实验室`. The same phrase on a recommendation-feed author is ignored. A header logo alt such as `知乎` is not a person name.
 
 Exit `4` with `ambiguous-account` only when that identity surface itself shows more than one name. Exit `4` with `identity-not-visible` when the page is logged in (创作中心, 私信, 消息, or a header avatar) but no unique name can be read. `--expect-account` is compared only with that unique name. A correct name still fails when the header does not show it. Feed authors never create `ambiguous-account`.
 

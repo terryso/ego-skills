@@ -231,17 +231,25 @@ export function zhihuAct(payload) {
     return true;
   }
 
+  function identityPhrase(value) {
+    const text = normalize(value);
+    const opened = text.match(/^点击打开\s*(.+?)\s*的主页$/);
+    if (!opened || !isPersonName(opened[1])) return "";
+    return opened[1];
+  }
+
   function nameFromControl(el) {
-    const aria = normalize(attr(el, "aria-label"));
-    const opened = aria.match(/^点击打开\s*(.+?)\s*的主页$/);
-    if (opened && isPersonName(opened[1])) return opened[1];
-    const alt = normalize(attr(el, "alt"));
-    if (isPersonName(alt)) return alt;
+    const hints = [attr(el, "aria-label"), attr(el, "alt"), attr(el, "title"), ownLabel(el)];
+    for (const hint of hints) {
+      const parsed = identityPhrase(hint);
+      if (parsed) return parsed;
+    }
     const href = attr(el, "href") || attr(el, "data-href");
-    if (!/\/people\//.test(href)) return "";
-    const text = ownLabel(el);
-    if (isPersonName(text)) return text;
-    return "";
+    const parentHref = el.parentElement ? (attr(el.parentElement, "href") || "") : "";
+    const profile = /\/people\//.test(href) || /\/people\//.test(parentHref);
+    if (!profile) return "";
+    const text = ownLabel(el) || normalize(attr(el, "alt"));
+    return isPersonName(text) ? text : "";
   }
 
   function accountNames(roots) {

@@ -37,7 +37,7 @@ node scripts/check-login.mjs
 node scripts/check-login.mjs --expect-account "示例作者"
 ```
 
-`check-login` 只打开 `https://www.zhihu.com/`，不打开写文章页。账号名只从顶栏身份控件读取（`header`、`banner`，或 `AppHeader` 里的个人主页入口）。推荐流和其他 `/people/` 作者链接不算登录身份。顶栏能读出唯一名字时，`--expect-account` 只和这个名字比较。已经登录但顶栏没有唯一名字时，原因是 `identity-not-visible`，退出码 `4`，不会把信息流作者报成 `ambiguous-account`。登录过期同样失败。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
+`check-login` 只打开 `https://www.zhihu.com/`，不打开写文章页。账号名只从顶栏身份控件读取（`header`、`banner`，或 `AppHeader`）。顶栏头像的 `alt`、`aria-label` 或 `title` 若是「点击打开名字的主页」，空格可有可无，取出的就是登录名。推荐流和其他 `/people/` 作者不算。`--expect-account` 只和这个名字比较。顶栏没有这种身份控件时才是 `identity-not-visible`，退出码 `4`。登录过期同样失败。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
 
 | 退出码 | 含义 | Agent 做什么 |
 |--------|------|----------------|

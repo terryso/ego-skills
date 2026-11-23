@@ -4,7 +4,7 @@ Unit tests do not open Zhihu and do not prove this plan. Do not treat a green `n
 
 Unit fixtures do not prove the live homepage. Browser layout, selectors, paste formatting, and image persistence stay **unverified** until a later owner run records them.
 
-A logged-in Pro homepage previously made `check-login` exit `4` with `ambiguous-account` because recommendation-feed `/people/` labels were treated as the signed-in user. Those labels are no longer account candidates. Re-run `check-login` and record `reason`, `accounts`, and `identityVisible`. `accounts` must not list feed authors. If the header still has no unique nickname, the honest result is exit `4`, `reason: identity-not-visible`, and that is **not** a pass. Do not satisfy `--expect-account` with a feed author name.
+On commit `da7883c`, a logged-in Pro homepage correctly stopped listing feed authors, then exited `4` with `identity-not-visible`. The header avatar `alt` was `点击打开BMAD实验室的主页` with no spaces. That string was only parsed from `aria-label`, and a raw `alt` was rejected because it contained `点击打开`. The avatar `alt` is now parsed the same way, spaces optional. Re-run `check-login --json` on that homepage. A pass is exit `0`, `account` `BMAD实验室`, `identityVisible: true`, and no feed authors in `accounts`. `--expect-account` must use that same name. This fixture does not replace that re-run. If the avatar is outside `header` / `banner` / `AppHeader`, the result stays `identity-not-visible`.
 
 ## Before any draft write
 
