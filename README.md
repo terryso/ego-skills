@@ -6,7 +6,7 @@ Teach Codex, Claude, Cursor, and OpenClaw to automate a **real Chromium** that a
 
 [Chinese](README_CN.md)
 
-> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`wechat-article-ego`](./skills/wechat-article-ego/), [`kuaishou-video`](./skills/kuaishou-video/), [`bilibili-video`](./skills/bilibili-video/), [`youtube-video`](./skills/youtube-video/), [`douyin-video`](./skills/douyin-video/), [`teambition-ego`](./skills/teambition-ego/), [`x-post`](./skills/x-post/), and [`xiaohongshu-ego`](./skills/xiaohongshu-ego/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
+> **Status:** [`pinterest-download`](./skills/pinterest-download/), [`instagram-saved-download`](./skills/instagram-saved-download/), [`wechat-channels-video`](./skills/wechat-channels-video/), [`wechat-article-ego`](./skills/wechat-article-ego/), [`kuaishou-video`](./skills/kuaishou-video/), [`bilibili-video`](./skills/bilibili-video/), [`youtube-video`](./skills/youtube-video/), [`douyin-video`](./skills/douyin-video/), [`teambition-ego`](./skills/teambition-ego/), [`x-post`](./skills/x-post/), [`xiaohongshu-ego`](./skills/xiaohongshu-ego/), and [`zhihu-article`](./skills/zhihu-article/). Requires [ego lite](https://lite.ego.app/) and `ego-browser` on `PATH`. Plan: [PLAN.md](./PLAN.md). Star-only OSS, [MIT](./LICENSE). Not published to npm.
 
 ## Installation
 
@@ -69,6 +69,7 @@ Those directories are the global paths from the public skills CLI. `EGO_SKILLS_H
 | [`teambition-ego`](./skills/teambition-ego/) | Read Teambition test plans and test cases through the Ego session. Login-check first. Phase 2a also creates, updates, sets status, and archives one case (`delete --yes`). Browser session only, not an Open API token. |
 | [`x-post`](./skills/x-post/) | Post on X from the logged-in Ego session with `page.fetch` CreateTweet. Login-check first. Nothing is sent without `--yes`. Optional `--image` (up to 4 png/jpeg/webp, each ≤ 5 MiB) uploads only with `--yes`. Success is `https://x.com/<screen_name>/status/<id>`. A lost or malformed response is `unknown`: verify the timeline before retrying. The script does not resend. |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | Publish one Xiaohongshu video note on the creator site. Login-check first. Nothing uploads without `--yes`. Notes must not contain links: remove them from the copy or pass `--strip-links`. Pass `--cover` (for example `cover-3x4.png`) through 选择图片上传 so it becomes the main cover. PK slots alone leave the thumbnail as the first frame for about 72 hours. Without `--cover` the platform keeps the first frame. Success is `https://www.xiaohongshu.com/explore/<noteId>`. |
+| [`zhihu-article`](./skills/zhihu-article/) | Prepare one Zhihu article draft in the visible column editor. Login-check first. `preview` and `save-draft` without `--save-draft` are offline. `--save-draft` saves one draft and does not publish. `--publish` and `--yes` are refused. Public publishing is not implemented. Success is a reopened draft id, the 已保存 badge, and matching title, body, and image count. |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -129,7 +130,18 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布; WeChat Official Account articles save one draft only after mp.weixin.qq.com is signed in and the plan is confirmed with `--yes`, and a visible account switcher with more than one name stops before that save). See each skill's `references/login.md`.
+```bash
+node skills/zhihu-article/scripts/check-login.mjs
+node skills/zhihu-article/scripts/preview.mjs \
+  --markdown /absolute/path/to/article.md
+node skills/zhihu-article/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md \
+  --cover /absolute/path/to/cover.png \
+  --expect-account "示例作者" \
+  --save-draft
+```
+
+If the site is not signed in, the command exits `2` and prints how to log in once. It does not type a password. Tell the user that signing in inside Ego Lite is what makes the result work (Pinterest results improve; Instagram Saved is not visible anonymously; WeChat Channels sessions expire quickly; Kuaishou creator publish stops on the QR wall until someone scans it; YouTube uploads work best when that channel is already signed in inside Ego; Douyin creator publish works better when that account is already signed in inside Ego; Teambition test plans are readable and single cases can be updated after signing in to teambition.com inside Ego; X posts send only after x.com is signed in inside Ego and the draft is confirmed with `--yes`; Xiaohongshu posts one video note only after creator.xiaohongshu.com is signed in and the plan is confirmed with `--yes`, and a passed `--cover` must change the main cover through 选择图片上传 before 发布; WeChat Official Account articles save one draft only after mp.weixin.qq.com is signed in and the plan is confirmed with `--yes`, and a visible account switcher with more than one name stops before that save; Zhihu article drafts stay offline until `--save-draft`, which does not publish, and only after www.zhihu.com is signed in inside Ego). See each skill's `references/login.md`.
 
 ## Why ego
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Zhihu article draft"
+  short_description: "Prepare one Zhihu article draft via Ego Lite. Offline until --save-draft. Never publishes."
+  default_prompt: "Use zhihu-article for one 专栏 article only. Run check-login first (exit 2 means stop). preview and save-draft without --save-draft are offline. --save-draft saves one draft and does not publish. --publish and --yes are refused. Do not write answers, comments, 想法, or a schedule. Never click 发布 or 邀请预览. Never type a password. Success requires a reopened draft id plus the 已保存 badge and matching content. If state is unverified or uploaded, stop and do not retry."
