@@ -345,7 +345,7 @@ test("a detached toolbar image input is unique and unlabeled file inputs are not
   assert.equal(aiImage.getAttribute("data-zhihu-image"), null);
 });
 
-test("a stuck 图片上传中 placeholder is removed and is not a finished image", () => {
+test("a stuck 图片上传中 placeholder is not deleted and a finished image stays", () => {
   const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
   const pendingImage = h("img", { attrs: { src: "blob:pending" } });
   const pending = h("div", {}, ["图片上传中", pendingImage]);
@@ -363,11 +363,13 @@ test("a stuck 图片上传中 placeholder is removed and is not a finished image
   assert.equal(probe.uploadPending, true);
   assert.equal(probe.imageCount, 1);
   const cleared = zhihuAct({ op: "clear-pending-upload" });
-  assert.equal(cleared.cleared, 2);
-  assert.equal(dismiss.clicked, 1);
+  assert.equal(cleared.mutated, false);
+  assert.equal(cleared.error, "editor-mutation-unverified");
+  assert.equal(dismiss.clicked, 0);
   assert.equal(publish.clicked, 0);
   const after = zhihuAct({ op: "probe" });
-  assert.equal(after.uploadPending, false);
+  assert.equal(after.uploadPending, true);
+  assert.equal(after.imageCount, 1);
   assert.match(after.url, /\/p\/55\/edit/);
   assert.equal(after.pageTitle, "写文章 - 知乎");
 });
@@ -382,9 +384,19 @@ test("resume can drop a second copy of the lead and open 添加封面 without �
   const settings = h("button", {}, ["发布设置"]);
   createDocument(h("body", {}, [title, body, addCover, settings]), { href: "https://zhuanlan.zhihu.com/p/55/edit", title: "写文章 - 知乎" });
   const removed = zhihuAct({ op: "remove-duplicate-lead", lead });
-  assert.equal(removed.removed, 1);
+  assert.equal(removed.mutated, false);
+  assert.equal(removed.error, "editor-mutation-unverified");
   assert.equal(body.childNodes.includes(first), true);
-  assert.equal(body.childNodes.includes(second), false);
+  assert.equal(body.childNodes.includes(second), true);
+  const pending = h("div", {}, ["图片上传中"]);
+  const kept = h("img", { attrs: { src: "https://pic1.zhimg.com/done.png" } });
+  body.childNodes.push(pending, kept);
+  pending.parentElement = body;
+  kept.parentElement = body;
+  const cleared = zhihuAct({ op: "clear-pending-upload" });
+  assert.equal(cleared.mutated, false);
+  assert.equal(body.childNodes.includes(pending), true);
+  assert.equal(body.childNodes.includes(kept), true);
   const revealed = zhihuAct({ op: "reveal-cover" });
   assert.equal(revealed.clicked, true);
   assert.equal(revealed.label, "添加封面");

@@ -540,13 +540,14 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     });
   }
   let session = null;
+  let editor = null;
   try {
     session = await deps.browser.open({ taskName: TASK_NAME, startUrl: HOME_URL });
     const home = await session.probe();
     const account = decideAccount(home, config.expectAccount || "");
     if (!account.ok) return accountFailure("save-draft", account, article);
     await session.goto(draftUrl);
-    let editor = await probeWrite(session, article);
+    editor = await probeWrite(session, article);
     const access = classifyAccess(editor, { openedWrite: true });
     if (!access.ok) return accessFailure(session, config, article, account, editor, access);
     const stop = editor.published
@@ -595,43 +596,8 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       observed: null,
       readback: null,
     };
-    if (editor.uploadPending && typeof session.clearPendingUpload === "function") {
-      await session.clearPendingUpload();
-      const again = await session.probe();
-      if (again && again.ok !== false) editor = again;
-    }
-    if (typeof session.removeDuplicateLead === "function") {
-      const lead = articleLead(article);
-      if (lead) await session.removeDuplicateLead(lead);
-    }
-    if (editor.uploadPending) {
-      const evidence = await captureEvidence(session, config, editor, "upload-pending");
-      return result("save-draft", {
-        exitCode: 4,
-        state: "unverified",
-        retryable: false,
-        error: "upload-pending",
-        action: "resume",
-        account: account.account,
-        accounts: account.accounts,
-        draftId: prior.draftId,
-        draftUrl,
-        plan,
-        mutation: "none",
-        ...evidence,
-      });
-    }
-    // A populated draft already contains the lead and any body images.
-    // Replacing it inserts a second copy and uploads the images again.
-    if (article.cover && article.cover.path && !progress.coverApplied) {
-      const cover = await session.uploadCover(article.cover.path);
-      if (cover && cover.submitted) progress.mediaSubmitted = true;
-      progress.coverApplied = Boolean(cover && cover.coverApplied);
-      if (!cover || !cover.ok) {
-        progress.error = (cover && (cover.code || cover.error)) || "cover-unverified";
-        progress.timedOut = Boolean(cover && cover.code === "upload-timeout");
-      }
-    }
+    // Read only. Node removal and cover upload are not a verified editor commit,
+    // and this hash must not be pasted or published.
     const settled = await session.waitForSavedDraft();
     if (settled.draftId && settled.draftId !== progress.draftId) {
       progress.error = "draft-id-changed";
@@ -672,9 +638,13 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
           missingItems: check.missingItems,
           missingHrefs: check.missingHrefs,
           rawMarkup: check.rawMarkup,
+          duplicateLead: Boolean(check.duplicateLead),
+          uploadPending: Boolean(check.uploadPending),
         };
-        progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId);
-        if (!check.ok) progress.error = progress.error || "readback-mismatch";
+        progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId && !progress.error);
+        if (!check.ok && !progress.error) {
+          progress.error = check.duplicateLead ? "duplicate-content" : (check.uploadPending ? "upload-pending" : "readback-mismatch");
+        }
         progress.observed = {
           title: again.title || "",
           imageCount: again.imageCount,
@@ -707,9 +677,9 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       state: outcome.state,
       verified: outcome.verified,
       retryable: false,
-      mutation: outcome.mutation,
+      mutation: "none",
       consent: "save-draft",
-      action: "resume",
+      action: "verify-draft",
       account: account.account,
       accounts: account.accounts,
       draftId: outcome.draftId || prior.draftId,
@@ -723,14 +693,23 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       ...loginTip(account.account),
     });
   } catch (error) {
+    let evidence = { pageUrl: "", pageTitle: "", screenshot: "", screenshots: [] };
+    try {
+      evidence = await captureEvidence(session, config, editor, "resume-threw");
+    } catch {
+      // Evidence is best-effort after an exception.
+    }
     return result("save-draft", {
       exitCode: 4,
       state: "unverified",
       retryable: false,
+      mutation: "unknown",
+      action: "verify-draft",
       error: String(error.message || error),
       draftId: prior.draftId,
       draftUrl,
       plan,
+      ...evidence,
     });
   } finally {
     if (session) await session.finish().catch(() => {});

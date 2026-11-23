@@ -773,7 +773,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     receiptDir: dir,
     article: article(),
   }, { browser: browserFor(session) });
-  assert.equal(summary.action, "resume");
+  assert.equal(summary.action, "verify-draft");
   assert.equal(summary.state, "draft-saved");
   assert.equal(summary.verified, true);
   assert.deepEqual(session.calls.goto, [
@@ -852,7 +852,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
   assert.equal(repairing.calls.replace || 0, 0);
   assert.equal(repairing.calls.paste, 0);
   assert.equal(repairing.calls.upload, 0);
-  assert.equal(repairing.calls.cover, 1);
+  assert.equal(repairing.calls.cover, 0);
   assert.equal(repairing.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
 
   const pendingDir = dirs().receiptDir;
@@ -874,7 +874,13 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     pageTitle: "写文章 - 知乎",
   });
   const pending = sessionWith({
-    probes: [home(), pendingEditor, { ...pendingEditor }],
+    probes: [home(), pendingEditor],
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => readback({
+      draftId: "55",
+      text: "一段说明 图片上传中 小节 第一点",
+      uploadPending: true,
+    }),
   });
   const stillPending = await executeSave({
     saveDraft: true,
@@ -884,7 +890,8 @@ test("an unverified receipt reopens its draft and does not open /write", async (
   assert.equal(stillPending.error, "upload-pending");
   assert.equal(stillPending.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
   assert.equal(stillPending.pageTitle, "写文章 - 知乎");
-  assert.equal(pending.calls.clear, 1);
+  assert.equal(stillPending.readback.uploadPending, true);
+  assert.equal(pending.calls.clear || 0, 0);
   assert.equal(pending.calls.upload, 0);
   assert.equal(pending.calls.paste, 0);
 
@@ -909,7 +916,12 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     })],
     cover: () => ({ ok: false, submitted: true, code: "upload-timeout", coverApplied: false }),
     settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
-    read: () => readback({ draftId: "55", coverApplied: false, imageCount: 0 }),
+    read: () => readback({
+      draftId: "55",
+      coverApplied: false,
+      imageCount: 0,
+      text: "一段说明 一段说明 小节 第一点",
+    }),
   });
   const coverTimeout = await executeSave({
     saveDraft: true,
@@ -917,15 +929,17 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     screenshotDir: dirs().screenshotDir,
     article: article({ cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 20 } }),
   }, { browser: browserFor(coverSession) });
-  assert.equal(coverTimeout.error, "upload-timeout");
+  assert.equal(coverTimeout.error, "duplicate-content");
+  assert.equal(coverTimeout.mutation, "none");
   assert.equal(coverTimeout.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
   assert.equal(coverTimeout.pageTitle, "写文章 - 知乎");
   assert.equal(coverTimeout.readback.titleOk, true);
   assert.equal(coverTimeout.readback.coverOk, false);
+  assert.equal(coverTimeout.readback.duplicateLead, true);
   assert.equal(coverTimeout.observed.draftId, "55");
   assert.equal(coverSession.calls.paste, 0);
   assert.equal(coverSession.calls.upload, 0);
-  assert.equal(coverSession.calls.cover, 1);
+  assert.equal(coverSession.calls.cover, 0);
 
   const emptyDir = dirs().receiptDir;
   createReceiptStore().write(emptyDir, {

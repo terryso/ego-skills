@@ -662,37 +662,11 @@ export function zhihuAct(payload) {
     return { ok: true, selected: true };
   }
 
-  function isPendingBlock(el) {
-    if (directText(el) === "图片上传中") return true;
-    const text = normalize(el.innerText || el.textContent || "");
-    if (text === "图片上传中") return true;
-    if (!text.includes("图片上传中") || [...text].length > 80) return false;
-    return !qsaAny(["img"], el).some((img) => /^https?:\/\//i.test(attr(img, "src") || img.src || ""));
-  }
-
-  if (op === "clear-pending-upload") {
-    const nodes = qsaAny(["div", "figure", "section", "p", "span", "li"]).filter(isPendingBlock);
-    const leaves = nodes.filter((el) => !nodes.some((other) => other !== el && contains(el, other)));
-    let cleared = 0;
-    for (const el of leaves) {
-      const dismiss = qsaAny(["button", "a"], el).filter((button) => {
-        if (!shown(button)) return false;
-        const label = buttonLabel(button);
-        if (!label || isPublish(label) || isPreviewInvite(label) || label.includes("发布")) return false;
-        return label === "删除" || label === "移除" || label === "取消" || label === "关闭" || label === "×" || label === "✕";
-      });
-      if (dismiss.length > 1) continue;
-      if (dismiss.length === 1) {
-        if (typeof dismiss[0].click === "function") dismiss[0].click();
-        cleared += 1;
-        continue;
-      }
-      const parent = el.parentElement;
-      if (!parent || !parent.childNodes) continue;
-      parent.childNodes = parent.childNodes.filter((node) => node !== el);
-      cleared += 1;
-    }
-    return { ok: true, cleared };
+  if (op === "clear-pending-upload" || op === "remove-duplicate-lead") {
+    // Direct childNodes edits are not an editor commit. Node.childNodes is a
+    // live readonly NodeList: calling filter throws, and assigning it does not
+    // update Draft.js. Leave the draft untouched.
+    return { ok: false, disabled: true, mutated: false, error: "editor-mutation-unverified" };
   }
 
   if (op === "reveal-cover") {
@@ -718,27 +692,6 @@ export function zhihuAct(payload) {
     const scrolling = doc.scrollingElement || doc.body;
     if (scrolling && where === "end") scrolling.scrollTop = scrolling.scrollHeight || 0;
     return { ok: true, where };
-  }
-
-  if (op === "remove-duplicate-lead") {
-    const lead = normalize(input.lead);
-    if (!lead) return { ok: true, removed: 0 };
-    const body = qsa(doc, "[data-zhihu-body='1']")[0] || findBodies(findTitle())[0];
-    if (!body) return { ok: false, error: "article body not found" };
-    const blocks = qsaAny(["p", "div", "li"], body).filter((el) => {
-      const text = normalize(el.innerText || el.textContent || "");
-      return text === lead && qsaAny(["img", "h1", "h2", "h3"], el).length === 0;
-    });
-    const leaves = blocks.filter((el) => !blocks.some((other) => other !== el && contains(el, other)));
-    if (leaves.length < 2) return { ok: true, removed: 0 };
-    let removed = 0;
-    for (const el of leaves.slice(1)) {
-      const parent = el.parentElement;
-      if (!parent || !parent.childNodes) continue;
-      parent.childNodes = parent.childNodes.filter((node) => node !== el);
-      removed += 1;
-    }
-    return { ok: true, removed };
   }
 
   if (op === "confirm-cover-crop") {

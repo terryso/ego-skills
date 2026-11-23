@@ -878,6 +878,24 @@ export function classifyOutcome(input = {}) {
   };
 }
 
+function leadSnippet(article) {
+  const captions = captionSet(article);
+  return (article.snippets || []).map(normalizeText).find((item) => item && !captions.has(item) && !(article.headings || []).some((heading) => normalizeText(heading.text) === item)) || "";
+}
+
+function timesIn(haystack, needle) {
+  if (!needle) return 0;
+  let count = 0;
+  let from = 0;
+  while (from <= haystack.length) {
+    const at = haystack.indexOf(needle, from);
+    if (at < 0) return count;
+    count += 1;
+    from = at + needle.length;
+  }
+  return count;
+}
+
 function captionSet(article) {
   const captions = new Set();
   for (const segment of article.segments || []) {
@@ -918,13 +936,18 @@ export function validateReadback(article, actual) {
   const rawMarkup = /<\s*(p|h1|h2|h3|ul|ol|li|strong|em|a)\b/i.test(String(actual && actual.text || ""));
   const coverRequired = Boolean(article.cover);
   const coverOk = !coverRequired || Boolean(actual && actual.coverApplied);
+  const duplicateLead = timesIn(haystack, compactText(leadSnippet(article))) > 1;
+  const uploadPending = Boolean(actual && actual.uploadPending) || haystack.includes(compactText("图片上传中"));
   const ok = titleOk && imagesOk && missing.length === 0 && missingHeadings.length === 0
-    && missingItems.length === 0 && missingHrefs.length === 0 && !rawMarkup && coverOk;
+    && missingItems.length === 0 && missingHrefs.length === 0 && !rawMarkup && coverOk
+    && !duplicateLead && !uploadPending;
   return {
     ok,
     titleOk,
     imagesOk,
     coverOk,
+    duplicateLead,
+    uploadPending,
     missing,
     missingHeadings,
     missingItems,
