@@ -962,6 +962,49 @@ test("an unverified receipt reopens its draft and does not open /write", async (
   assert.equal(empty.calls.replace || 0, 0);
 });
 
+test("an exception during read-only verify keeps the page and does not claim mutation none", async () => {
+  const dir = dirs().receiptDir;
+  createReceiptStore().write(dir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    account: "示例作者",
+  });
+  const session = sessionWith({
+    probes: [home(), editor({
+      draftId: "55",
+      blank: false,
+      title: "示例标题",
+      text: "一段说明 小节 第一点",
+      headings: [{ level: 2, text: "小节" }],
+      url: "https://zhuanlan.zhihu.com/p/55/edit",
+      pageTitle: "写文章 - 知乎",
+    })],
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => { throw new Error("childNodes.filter is not a function"); },
+  });
+  const thrown = await executeSave({
+    saveDraft: true,
+    receiptDir: dir,
+    screenshotDir: dirs().screenshotDir,
+    article: article(),
+  }, { browser: browserFor(session) });
+  assert.equal(thrown.exitCode, 4);
+  assert.equal(thrown.state, "unverified");
+  assert.equal(thrown.mutation, "unknown");
+  assert.equal(thrown.action, "verify-draft");
+  assert.equal(thrown.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(thrown.pageTitle, "写文章 - 知乎");
+  assert.match(thrown.screenshot, /zhihu-article/);
+  assert.match(thrown.error, /childNodes\.filter/);
+  assert.equal(session.calls.paste, 0);
+  assert.equal(session.calls.upload, 0);
+  assert.equal(session.calls.cover, 0);
+  assert.equal(session.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
+});
+
 test("cleanup closes only this skill's task spaces", async () => {
   const spaces = [{ name: "zhihu-article", id: "a" }, { name: "zhihu-article-2" }, { name: "other" }];
   const browser = {
