@@ -611,6 +611,53 @@ test("a visible write editor is not reported as login-expired", async () => {
   assert.equal(wall.calls.capture, 1);
 });
 
+test("an ambiguous body image input records the page and does not publish", async () => {
+  const session = sessionWith({
+    probes: [home({ accounts: ["BMAD实验室"] }), {
+      ok: true,
+      loginWall: false,
+      loggedIn: true,
+      surface: "article",
+      editorReady: true,
+      blank: true,
+      imageInput: false,
+      imageAmbiguous: true,
+      coverInput: true,
+      coverAmbiguous: false,
+      accounts: ["BMAD实验室"],
+      identityVisible: true,
+      url: "https://zhuanlan.zhihu.com/write",
+      pageTitle: "写文章 - 知乎",
+    }],
+  });
+  const summary = await executeSave({
+    saveDraft: true,
+    expectAccount: "BMAD实验室",
+    receiptDir: dirs().receiptDir,
+    screenshotDir: dirs().screenshotDir,
+    article: article({
+      imageCount: 1,
+      images: [{ name: "body.png", sha256: "abc", bytes: 10 }],
+      segments: [{ kind: "image", path: "/absolute/path/to/body.png", alt: "配图" }],
+      snippets: ["配图"],
+      headings: [],
+      listItems: [],
+      links: [],
+    }),
+  }, { browser: browserFor(session) });
+  assert.equal(summary.error, "image-control-ambiguous");
+  assert.equal(summary.exitCode, 1);
+  assert.equal(summary.state, "not-started");
+  assert.equal(summary.mutation, "none");
+  assert.equal(summary.saved, false);
+  assert.equal(summary.pageUrl, "https://zhuanlan.zhihu.com/write");
+  assert.equal(summary.pageTitle, "写文章 - 知乎");
+  assert.equal(session.calls.capture, 1);
+  assert.equal(session.calls.paste, 0);
+  assert.equal(session.calls.upload, 0);
+  assert.equal(session.calls.click, 0);
+});
+
 test("cleanup closes only this skill's task spaces", async () => {
   const spaces = [{ name: "zhihu-article", id: "a" }, { name: "zhihu-article-2" }, { name: "other" }];
   const browser = {

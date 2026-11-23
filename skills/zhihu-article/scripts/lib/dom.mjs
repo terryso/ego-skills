@@ -179,8 +179,47 @@ export function zhihuAct(payload) {
   }
 
   function isCoverInput(el) {
-    const blob = `${el.className || ""} ${hintOf(el)}`;
+    const blob = `${el.className || ""} ${hintOf(el)} ${controlLabel(el)}`;
     return /封面|题图|UploadPicture|cover/i.test(blob);
+  }
+
+  function controlLabel(el) {
+    const own = normalize(attr(el, "aria-label") || attr(el, "title") || "");
+    if (own) return own;
+    let current = el.parentElement;
+    for (let depth = 0; depth < 4 && current; depth += 1) {
+      if (current.tagName === "BUTTON" || current.tagName === "LABEL" || current.tagName === "A") {
+        const label = buttonLabel(current);
+        if (label) return label;
+      }
+      const controls = [...(current.childNodes || [])].filter((node) => (
+        node && node.nodeType === 1 && node !== el && (node.tagName === "BUTTON" || node.tagName === "LABEL")
+      ));
+      if (controls.length === 1) {
+        const label = buttonLabel(controls[0]);
+        if (label) return label;
+      }
+      if (current.tagName === "BODY" || current.tagName === "MAIN" || current.tagName === "HEADER") break;
+      current = current.parentElement;
+    }
+    return "";
+  }
+
+  function fileRole(el) {
+    if (inAssistant(el) || isCoverInput(el)) return "excluded";
+    const label = normalize(`${controlLabel(el)} ${hintOf(el)} ${attr(el, "name")} ${el.id || ""}`);
+    if (/附件|导入|视频|AI\s*配图|创作助手|发布设置|封面|题图/.test(label)) return "excluded";
+    if (normalize(controlLabel(el)) === "图片" || normalize(attr(el, "aria-label")) === "图片" || normalize(attr(el, "title")) === "图片") {
+      return "body";
+    }
+    return "unknown";
+  }
+
+  function bodyImageInputs(files) {
+    const pool = files.filter((el) => fileRole(el) !== "excluded");
+    const toolbar = pool.filter((el) => fileRole(el) === "body");
+    if (toolbar.length === 1 || toolbar.length > 1) return toolbar;
+    return pool;
   }
 
   function fileInputs() {
@@ -392,7 +431,7 @@ export function zhihuAct(payload) {
     const surface = surfaceOf(url, title, body);
     const files = fileInputs().filter(acceptImage);
     const coverCandidates = files.filter(isCoverInput);
-    const imageCandidates = files.filter((el) => !isCoverInput(el));
+    const imageCandidates = bodyImageInputs(files);
     const buttons = visibleButtons();
     const labels = buttons.map(buttonLabel).filter(Boolean);
     const draftLabels = labels.filter((label) => ["保存草稿", "存草稿", "保存为草稿"].includes(label) && !isPublish(label) && !isPreviewInvite(label));
@@ -483,7 +522,7 @@ export function zhihuAct(payload) {
   if (op === "mark-image-input" || op === "mark-cover-input") {
     const files = fileInputs().filter(acceptImage);
     const wantCover = op === "mark-cover-input";
-    const matches = files.filter((el) => isCoverInput(el) === wantCover);
+    const matches = wantCover ? files.filter(isCoverInput) : bodyImageInputs(files);
     if (matches.length !== 1) {
       return { ok: false, error: matches.length ? `${wantCover ? "cover" : "image"} input is ambiguous` : `${wantCover ? "cover" : "image"} input not found` };
     }

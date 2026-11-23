@@ -39,7 +39,7 @@ node scripts/check-login.mjs --expect-account "示例作者"
 
 `check-login` 只打开 `https://www.zhihu.com/`，不打开写文章页。账号名来自顶栏身份控件，包括 `header`、`banner`、`AppHeader` 和头像 `AppHeader-profileAvatar`。标志 `AppHeader-zhihuLogo` 不是账号。头像的 `alt`、`aria-label` 或 `title` 若是「点击打开名字的主页」，空格可有可无。推荐流作者不算。`--expect-account` 只和这个名字比较。
 
-写文章页 `https://zhuanlan.zhihu.com/write` 没有「创作中心 / 私信 / 消息」时，只要标题框、正文编辑器和顶栏头像都在，就仍算已登录。打不开探针是 `probe-failed`，验证页是 `challenge`，只有真正落到登录墙才是 `login-expired`。正文优先用 `public-DraftEditor-content`，创作助手里的编辑框不算正文。打开写文章页后知乎可能自己出现「刚刚 · 草稿」；那不是本技能确认过的 `draft-saved`。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
+写文章页 `https://zhuanlan.zhihu.com/write` 没有「创作中心 / 私信 / 消息」时，只要标题框、正文编辑器和顶栏头像都在，就仍算已登录。打不开探针是 `probe-failed`，验证页是 `challenge`，只有真正落到登录墙才是 `login-expired`。正文优先用 `public-DraftEditor-content`，创作助手里的编辑框不算正文。正文图片只认工具栏「图片」对应的文件输入；封面、附件、导入、视频和「AI 配图」不算。认不出唯一的正文图片输入就停，不猜，也不点「发布」。这种失败会带上页面地址、标题，并在提供了截图目录时保存截图。打开写文章页后知乎可能自己出现「刚刚 · 草稿」；那不是本技能确认过的 `draft-saved`。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
 
 | 退出码 | 含义 | Agent 做什么 |
 |--------|------|----------------|

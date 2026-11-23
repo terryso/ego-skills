@@ -254,14 +254,19 @@ async function probeWrite(session) {
   return last;
 }
 
-async function accessFailure(session, config, article, account, probe, access) {
+async function captureEvidence(session, config, probe, reason) {
   const pageUrl = (probe && (probe.url || probe.pageUrl)) || "";
-  const pageTitle = (probe && (probe.pageTitle || probe.title)) || "";
+  const pageTitle = probe && typeof probe.pageTitle === "string" ? probe.pageTitle : "";
   let screenshot = "";
   const dir = config.screenshotDir || config.receiptDir;
   if (dir && session && typeof session.capture === "function") {
-    screenshot = await session.capture(dir, access.reason || "probe-failed");
+    screenshot = await session.capture(dir, reason || "probe-failed");
   }
+  return { pageUrl, pageTitle, screenshot };
+}
+
+async function accessFailure(session, config, article, account, probe, access) {
+  const evidence = await captureEvidence(session, config, probe, access.reason);
   return result("save-draft", {
     exitCode: access.exitCode,
     state: "not-started",
@@ -271,9 +276,7 @@ async function accessFailure(session, config, article, account, probe, access) {
     account: account.account,
     accounts: account.accounts,
     identityVisible: Boolean(probe && probe.identityVisible),
-    pageUrl,
-    pageTitle: typeof pageTitle === "string" ? pageTitle : "",
-    screenshot,
+    ...evidence,
     plan: planOf(article),
     ...(access.loginRequired ? howToLogin() : {}),
   });
@@ -354,6 +357,7 @@ export async function executeSave(config, deps) {
     if (!access.ok) return accessFailure(session, config, article, account, editor, access);
     const blocked = precondition(editor, article);
     if (blocked) {
+      const evidence = await captureEvidence(session, config, editor, blocked.error);
       return result("save-draft", {
         ...blocked,
         account: account.account,
@@ -362,6 +366,7 @@ export async function executeSave(config, deps) {
         draftId: editor.draftId || "",
         draftUrl: draftEditUrl(editor.draftId),
         mutation: editor.draftId || editor.autosaveLabel ? "autosave" : "none",
+        ...evidence,
       });
     }
 

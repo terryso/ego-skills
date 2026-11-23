@@ -206,6 +206,53 @@ test("zhuanlan write page keeps the header avatar and ignores the assistant", ()
   assert.equal(publish.clicked, 0);
 });
 
+test("body image input is the toolbar 图片 control, not cover or extras", () => {
+  const bodyImage = h("input", { type: "file", accept: "image/png,image/jpeg" });
+  const attachment = h("input", { type: "file", accept: "" });
+  const imported = h("input", { type: "file", accept: ".docx,.md" });
+  const assistantImage = h("input", { type: "file", accept: "image/png" });
+  const cover = h("input", { type: "file", accept: "image/jpeg", className: "UploadPicture-input" });
+  const article = h("div", { className: "public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  createDocument(h("body", {}, [
+    avatar,
+    title,
+    article,
+    h("button", {}, ["图片", bodyImage]),
+    h("button", {}, ["附件", attachment]),
+    h("button", {}, ["导入", imported]),
+    h("div", { className: "assistant-panel" }, [h("button", {}, ["AI 配图", assistantImage])]),
+    h("button", {}, ["添加文章封面", cover]),
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.imageInput, true);
+  assert.equal(probe.imageAmbiguous, false);
+  assert.equal(probe.coverInput, true);
+  assert.equal(probe.coverAmbiguous, false);
+  const marked = zhihuAct({ op: "mark-image-input" });
+  assert.equal(marked.ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(attachment.getAttribute("data-zhihu-image"), null);
+  assert.equal(assistantImage.getAttribute("data-zhihu-image"), null);
+  assert.equal(cover.getAttribute("data-zhihu-image"), null);
+
+  const extra = h("input", { type: "file", accept: "image/png" });
+  const other = h("input", { type: "file", accept: "image/jpeg" });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    extra,
+    other,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const ambiguous = zhihuAct({ op: "probe" });
+  assert.equal(ambiguous.imageInput, false);
+  assert.equal(ambiguous.imageAmbiguous, true);
+  assert.match(zhihuAct({ op: "mark-image-input" }).error, /ambiguous/);
+});
+
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {
   const parts = mount(editorParts());
   const probe = zhihuAct({ op: "probe" });

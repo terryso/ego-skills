@@ -32,7 +32,7 @@ The editor must be blank (empty title, empty body, no images) before typing. Exi
 - anything containing 定时
 - 邀请预览
 
-File inputs may be zero-size. That is the control behind a visible upload button, the same pattern as `wechat-article-ego`. A disabled file input is ignored. Body and cover inputs must be unambiguous. The cover hint is 封面, 题图, `UploadPicture`, or `cover`. Those class names are unverified hints.
+File inputs may be zero-size. That is the control behind a visible upload button, the same pattern as `wechat-article-ego`. A disabled file input is ignored. The body image input is the file input owned by a control labeled exactly 图片. Cover (封面, 题图, `UploadPicture`, or `cover`), 附件, 导入, 视频, AI 配图, and inputs inside 创作助手 are not body images. If that rule does not leave exactly one body input, the command stops. Those class names and the parent/label link were not confirmed against a live input listing.
 
 ## Save signal
 
