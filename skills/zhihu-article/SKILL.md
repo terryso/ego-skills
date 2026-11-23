@@ -3,7 +3,7 @@ name: zhihu-article
 slug: ego-zhihu-article
 displayName: Ego 知乎文章草稿
 summary: 用已登录的 Ego 浏览器准备一篇知乎专栏文章草稿。默认只做离线预览；--save-draft 只保存草稿，不发布。
-description: "Prepare one long-form Zhihu article (专栏文章) through the visible zhuanlan editor in Ego Lite. Articles only: not answers, comments, 想法, scheduling, or bulk publishing. Login-check first. Soft-fail with exit 2 when ego-browser is missing, Zhihu is logged out, the session expires, or --expect-account does not match. preview and save-draft without --save-draft are offline and do not open a browser. --save-draft consents to one draft mutation and does not permit publishing. --publish and --yes are refused. Public publishing is not implemented. Success is a reopened draft whose title, body, links, lists, image count, and 已保存 badge match, plus one observed numeric draft id. Never report success from a click alone. Use when the user asks for a 知乎文章草稿, 专栏草稿, or zhuanlan.zhihu.com/write."
+description: "Prepare one long-form Zhihu article (专栏文章) through the visible zhuanlan editor in Ego Lite. Articles only: not answers, comments, 想法, scheduling, or bulk publishing. Login-check first. Soft-fail with exit 2 when ego-browser is missing, Zhihu is logged out, the session expires, or --expect-account does not match. preview and save-draft without --save-draft are offline and do not open a browser. --save-draft consents to one draft mutation and does not permit publishing. --publish and --yes are refused. Public publishing is not implemented. Success is one numeric draft id, a non-empty readback, and a saved stamp (已保存 or 刚刚 · 草稿). An empty 刚刚 · 草稿 is not success. An unverified receipt reopens that draft URL and does not open /write again. Never report success from a click alone. Use when the user asks for a 知乎文章草稿, 专栏草稿, or zhuanlan.zhihu.com/write."
 metadata:
   version: "0.1.0"
   requires:
@@ -20,9 +20,9 @@ metadata:
 
 Prepare **one** Zhihu article draft in the visible editor. `--save-draft` is the only mutation consent. It does not publish. Public publishing is not implemented in this version.
 
-成功不是点到了某个按钮。回读必须同时满足：重新打开的编辑地址里有唯一的数字草稿 id、页面有「已保存」、标题、正文片段、标题层级、列表、链接和图片张数都对得上。封面只有在编辑器里看到预览才算。没有这条回读，结果是 `unverified` 或 `uploaded`，不能再自动保存一次。
+成功不是点到了某个按钮。回读必须同时满足：编辑地址里有唯一的数字草稿 id、正文不是空的、页面有「已保存」或带时间的「刚刚 · 草稿」这类保存戳、标题、正文、标题层级、列表、链接和图片张数都对得上。图片的 alt 不会变成可见说明，不拿它当正文。封面必须是编辑器正文之外的一张 http 预览。没有这条回读，结果是 `unverified` 或 `uploaded`。同一篇的未验证回执会重新打开那一个草稿地址，不会再打开一篇新的 `/write`。空编辑器上的「刚刚 · 草稿」仍然不是成功。
 
-Success is not a click. The reopened editor must show one numeric draft id, the 已保存 badge, and matching title, body, headings, lists, links, and image count. Anything short of that is `unverified` or `uploaded`, and the script does not try again.
+Success is not a click. The editor must show one numeric draft id, a saved stamp, and matching title, body, headings, lists, links, and image count. An empty editor showing 刚刚 · 草稿 is not success. An unverified receipt reopens that draft URL instead of `/write`.
 
 知乎官方说明草稿是自动保存的，保存后页面顶部显示「已保存」；「发布」是另一步（[专栏与文章使用常见问题](https://www.zhihu.com/column/p/20681428)）。如果页面上另外有「保存草稿」「存草稿」或「保存为草稿」，会点一次，而且只点一次。没有这种按钮时，成功路径是自动保存加上回读，`mutation` 为 `autosave-verified`。这两种都不等于发布。
 

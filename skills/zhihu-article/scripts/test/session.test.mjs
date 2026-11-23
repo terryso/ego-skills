@@ -102,7 +102,7 @@ test("upload succeeds when the editor shows the image and cover", async () => {
   built.page.setInputFiles = async (selector) => {
     built.calls.files += 1;
     if (String(selector).includes("cover")) {
-      const preview = h("img", { className: "UploadPicture-preview", attrs: { src: "blob:cover" } });
+      const preview = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic1.zhimg.com/cover.png" } });
       globalThis.document.body.childNodes.push(preview);
       return;
     }

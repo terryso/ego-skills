@@ -135,6 +135,17 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       await page.keyboard.paste({ text: text || "", html: html || "" });
       return { ok: true };
     },
+    async replaceBody(html, text) {
+      const marked = await act("mark-body");
+      if (!marked.ok) return marked;
+      const selected = await act("select-body");
+      if (!selected.ok) return { ok: false, error: selected.error || "body selection is unavailable" };
+      if (!page.keyboard || typeof page.keyboard.paste !== "function") {
+        return { ok: false, error: "keyboard.paste is required" };
+      }
+      await page.keyboard.paste({ text: text || "", html: html || "" });
+      return { ok: true, replaced: true };
+    },
     async uploadBodyImage(file) {
       const beforeRead = await readEditor();
       const before = beforeRead && typeof beforeRead.imageCount === "number" ? beforeRead.imageCount : 0;
@@ -163,6 +174,10 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       } catch (error) {
         return { ok: false, submitted: false, code: "upload-failed", error: String(error.message || error) };
       }
+      const confirmed = await act("confirm-cover-crop");
+      if (confirmed && confirmed.forbidden) {
+        return { ok: false, submitted: true, code: "publish-refused", error: confirmed.error || "publish-refused" };
+      }
       for (let attempt = 0; attempt < uploadAttempts; attempt += 1) {
         const read = await readEditor();
         if (read && read.coverApplied) return { ok: true, submitted: true, coverApplied: true };
@@ -185,7 +200,9 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       for (let attempt = 0; attempt < autosaveAttempts; attempt += 1) {
         last = await readEditor();
         if (last.published || last.draftAmbiguous) return last;
-        if (last.draftId && last.autosaveLabel) return last;
+        const text = normalizeText(last.text || "");
+        const hasBody = Boolean(text && text !== "请输入正文");
+        if (last.draftId && last.autosaveLabel && last.blank !== true && hasBody) return last;
         await pause(waitMs);
       }
       return { ...last, timedOut: true, code: "autosave-timeout" };

@@ -332,14 +332,20 @@ export function zhihuAct(payload) {
     return qsaAny(["button", "a"]).filter((el) => shown(el));
   }
 
+  function savedStamp(label) {
+    const text = normalize(label);
+    if (!text || text.length > 40 || text.includes("发布")) return "";
+    if (text === "已保存" || text === "草稿已保存" || /已保存$/.test(text)) return text;
+    if (/^(刚刚|\d+分钟前|\d+小时前)\s*·\s*草稿$/.test(text)) return text;
+    return "";
+  }
+
   function autosaveBadge(editor) {
     const nodes = qsaAny(["header", "div", "span", "p", "strong"]);
     for (const el of nodes) {
       if (editor && contains(editor, el)) continue;
-      const label = ownLabel(el);
-      if (!label || label.length > 40) continue;
-      if (label.includes("发布")) continue;
-      if (label === "已保存" || label === "草稿已保存" || /已保存$/.test(label)) return label;
+      const label = savedStamp(ownLabel(el));
+      if (label) return label;
     }
     return "";
   }
@@ -475,12 +481,18 @@ export function zhihuAct(payload) {
     };
   }
 
-  function coverApplied() {
+  function coverApplied(editor) {
     const images = qsaAny(["img"]).filter((el) => {
-      const src = attr(el, "src") || "";
-      if (!src) return false;
-      const blob = `${el.className || ""} ${hintOf(el)} ${el.parentElement ? hintOf(el.parentElement) : ""}`;
-      return /封面|题图|UploadPicture|cover/i.test(blob);
+      if (editor && contains(editor, el)) return false;
+      const src = attr(el, "src") || el.src || "";
+      if (!/^https?:\/\//i.test(src)) return false;
+      let blob = `${el.className || ""} ${hintOf(el)}`;
+      let current = el.parentElement;
+      for (let depth = 0; depth < 4 && current && current.tagName !== "BODY"; depth += 1) {
+        blob += ` ${current.className || ""} ${hintOf(current)} ${directText(current)}`;
+        current = current.parentElement;
+      }
+      return /封面|题图|UploadPicture/.test(blob) || /(?:^|[^a-z])cover(?:[^a-z]|$)/i.test(blob);
     });
     return images.length > 0;
   }
@@ -551,7 +563,7 @@ export function zhihuAct(payload) {
       published: published(url),
       title: currentTitle,
       ...snap,
-      coverApplied: coverApplied(),
+      coverApplied: coverApplied(body),
     };
   }
 
@@ -619,6 +631,45 @@ export function zhihuAct(payload) {
       return { ok: false, forbidden: true, error: "refusing to click a control that is not an explicit draft save" };
     }
     if (typeof el.click === "function") el.click();
+    return { ok: true, clicked: true, label };
+  }
+
+  if (op === "select-body") {
+    const el = qsa(doc, "[data-zhihu-body='1']")[0];
+    if (!el) return { ok: false, error: "article body not found" };
+    const selection = typeof globalThis.getSelection === "function" ? globalThis.getSelection() : null;
+    if (!selection || typeof doc.createRange !== "function" || typeof selection.removeAllRanges !== "function") {
+      return { ok: false, error: "body selection is unavailable" };
+    }
+    const range = doc.createRange();
+    if (typeof range.selectNodeContents !== "function") return { ok: false, error: "body selection is unavailable" };
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    if (typeof selection.addRange === "function") selection.addRange(range);
+    el.setAttribute("data-zhihu-selected", "1");
+    return { ok: true, selected: true };
+  }
+
+  if (op === "confirm-cover-crop") {
+    const dialogs = qsaAny(["div", "section"]).filter((el) => {
+      const text = normalize(el.innerText || el.textContent || "");
+      return text.length > 0 && text.length < 400 && /封面|裁剪/.test(text);
+    });
+    const buttons = [];
+    for (const dialog of dialogs) {
+      for (const el of qsaAny(["button"], dialog)) {
+        if (!shown(el)) continue;
+        const label = buttonLabel(el);
+        if (label === "确定" || label === "完成" || label === "确认") buttons.push(el);
+      }
+    }
+    const unique = buttons.filter((el, index) => buttons.indexOf(el) === index);
+    if (unique.length !== 1) return { ok: true, clicked: false };
+    const label = buttonLabel(unique[0]);
+    if (isPublish(label) || isPreviewInvite(label) || label.includes("发布")) {
+      return { ok: false, forbidden: true, clicked: false, error: "refusing to confirm a cover crop through 发布" };
+    }
+    if (typeof unique[0].click === "function") unique[0].click();
     return { ok: true, clicked: true, label };
   }
 

@@ -53,6 +53,8 @@ Anything else (`uploaded`, `unverified`, `failed`) is not a pass. Do not rerun w
 
 `node skills/zhihu-article/scripts/cleanup.mjs` only closes this skill's Ego task space. It does not delete the draft.
 
+`4b04ffe` passed login and the image gate, wrote draft `2108325675975308707`, and exited `4` `readback-mismatch`. The title, lists, link, and two body images were present. `## 排版检查` was pasted as its own HTML fragment and came back inside the next paragraph; later headings stayed headings. Bold, italic, and the link survived, with a zero-width character before the link text. Image alts were not visible captions. The cover file path was dropped before upload, so no cover was submitted. The footer showed `刚刚 · 草稿` and `Markdown 语法输入中`, not `已保存`. `刚刚 · 草稿` on an empty editor is still not `draft-saved`. The same hash now reopens `/p/<id>/edit` and does not open another `/write`.
+
 ## Still unverified until that run
 
 - exact title placeholder, Draft.js class names, and cover input class

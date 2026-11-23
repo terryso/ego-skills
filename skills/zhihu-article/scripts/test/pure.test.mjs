@@ -10,6 +10,8 @@ import {
   charCount,
   classifyOutcome,
   classifyAccess,
+  coalescePastes,
+  compactText,
   decideAccount,
   decideAttempt,
   defaultReceiptDir,
@@ -18,6 +20,7 @@ import {
   egoMissingSummary,
   extractTaggedJson,
   formatResult,
+  headingWasFlattened,
   imageSize,
   inspectImage,
   isPublishedArticleUrl,
@@ -72,6 +75,13 @@ test("parsers accept a neutral article and reject unsupported constructs", () =>
     parsed,
     images: [{ name: "image.png", path: "/elsewhere/image.png", sha256: "abc", bytes: 10, width: 16, height: 16 }],
   }).hash);
+  const covered = buildArticle({
+    parsed,
+    images: [{ name: "image.png", path: "/absolute/path/to/image.png", sha256: "abc", bytes: 10, width: 16, height: 16 }],
+    cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 4, width: 1200, height: 400 },
+  });
+  assert.equal(covered.cover.path, "/absolute/path/to/cover.png");
+  assert.equal(planOf(covered).cover.path, undefined);
 
   const plain = buildArticle({ parsed: parsePlain("只有正文", "纯文本标题"), images: [] });
   assert.equal(plain.ok, true);
@@ -148,6 +158,8 @@ test("attempt and outcome states never treat a click or autosave as publish", ()
   const saved = { hash: "a", state: "draft-saved", verified: true, draftId: "9" };
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: saved }).action, "already-saved");
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified" } }).action, "blocked-previous-mutation");
+  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified", draftId: "55" } }).action, "resume");
+  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded", draftId: "55" } }).resume, true);
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded" } }).exitCode, 4);
   assert.equal(decideAttempt({ saveDraft: true, hash: "b", receipt: saved }).action, "save");
 
@@ -224,13 +236,51 @@ test("readback requires structure, not a button", () => {
   });
   const good = validateReadback(built, {
     title: "示例标题",
-    text: "一段说明，带一个链接。 小节 第一点 第二点 配图",
+    text: "一段说明，带一个链接。 小节 第一点 第二点",
     headings: [{ level: 2, text: "小节" }],
     listItems: ["第一点", "第二点"],
     hrefs: ["https://example.com/docs"],
     imageCount: 1,
   });
   assert.equal(good.ok, true);
+  assert.equal(good.missing.includes("配图"), false);
+  const spaced = validateReadback({
+    title: "标题",
+    snippets: ["这段包含 粗体 和 斜体，以及一个链接：知乎专栏常见问题。", "验收配图一"],
+    headings: [{ level: 2, text: "正文配图" }],
+    listItems: [],
+    links: [],
+    imageCount: 2,
+    segments: [{ kind: "image", alt: "验收配图一" }],
+  }, {
+    title: "标题",
+    text: "排版检查这段包含 粗体 和 斜体，以及一个链接：\u200b 知乎专栏常见问题。 正文配图",
+    headings: [{ level: 2, text: "正文配图" }],
+    listItems: [],
+    hrefs: [],
+    imageCount: 2,
+  });
+  assert.deepEqual(spaced.missing, []);
+  assert.equal(spaced.missingHeadings.includes("正文配图"), false);
+  assert.equal(headingWasFlattened({ headings: [{ level: 2, text: "排版检查" }] }, {
+    text: "排版检查这段包含",
+    headings: [],
+  }), true);
+  assert.equal(headingWasFlattened({ headings: [{ level: 2, text: "正文配图" }] }, {
+    text: "正文配图",
+    headings: [{ level: 2, text: "正文配图" }],
+  }), false);
+  const groups = coalescePastes([
+    { kind: "html", html: "<p>甲</p>", text: "甲" },
+    { kind: "html", html: "<h2>排版检查</h2>", text: "排版检查" },
+    { kind: "image", path: "/absolute/path/to/a.png" },
+    { kind: "html", html: "<p>乙</p>", text: "乙" },
+  ]);
+  assert.equal(groups.length, 3);
+  assert.match(groups[0].html, /<p>甲<\/p><h2>排版检查<\/h2>/);
+  assert.equal(groups[1].kind, "image");
+  assert.equal(built.cover, null);
+  assert.equal(compactText("链接：\u200b 知乎"), "链接：知乎");
   const raw = validateReadback(built, {
     title: "示例标题",
     text: "<p>一段说明，带一个链接。</p> 小节 第一点 第二点 配图",

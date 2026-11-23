@@ -206,7 +206,11 @@ export function parseSaveArgs(argv) {
 }
 
 export function normalizeText(value) {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+  return String(value ?? "").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
+}
+
+export function compactText(value) {
+  return normalizeText(value).replace(/[\s\u00A0]/g, "");
 }
 
 export function charCount(value) {
@@ -609,12 +613,12 @@ export function buildArticle({ parsed, images, cover = null, title = "" }) {
   if (!normalizeText(plain) && !images.length) return { ok: false, error: "body is empty" };
   if (charCount(plain) > BODY_MAX) return { ok: false, error: `body is ${charCount(plain)} characters; the local guard is ${BODY_MAX}` };
   const fidelity = [
-    "headings, lists, links, bold, and italic are pasted as HTML; the live editor's paste behavior was not verified in this change",
-    "images are local PNG or JPG files inserted in markdown order through the visible file input",
+    "consecutive text blocks are pasted as one HTML fragment so a heading is not flattened into the next paragraph",
+    "images are local PNG or JPG files inserted in markdown order; alt text is not a visible caption in this editor",
     "remote images, tables, code, quotes, raw HTML, math, and headings deeper than h3 are rejected",
     "description frontmatter is not copied; the article editor has no separate digest field in this skill",
     "public publishing is not implemented; 发布 and 邀请预览 are never clicked",
-    "a draft is verified only after the 已保存 badge, one observed draft id, and a reopened editor readback",
+    "a draft is verified only after one numeric id, a non-empty readback, and a saved stamp such as 已保存 or 刚刚 · 草稿",
   ];
   if (parsed.plain) fidelity.push("plain text is pasted as paragraphs without markdown formatting");
   if (parsed.description) fidelity.push("frontmatter description was ignored");
@@ -647,6 +651,7 @@ export function buildArticle({ parsed, images, cover = null, title = "" }) {
       sha256: cover.sha256,
       width: cover.width,
       height: cover.height,
+      path: cover.path || "",
     } : null,
     fidelity: [...new Set(fidelity)],
     hash,
@@ -654,13 +659,47 @@ export function buildArticle({ parsed, images, cover = null, title = "" }) {
   };
 }
 
+function publicFile(file) {
+  if (!file) return file;
+  return {
+    name: file.name,
+    bytes: file.bytes,
+    sha256: file.sha256,
+    width: file.width,
+    height: file.height,
+  };
+}
+
+export function coalescePastes(segments) {
+  const groups = [];
+  let html = [];
+  const flush = () => {
+    if (!html.length) return;
+    groups.push({
+      kind: "html",
+      html: html.map((item) => item.html).join(""),
+      text: html.map((item) => item.text).join("\n"),
+    });
+    html = [];
+  };
+  for (const segment of segments || []) {
+    if (segment && segment.kind === "html") html.push(segment);
+    else {
+      flush();
+      if (segment) groups.push(segment);
+    }
+  }
+  flush();
+  return groups;
+}
+
 export function planOf(article) {
   return {
     title: article.title,
     hash: article.hash,
     imageCount: article.imageCount,
-    images: article.images,
-    cover: article.cover,
+    images: (article.images || []).map(publicFile),
+    cover: publicFile(article.cover),
     linkCount: (article.links || []).length,
     headingCount: (article.headings || []).length,
     fidelity: article.fidelity,
@@ -739,6 +778,17 @@ export function decideAttempt({ saveDraft, receipt, hash }) {
     };
   }
   if (same && (receipt.state === "unverified" || receipt.state === "uploaded")) {
+    if (draftEditUrl(receipt.draftId)) {
+      return {
+        action: "resume",
+        save: false,
+        resume: true,
+        exitCode: 0,
+        state: receipt.state,
+        consent: "save-draft",
+        receipt,
+      };
+    }
     return {
       action: "blocked-previous-mutation",
       save: false,
@@ -828,20 +878,38 @@ export function classifyOutcome(input = {}) {
   };
 }
 
+function captionSet(article) {
+  const captions = new Set();
+  for (const segment of article.segments || []) {
+    if (segment && segment.kind === "image" && normalizeText(segment.alt)) captions.add(normalizeText(segment.alt));
+  }
+  return captions;
+}
+
+export function headingWasFlattened(article, editor) {
+  const text = compactText(editor && editor.text);
+  const actual = new Set((editor && editor.headings || []).map((item) => `${item.level}:${compactText(item.text)}`));
+  return (article.headings || []).some((item) => {
+    const name = compactText(item.text);
+    return name && text.includes(name) && !actual.has(`${item.level}:${name}`);
+  });
+}
+
 export function validateReadback(article, actual) {
   const titleOk = normalizeText(actual && actual.title) === normalizeText(article.title);
   const imageCount = actual && typeof actual.imageCount === "number" ? actual.imageCount : -1;
   const imagesOk = imageCount === article.imageCount;
-  const haystack = normalizeText(actual && actual.text);
+  const haystack = compactText(actual && actual.text);
+  const captions = captionSet(article);
   const missing = [];
   for (const snippet of article.snippets || []) {
     const needle = normalizeText(snippet);
-    if (!needle) continue;
-    if (!haystack.includes(needle)) missing.push(needle.slice(0, 80));
+    if (!needle || captions.has(needle)) continue;
+    if (!haystack.includes(compactText(needle))) missing.push(needle.slice(0, 80));
   }
-  const actualHeadings = new Set((actual && actual.headings || []).map((item) => `${item.level}:${normalizeText(item.text)}`));
+  const actualHeadings = new Set((actual && actual.headings || []).map((item) => `${item.level}:${compactText(item.text)}`));
   const missingHeadings = (article.headings || [])
-    .filter((item) => !actualHeadings.has(`${item.level}:${normalizeText(item.text)}`))
+    .filter((item) => !actualHeadings.has(`${item.level}:${compactText(item.text)}`))
     .map((item) => item.text);
   const actualItems = (actual && actual.listItems || []).map(normalizeText);
   const missingItems = (article.listItems || []).filter((item) => !actualItems.includes(normalizeText(item)));

@@ -5,9 +5,12 @@ import {
   WRITE_URL,
   classifyAccess,
   classifyOutcome,
+  coalescePastes,
+  compactText,
   decideAccount,
   decideAttempt,
   draftEditUrl,
+  headingWasFlattened,
   howToLogin,
   loginTip,
   normalizeText,
@@ -113,23 +116,7 @@ async function compose(session, article, initial) {
   }
   if (typeof initial.onAccepted === "function") await initial.onAccepted(progress);
 
-  for (const segment of article.segments || []) {
-    if (segment.kind === "html") {
-      const pasted = await session.pasteBody(segment.html, segment.text);
-      if (!pasted.ok) {
-        progress.error = pasted.error || "paste-failed";
-        return progress;
-      }
-    } else if (segment.kind === "image") {
-      const uploaded = await session.uploadBodyImage(segment.path);
-      if (uploaded.submitted) progress.mediaSubmitted = true;
-      if (!uploaded.ok) {
-        progress.timedOut = uploaded.code === "upload-timeout";
-        progress.error = uploaded.code || uploaded.error || "upload-failed";
-        return progress;
-      }
-    }
-  }
+  if (!await fillBody(session, article, progress, { replace: false })) return progress;
 
   if (article.cover && article.cover.path) {
     const cover = await session.uploadCover(article.cover.path);
@@ -231,6 +218,48 @@ async function compose(session, article, initial) {
     excerpt: normalizeText(again.text).slice(0, 80),
   };
   return progress;
+}
+
+async function fillBody(session, article, progress, { replace = false } = {}) {
+  const groups = coalescePastes(article.segments || []);
+  if (replace && (!groups[0] || groups[0].kind !== "html")) {
+    progress.error = "resume-shape";
+    return false;
+  }
+  let replacing = replace;
+  for (const segment of groups) {
+    if (segment.kind === "html") {
+      const pasted = replacing
+        ? await session.replaceBody(segment.html, segment.text)
+        : await session.pasteBody(segment.html, segment.text);
+      replacing = false;
+      if (!pasted || !pasted.ok) {
+        progress.error = (pasted && pasted.error) || (replace ? "body-replace-failed" : "paste-failed");
+        return false;
+      }
+    } else if (segment.kind === "image") {
+      const uploaded = await session.uploadBodyImage(segment.path);
+      if (uploaded && uploaded.submitted) progress.mediaSubmitted = true;
+      if (!uploaded || !uploaded.ok) {
+        progress.timedOut = Boolean(uploaded && uploaded.code === "upload-timeout");
+        progress.error = (uploaded && (uploaded.code || uploaded.error)) || "upload-failed";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function editorLooksLikeArticle(article, editor) {
+  if (!editor || normalizeText(editor.title) !== normalizeText(article.title)) return false;
+  const text = compactText(editor.text);
+  const captions = new Set((article.segments || [])
+    .filter((segment) => segment && segment.kind === "image")
+    .map((segment) => normalizeText(segment.alt))
+    .filter(Boolean));
+  const lead = (article.snippets || []).map(normalizeText).find((item) => item && !captions.has(item) && !(article.headings || []).some((heading) => normalizeText(heading.text) === item));
+  if (lead && !text.includes(compactText(lead))) return false;
+  return true;
 }
 
 function exitFor(outcome, progress) {
@@ -336,6 +365,7 @@ export async function executeSave(config, deps) {
     hash: article.hash,
   });
   const plan = planOf(article);
+  if (decision.resume) return resumeDraft(config, deps, decision, article, store, now, plan);
   if (!decision.save) {
     const prior = decision.receipt || {};
     return result("save-draft", {
@@ -481,6 +511,205 @@ export async function executeSave(config, deps) {
       state: "failed",
       retryable: true,
       error: String(error.message || error),
+      plan,
+    });
+  } finally {
+    if (session) await session.finish().catch(() => {});
+  }
+}
+
+async function resumeDraft(config, deps, decision, article, store, now, plan) {
+  const prior = decision.receipt || {};
+  const draftUrl = draftEditUrl(prior.draftId);
+  if (!draftUrl) {
+    return result("save-draft", {
+      exitCode: 4,
+      state: prior.state || "unverified",
+      retryable: false,
+      error: "previous-mutation",
+      draftId: prior.draftId || "",
+      plan,
+      account: prior.account || "",
+    });
+  }
+  let session = null;
+  try {
+    session = await deps.browser.open({ taskName: TASK_NAME, startUrl: HOME_URL });
+    const home = await session.probe();
+    const account = decideAccount(home, config.expectAccount || "");
+    if (!account.ok) return accountFailure("save-draft", account, article);
+    await session.goto(draftUrl);
+    const editor = await probeWrite(session, article);
+    const access = classifyAccess(editor, { openedWrite: true });
+    if (!access.ok) return accessFailure(session, config, article, account, editor, access);
+    const stop = editor.published
+      ? "published-url"
+      : (String(editor.draftId || "") !== String(prior.draftId)
+        ? "draft-id-changed"
+        : (editor.blank || !compactText(editor.text)
+          ? "resume-empty"
+          : (!editorLooksLikeArticle(article, editor) ? "resume-mismatch" : "")));
+    if (stop) {
+      const error = stop;
+      const evidence = await captureEvidence(session, config, editor, error);
+      return result("save-draft", {
+        exitCode: editor.published || error === "draft-id-changed" ? 4 : 4,
+        state: "unverified",
+        retryable: false,
+        error,
+        account: account.account,
+        accounts: account.accounts,
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        mutation: "none",
+        ...evidence,
+      });
+    }
+
+    const progress = {
+      accepted: true,
+      mediaSubmitted: false,
+      explicitControl: false,
+      explicitClicked: false,
+      forbidden: false,
+      published: false,
+      autosaveBadge: Boolean(editor.autosaveLabel),
+      autosaveObserved: Boolean(editor.autosaveLabel || editor.draftId),
+      readbackOk: false,
+      coverRequired: Boolean(article.cover),
+      coverApplied: Boolean(editor.coverApplied),
+      timedOut: false,
+      draftId: String(prior.draftId),
+      preexistingId: String(prior.draftId),
+      localFailure: false,
+      loginExpired: false,
+      error: "",
+      observed: null,
+      readback: null,
+    };
+    if (headingWasFlattened(article, editor)) {
+      if (!await fillBody(session, article, progress, { replace: true })) {
+        const evidence = await captureEvidence(session, config, editor, progress.error);
+        return result("save-draft", {
+          exitCode: 4,
+          state: "unverified",
+          retryable: false,
+          error: progress.error,
+          account: account.account,
+          draftId: progress.draftId,
+          draftUrl,
+          plan,
+          mutation: progress.mediaSubmitted ? "autosave" : "none",
+          ...evidence,
+        });
+      }
+    }
+    if (article.cover && article.cover.path && !progress.coverApplied) {
+      const cover = await session.uploadCover(article.cover.path);
+      if (cover && cover.submitted) progress.mediaSubmitted = true;
+      progress.coverApplied = Boolean(cover && cover.coverApplied);
+      if (!cover || !cover.ok) {
+        progress.error = (cover && (cover.code || cover.error)) || "cover-unverified";
+        progress.timedOut = Boolean(cover && cover.code === "upload-timeout");
+      }
+    }
+    const settled = await session.waitForSavedDraft();
+    if (settled.draftId && settled.draftId !== progress.draftId) {
+      progress.error = "draft-id-changed";
+    } else {
+      if (settled.draftId) progress.draftId = settled.draftId;
+      if (settled.autosaveLabel) {
+        progress.autosaveBadge = true;
+        progress.autosaveObserved = true;
+      }
+      if (settled.published) progress.error = progress.error || "published-url";
+      progress.timedOut = Boolean(settled.timedOut) || progress.timedOut;
+    }
+    if (!progress.error) {
+      await session.goto(draftUrl);
+      const again = await session.readEditor();
+      const againAccess = classifyAccess(again, { openedWrite: true });
+      if (!againAccess.ok) {
+        progress.loginExpired = againAccess.reason === "login-expired";
+        progress.challenge = againAccess.reason === "challenge";
+        progress.error = againAccess.reason;
+      } else if (again.draftId && again.draftId !== progress.draftId) {
+        progress.error = "draft-id-changed";
+      } else {
+        if (again.autosaveLabel) progress.autosaveBadge = true;
+        if (again.coverApplied) progress.coverApplied = true;
+        const check = validateReadback(article, again);
+        progress.readback = {
+          titleOk: check.titleOk,
+          imagesOk: check.imagesOk,
+          coverOk: check.coverOk,
+          missing: check.missing,
+          missingHeadings: check.missingHeadings,
+          missingItems: check.missingItems,
+          missingHrefs: check.missingHrefs,
+          rawMarkup: check.rawMarkup,
+        };
+        progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId);
+        if (!check.ok) progress.error = progress.error || "readback-mismatch";
+        progress.observed = {
+          title: again.title || "",
+          imageCount: again.imageCount,
+          autosaveLabel: again.autosaveLabel || "",
+          coverApplied: Boolean(again.coverApplied),
+          draftId: again.draftId || progress.draftId,
+          excerpt: normalizeText(again.text).slice(0, 80),
+        };
+      }
+    }
+    const outcome = classifyOutcome(progress);
+    const body = receiptBody(article, account.account, outcome, {
+      phase: outcome.state,
+      coverApplied: progress.coverApplied,
+      observed: progress.observed,
+      readback: progress.readback,
+      updatedAt: now(),
+    });
+    let receiptError = "";
+    try {
+      store.write(config.receiptDir, body);
+    } catch (error) {
+      receiptError = `cannot write receipt: ${error.message}`;
+    }
+    let screenshot = "";
+    if (config.screenshotDir && outcome.state !== "draft-saved" && !progress.loginExpired && typeof session.capture === "function") {
+      screenshot = await session.capture(config.screenshotDir, outcome.state);
+    }
+    const exitCode = exitFor(outcome, progress);
+    return result("save-draft", {
+      ok: exitCode === 0,
+      exitCode,
+      state: outcome.state,
+      verified: outcome.verified,
+      retryable: false,
+      mutation: outcome.mutation,
+      consent: "save-draft",
+      action: "resume",
+      account: account.account,
+      accounts: account.accounts,
+      draftId: outcome.draftId || prior.draftId,
+      draftUrl,
+      error: outcome.error || "",
+      receiptError,
+      screenshot,
+      observed: progress.observed,
+      readback: progress.readback,
+      plan,
+      ...loginTip(account.account),
+    });
+  } catch (error) {
+    return result("save-draft", {
+      exitCode: 4,
+      state: "unverified",
+      retryable: false,
+      error: String(error.message || error),
+      draftId: prior.draftId,
+      draftUrl,
       plan,
     });
   } finally {

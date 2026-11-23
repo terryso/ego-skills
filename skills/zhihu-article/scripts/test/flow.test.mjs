@@ -96,6 +96,10 @@ function sessionWith(steps) {
       calls.paste += 1;
       return steps.paste ? steps.paste() : { ok: true };
     },
+    async replaceBody() {
+      calls.replace = (calls.replace || 0) + 1;
+      return steps.replace ? steps.replace() : { ok: true, replaced: true };
+    },
     async uploadBodyImage() {
       calls.upload += 1;
       return steps.upload ? steps.upload() : { ok: true, submitted: true, imageCount: 1 };
@@ -332,8 +336,7 @@ test("preconditions and previous mutations do not type into the editor", async (
     hash: "hash-1",
     state: "unverified",
     verified: false,
-    draftId: "55",
-    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    draftId: "",
     account: "示例作者",
   });
   const blockedSession = sessionWith({ probes: [] });
@@ -344,7 +347,6 @@ test("preconditions and previous mutations do not type into the editor", async (
   }, { browser: browserFor(blockedSession) });
   assert.equal(blocked.exitCode, 4);
   assert.equal(blocked.error, "previous-mutation");
-  assert.equal(blocked.draftId, "55");
   assert.equal(blockedSession.calls.goto.length, 0);
 
   createReceiptStore().write(dir, {
@@ -734,6 +736,127 @@ test("an ambiguous body image input records the page and does not publish", asyn
   assert.equal(closed.mutation, "none");
   assert.equal(stuck.calls.upload, 0);
   assert.equal(stuck.calls.capture, 1);
+});
+
+test("an unverified receipt reopens its draft and does not open /write", async () => {
+  const dir = dirs().receiptDir;
+  createReceiptStore().write(dir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    account: "示例作者",
+  });
+  const session = sessionWith({
+    probes: [home(), editor({
+      draftId: "55",
+      blank: false,
+      title: "示例标题",
+      text: "一段说明 小节 第一点",
+      headings: [{ level: 2, text: "小节" }],
+      autosaveLabel: "刚刚 · 草稿",
+    })],
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => readback({ draftId: "55", autosaveLabel: "刚刚 · 草稿" }),
+  });
+  const summary = await executeSave({
+    saveDraft: true,
+    receiptDir: dir,
+    article: article(),
+  }, { browser: browserFor(session) });
+  assert.equal(summary.action, "resume");
+  assert.equal(summary.state, "draft-saved");
+  assert.equal(summary.verified, true);
+  assert.deepEqual(session.calls.goto, [
+    "https://zhuanlan.zhihu.com/p/55/edit",
+    "https://zhuanlan.zhihu.com/p/55/edit",
+  ]);
+  assert.equal(session.calls.paste, 0);
+  assert.equal(session.calls.replace || 0, 0);
+  assert.equal(session.calls.upload, 0);
+
+  const repairDir = dirs().receiptDir;
+  createReceiptStore().write(repairDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const repairArticle = article({
+    title: "技能验收测试草稿（可删）",
+    snippets: ["这是草稿", "排版检查", "这段包含", "列表", "正文配图"],
+    headings: [{ level: 2, text: "排版检查" }, { level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
+    listItems: [],
+    links: [],
+    imageCount: 1,
+    images: [{ name: "body.png", sha256: "abc", bytes: 10 }],
+    segments: [
+      { kind: "html", html: "<p>这是草稿</p>", text: "这是草稿" },
+      { kind: "html", html: "<h2>排版检查</h2>", text: "排版检查" },
+      { kind: "html", html: "<p>这段包含</p>", text: "这段包含" },
+      { kind: "html", html: "<h3>列表</h3>", text: "列表" },
+      { kind: "html", html: "<h2>正文配图</h2>", text: "正文配图" },
+      { kind: "image", path: "/absolute/path/to/body.png", alt: "验收配图一" },
+    ],
+    cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 20 },
+  });
+  const repairing = sessionWith({
+    probes: [home(), editor({
+      draftId: "55",
+      blank: false,
+      title: "技能验收测试草稿（可删）",
+      text: "这是草稿 排版检查这段包含 列表 正文配图",
+      headings: [{ level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
+      coverApplied: false,
+      imageInput: true,
+      autosaveLabel: "刚刚 · 草稿",
+    })],
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => readback({
+      draftId: "55",
+      title: "技能验收测试草稿（可删）",
+      text: "这是草稿 排版检查 这段包含 列表 正文配图",
+      headings: [{ level: 2, text: "排版检查" }, { level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
+      listItems: [],
+      hrefs: [],
+      imageCount: 1,
+      coverApplied: true,
+      autosaveLabel: "刚刚 · 草稿",
+    }),
+  });
+  const repaired = await executeSave({
+    saveDraft: true,
+    receiptDir: repairDir,
+    article: repairArticle,
+  }, { browser: browserFor(repairing) });
+  assert.equal(repaired.state, "draft-saved");
+  assert.equal(repairing.calls.replace, 1);
+  assert.equal(repairing.calls.paste, 0);
+  assert.equal(repairing.calls.upload, 1);
+  assert.equal(repairing.calls.cover, 1);
+  assert.equal(repairing.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
+
+  const emptyDir = dirs().receiptDir;
+  createReceiptStore().write(emptyDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const empty = sessionWith({
+    probes: [home(), editor({ draftId: "55", blank: true, title: "", text: "", autosaveLabel: "刚刚 · 草稿" })],
+  });
+  const untouched = await executeSave({
+    saveDraft: true,
+    receiptDir: emptyDir,
+    article: article(),
+  }, { browser: browserFor(empty) });
+  assert.equal(untouched.error, "resume-empty");
+  assert.equal(empty.calls.paste, 0);
+  assert.equal(empty.calls.replace || 0, 0);
 });
 
 test("cleanup closes only this skill's task spaces", async () => {

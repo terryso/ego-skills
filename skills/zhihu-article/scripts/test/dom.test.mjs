@@ -345,6 +345,32 @@ test("a detached toolbar image input is unique and unlabeled file inputs are not
   assert.equal(aiImage.getAttribute("data-zhihu-image"), null);
 });
 
+test("cover crop confirms 确定 and does not click 发布", () => {
+  const confirm = h("button", {}, ["确定"]);
+  const publish = h("button", {}, ["发布"]);
+  const settings = h("button", {}, ["发布设置"]);
+  const dialog = h("section", {}, ["裁剪封面", confirm, publish]);
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "正文" });
+  createDocument(h("body", {}, [title, body, dialog, settings]), { href: "https://zhuanlan.zhihu.com/write" });
+  const result = zhihuAct({ op: "confirm-cover-crop" });
+  assert.equal(result.clicked, true);
+  assert.equal(result.label, "确定");
+  assert.equal(confirm.clicked, 1);
+  assert.equal(publish.clicked, 0);
+  assert.equal(settings.clicked, 0);
+  const marked = zhihuAct({ op: "mark-body" });
+  assert.equal(marked.ok, true);
+  globalThis.getSelection = () => ({
+    removeAllRanges() {},
+    addRange() {},
+  });
+  globalThis.document.createRange = () => ({ selectNodeContents() {} });
+  const selected = zhihuAct({ op: "select-body" });
+  assert.equal(selected.selected, true);
+  delete globalThis.getSelection;
+});
+
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {
   const parts = mount(editorParts());
   const probe = zhihuAct({ op: "probe" });
@@ -395,7 +421,7 @@ test("readback counts structure inside the editor and ignores a badge inside the
   const image = h("img", { attrs: { src: "blob:body" } });
   const inside = h("span", {}, ["已保存"]);
   const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明 小节 第一点 链接" }, [heading, item, link, image, inside]);
-  const cover = h("img", { className: "UploadPicture-preview", attrs: { src: "blob:cover" } });
+  const cover = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic1.zhimg.com/cover.png" } });
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
   const editLink = h("a", { attrs: { href: "/p/77/edit?token=secret" } }, ["继续编辑"]);
   createDocument(h("body", {}, [profile, title, body, cover, editLink]), {
@@ -406,6 +432,15 @@ test("readback counts structure inside the editor and ignores a badge inside the
   assert.equal(read.imageCount, 1);
   assert.equal(read.coverApplied, true);
   assert.equal(read.autosaveLabel, "");
+  const fresh = h("span", {}, ["刚刚 · 草稿"]);
+  const blobCover = h("img", { className: "UploadPicture-preview", attrs: { src: "blob:cover" } });
+  createDocument(h("body", {}, [profile, title, body, blobCover, fresh]), {
+    href: "https://zhuanlan.zhihu.com/p/77/edit",
+  });
+  const stamped = zhihuAct({ op: "read" });
+  assert.equal(stamped.autosaveLabel, "刚刚 · 草稿");
+  assert.equal(stamped.coverApplied, false);
+  assert.equal(stamped.blank, false);
   assert.deepEqual(read.headings, [{ level: 2, text: "小节" }]);
   assert.deepEqual(read.listItems, ["第一点"]);
   assert.deepEqual(read.hrefs, ["https://example.com/docs"]);
