@@ -662,10 +662,16 @@ export function zhihuAct(payload) {
     return { ok: true, selected: true };
   }
 
+  function isPendingBlock(el) {
+    if (directText(el) === "图片上传中") return true;
+    const text = normalize(el.innerText || el.textContent || "");
+    if (text === "图片上传中") return true;
+    if (!text.includes("图片上传中") || [...text].length > 80) return false;
+    return !qsaAny(["img"], el).some((img) => /^https?:\/\//i.test(attr(img, "src") || img.src || ""));
+  }
+
   if (op === "clear-pending-upload") {
-    const nodes = qsaAny(["div", "figure", "section", "p", "span", "li"]).filter((el) => (
-      normalize(el.innerText || el.textContent || "") === "图片上传中"
-    ));
+    const nodes = qsaAny(["div", "figure", "section", "p", "span", "li"]).filter(isPendingBlock);
     const leaves = nodes.filter((el) => !nodes.some((other) => other !== el && contains(el, other)));
     let cleared = 0;
     for (const el of leaves) {
@@ -689,10 +695,56 @@ export function zhihuAct(payload) {
     return { ok: true, cleared };
   }
 
+  if (op === "reveal-cover") {
+    const nodes = qsaAny(["button", "label", "a", "div", "span"]).filter((el) => {
+      if (!shown(el)) return false;
+      const label = controlName(el);
+      return label === "添加封面" || label === "添加文章封面";
+    });
+    const leaves = nodes.filter((el) => !nodes.some((other) => other !== el && contains(other, el)));
+    if (leaves.length !== 1) return { ok: true, clicked: false };
+    const label = controlName(leaves[0]);
+    if (!label || label.includes("发布")) return { ok: true, clicked: false };
+    if (typeof leaves[0].click === "function") leaves[0].click();
+    return { ok: true, clicked: true, label };
+  }
+
+  if (op === "scroll-evidence") {
+    const where = input.where === "cover" ? "cover" : "end";
+    const target = where === "cover"
+      ? qsaAny(["button", "label", "div", "img"]).find((el) => /封面|UploadPicture|添加封面/.test(`${controlName(el)} ${el.className || ""}`))
+      : qsa(doc, "[data-zhihu-body='1']")[0] || qsaAny(["div"]).find((el) => /public-DraftEditor-content/.test(String(el.className || "")));
+    if (target && typeof target.scrollIntoView === "function") target.scrollIntoView();
+    const scrolling = doc.scrollingElement || doc.body;
+    if (scrolling && where === "end") scrolling.scrollTop = scrolling.scrollHeight || 0;
+    return { ok: true, where };
+  }
+
+  if (op === "remove-duplicate-lead") {
+    const lead = normalize(input.lead);
+    if (!lead) return { ok: true, removed: 0 };
+    const body = qsa(doc, "[data-zhihu-body='1']")[0] || findBodies(findTitle())[0];
+    if (!body) return { ok: false, error: "article body not found" };
+    const blocks = qsaAny(["p", "div", "li"], body).filter((el) => {
+      const text = normalize(el.innerText || el.textContent || "");
+      return text === lead && qsaAny(["img", "h1", "h2", "h3"], el).length === 0;
+    });
+    const leaves = blocks.filter((el) => !blocks.some((other) => other !== el && contains(el, other)));
+    if (leaves.length < 2) return { ok: true, removed: 0 };
+    let removed = 0;
+    for (const el of leaves.slice(1)) {
+      const parent = el.parentElement;
+      if (!parent || !parent.childNodes) continue;
+      parent.childNodes = parent.childNodes.filter((node) => node !== el);
+      removed += 1;
+    }
+    return { ok: true, removed };
+  }
+
   if (op === "confirm-cover-crop") {
     const dialogs = qsaAny(["div", "section"]).filter((el) => {
       const text = normalize(el.innerText || el.textContent || "");
-      return text.length > 0 && text.length < 400 && /封面|裁剪/.test(text);
+      return text.length > 0 && text.length < 1200 && /封面|裁剪/.test(text);
     });
     const buttons = [];
     for (const dialog of dialogs) {

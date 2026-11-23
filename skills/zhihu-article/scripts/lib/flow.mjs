@@ -249,15 +249,18 @@ async function fillBody(session, article, progress, { replace = false } = {}) {
   return true;
 }
 
-function editorLooksLikeArticle(article, editor) {
-  if (!editor || normalizeText(editor.title) !== normalizeText(article.title)) return false;
-  const text = compactText(editor.text);
+function articleLead(article) {
   const captions = new Set((article.segments || [])
     .filter((segment) => segment && segment.kind === "image")
     .map((segment) => normalizeText(segment.alt))
     .filter(Boolean));
-  const lead = (article.snippets || []).map(normalizeText).find((item) => item && !captions.has(item) && !(article.headings || []).some((heading) => normalizeText(heading.text) === item));
-  if (lead && !text.includes(compactText(lead))) return false;
+  return (article.snippets || []).map(normalizeText).find((item) => item && !captions.has(item) && !(article.headings || []).some((heading) => normalizeText(heading.text) === item)) || "";
+}
+
+function editorLooksLikeArticle(article, editor) {
+  if (!editor || normalizeText(editor.title) !== normalizeText(article.title)) return false;
+  const lead = articleLead(article);
+  if (lead && !compactText(editor.text).includes(compactText(lead))) return false;
   return true;
 }
 
@@ -298,11 +301,16 @@ async function captureEvidence(session, config, probe, reason) {
   const pageUrl = (probe && (probe.url || probe.pageUrl)) || "";
   const pageTitle = probe && typeof probe.pageTitle === "string" ? probe.pageTitle : "";
   let screenshot = "";
+  let screenshots = [];
   const dir = config.screenshotDir || config.receiptDir;
-  if (dir && session && typeof session.capture === "function") {
+  if (dir && session && typeof session.captureViews === "function") {
+    screenshots = await session.captureViews(dir, reason || "probe-failed");
+    screenshot = screenshots[0] || "";
+  } else if (dir && session && typeof session.capture === "function") {
     screenshot = await session.capture(dir, reason || "probe-failed");
+    screenshots = screenshot ? [screenshot] : [];
   }
-  return { pageUrl, pageTitle, screenshot };
+  return { pageUrl, pageTitle, screenshot, screenshots };
 }
 
 async function accessFailure(session, config, article, account, probe, access) {
@@ -592,6 +600,10 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       const again = await session.probe();
       if (again && again.ok !== false) editor = again;
     }
+    if (typeof session.removeDuplicateLead === "function") {
+      const lead = articleLead(article);
+      if (lead) await session.removeDuplicateLead(lead);
+    }
     if (editor.uploadPending) {
       const evidence = await captureEvidence(session, config, editor, "upload-pending");
       return result("save-draft", {
@@ -632,9 +644,14 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       if (settled.published) progress.error = progress.error || "published-url";
       progress.timedOut = Boolean(settled.timedOut) || progress.timedOut;
     }
+    let again = null;
     if (!progress.error) {
       await session.goto(draftUrl);
-      const again = await session.readEditor();
+      again = await session.readEditor();
+    } else if (typeof session.readEditor === "function") {
+      again = await session.readEditor();
+    }
+    if (again) {
       const againAccess = classifyAccess(again, { openedWrite: true });
       if (!againAccess.ok) {
         progress.loginExpired = againAccess.reason === "login-expired";

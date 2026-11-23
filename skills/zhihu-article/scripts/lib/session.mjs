@@ -9,6 +9,7 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
   let finished = false;
   let draftClicked = false;
   const uploadAttempts = timings.uploadAttempts ?? 20;
+  const coverAttempts = timings.coverAttempts ?? 60;
   const autosaveAttempts = timings.autosaveAttempts ?? 20;
   const waitMs = timings.waitMs ?? 500;
   const navigationMs = timings.navigationMs ?? 45_000;
@@ -156,6 +157,9 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
     async clearPendingUpload() {
       return act("clear-pending-upload");
     },
+    async removeDuplicateLead(lead) {
+      return act("remove-duplicate-lead", { lead });
+    },
     async uploadBodyImage(file) {
       let beforeRead = await readEditor();
       if (beforeRead && beforeRead.uploadPending) {
@@ -181,7 +185,13 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       return { ok: true, submitted: true, imageCount: polled.value };
     },
     async uploadCover(file) {
-      const marked = await act("mark-cover-input");
+      await act("scroll-evidence", { where: "cover" });
+      await act("reveal-cover");
+      let marked = await act("mark-cover-input");
+      if (!marked.ok) {
+        await act("reveal-cover");
+        marked = await act("mark-cover-input");
+      }
       if (!marked.ok) return { ok: false, submitted: false, code: "cover-control-missing", error: marked.error || "cover input not found" };
       if (typeof page.setInputFiles !== "function") {
         return { ok: false, submitted: false, code: "upload-api-missing", error: "setInputFiles is required" };
@@ -191,13 +201,18 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       } catch (error) {
         return { ok: false, submitted: false, code: "upload-failed", error: String(error.message || error) };
       }
-      const confirmed = await act("confirm-cover-crop");
-      if (confirmed && confirmed.forbidden) {
-        return { ok: false, submitted: true, code: "publish-refused", error: confirmed.error || "publish-refused" };
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const confirmed = await act("confirm-cover-crop");
+        if (confirmed && confirmed.forbidden) {
+          return { ok: false, submitted: true, code: "publish-refused", error: confirmed.error || "publish-refused" };
+        }
+        if (confirmed && confirmed.clicked) break;
+        await pause(waitMs);
       }
-      for (let attempt = 0; attempt < uploadAttempts; attempt += 1) {
+      for (let attempt = 0; attempt < coverAttempts; attempt += 1) {
         const read = await readEditor();
         if (read && read.coverApplied) return { ok: true, submitted: true, coverApplied: true };
+        if (attempt === 2 || attempt === 8) await act("confirm-cover-crop");
         await pause(waitMs);
       }
       return { ok: false, submitted: true, code: "upload-timeout", error: "cover preview did not appear before timeout" };
@@ -242,6 +257,30 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       } catch {
         return "";
       }
+    },
+    async captureViews(dir, state) {
+      const shots = [];
+      const top = await this.capture(dir, state);
+      if (top) shots.push(top);
+      await act("scroll-evidence", { where: "end" });
+      const end = await this.capture(dir, `${state}-end`);
+      if (end) shots.push(end);
+      await act("scroll-evidence", { where: "cover" });
+      const cover = await this.capture(dir, `${state}-cover`);
+      if (cover) shots.push(cover);
+      if (dir && page && typeof page.screenshot === "function") {
+        const safe = String(state || "probe").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "probe";
+        const full = path.join(dir, `zhihu-article-${safe}-full.png`);
+        if (path.isAbsolute(full)) {
+          try {
+            const written = await page.screenshot({ path: full, fullPage: true });
+            shots.push(typeof written === "string" && written ? written : full);
+          } catch {
+            // A viewport shot is already recorded when full-page capture is unavailable.
+          }
+        }
+      }
+      return shots;
     },
     async finish() {
       if (finished) return;

@@ -372,6 +372,28 @@ test("a stuck 图片上传中 placeholder is removed and is not a finished image
   assert.equal(after.pageTitle, "写文章 - 知乎");
 });
 
+test("resume can drop a second copy of the lead and open 添加封面 without 发布设置", () => {
+  const lead = "这是一段重复的导语";
+  const first = h("p", {}, [lead]);
+  const second = h("p", {}, [lead]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [first, second]);
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const addCover = h("button", {}, ["添加封面"]);
+  const settings = h("button", {}, ["发布设置"]);
+  createDocument(h("body", {}, [title, body, addCover, settings]), { href: "https://zhuanlan.zhihu.com/p/55/edit", title: "写文章 - 知乎" });
+  const removed = zhihuAct({ op: "remove-duplicate-lead", lead });
+  assert.equal(removed.removed, 1);
+  assert.equal(body.childNodes.includes(first), true);
+  assert.equal(body.childNodes.includes(second), false);
+  const revealed = zhihuAct({ op: "reveal-cover" });
+  assert.equal(revealed.clicked, true);
+  assert.equal(revealed.label, "添加封面");
+  assert.equal(addCover.clicked, 1);
+  assert.equal(settings.clicked, 0);
+  assert.equal(zhihuAct({ op: "scroll-evidence", where: "end" }).where, "end");
+  assert.equal(zhihuAct({ op: "scroll-evidence", where: "cover" }).where, "cover");
+});
+
 test("cover crop confirms 确定 and does not click 发布", () => {
   const confirm = h("button", {}, ["确定"]);
   const publish = h("button", {}, ["发布"]);

@@ -104,6 +104,10 @@ function sessionWith(steps) {
       calls.clear = (calls.clear || 0) + 1;
       return steps.clear ? steps.clear() : { ok: true, cleared: 1 };
     },
+    async removeDuplicateLead() {
+      calls.dedupe = (calls.dedupe || 0) + 1;
+      return { ok: true, removed: 0 };
+    },
     async uploadBodyImage() {
       calls.upload += 1;
       return steps.upload ? steps.upload() : { ok: true, submitted: true, imageCount: 1 };
@@ -883,6 +887,45 @@ test("an unverified receipt reopens its draft and does not open /write", async (
   assert.equal(pending.calls.clear, 1);
   assert.equal(pending.calls.upload, 0);
   assert.equal(pending.calls.paste, 0);
+
+  const coverDir = dirs().receiptDir;
+  createReceiptStore().write(coverDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const coverSession = sessionWith({
+    probes: [home(), editor({
+      draftId: "55",
+      blank: false,
+      title: "示例标题",
+      text: "一段说明 小节 第一点",
+      headings: [{ level: 2, text: "小节" }],
+      coverApplied: false,
+      url: "https://zhuanlan.zhihu.com/p/55/edit",
+      pageTitle: "写文章 - 知乎",
+    })],
+    cover: () => ({ ok: false, submitted: true, code: "upload-timeout", coverApplied: false }),
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => readback({ draftId: "55", coverApplied: false, imageCount: 0 }),
+  });
+  const coverTimeout = await executeSave({
+    saveDraft: true,
+    receiptDir: coverDir,
+    screenshotDir: dirs().screenshotDir,
+    article: article({ cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 20 } }),
+  }, { browser: browserFor(coverSession) });
+  assert.equal(coverTimeout.error, "upload-timeout");
+  assert.equal(coverTimeout.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(coverTimeout.pageTitle, "写文章 - 知乎");
+  assert.equal(coverTimeout.readback.titleOk, true);
+  assert.equal(coverTimeout.readback.coverOk, false);
+  assert.equal(coverTimeout.observed.draftId, "55");
+  assert.equal(coverSession.calls.paste, 0);
+  assert.equal(coverSession.calls.upload, 0);
+  assert.equal(coverSession.calls.cover, 1);
 
   const emptyDir = dirs().receiptDir;
   createReceiptStore().write(emptyDir, {

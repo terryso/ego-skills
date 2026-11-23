@@ -82,7 +82,7 @@ test("upload and autosave timeouts do not submit twice", async () => {
   const built = editorPage();
   const session = createZhihuSession({
     ...taskWith(built.page),
-    timings: { waitMs: 0, uploadAttempts: 1, autosaveAttempts: 1 },
+    timings: { waitMs: 0, uploadAttempts: 1, coverAttempts: 1, autosaveAttempts: 1 },
   });
   const image = await session.uploadBodyImage("/absolute/path/to/image.png");
   assert.equal(image.ok, false);
@@ -177,6 +177,10 @@ test("missing browser APIs and evaluate failures stay fail-closed", async () => 
   };
   const written = await shots.capture(dir, "image-control-ambiguous");
   assert.match(written, /zhihu-article-image-control-ambiguous\.png/);
+  const views = await shots.captureViews(dir, "upload-timeout");
+  assert.ok(views.some((file) => file.endsWith("zhihu-article-upload-timeout-end.png")));
+  assert.ok(views.some((file) => file.endsWith("zhihu-article-upload-timeout-cover.png")));
+  assert.ok(views.some((file) => file.endsWith("zhihu-article-upload-timeout-full.png")));
   assert.equal(fs.existsSync(written), true);
   assert.equal(seen[0].type, undefined);
   assert.equal(path.isAbsolute(seen[0].path), true);
