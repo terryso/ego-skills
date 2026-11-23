@@ -2,7 +2,9 @@
 
 Unit tests do not open Zhihu and do not prove this plan. Do not treat a green `npm test` as a live pass.
 
-No live browser run was done for this change. The items below are the owner's checks. Browser layout, selectors, paste formatting, and image persistence stay **unverified** until those checks are recorded.
+Unit fixtures do not prove the live homepage. Browser layout, selectors, paste formatting, and image persistence stay **unverified** until a later owner run records them.
+
+A logged-in Pro homepage previously made `check-login` exit `4` with `ambiguous-account` because recommendation-feed `/people/` labels were treated as the signed-in user. Those labels are no longer account candidates. Re-run `check-login` and record `reason`, `accounts`, and `identityVisible`. `accounts` must not list feed authors. If the header still has no unique nickname, the honest result is exit `4`, `reason: identity-not-visible`, and that is **not** a pass. Do not satisfy `--expect-account` with a feed author name.
 
 ## Before any draft write
 
@@ -21,7 +23,8 @@ Confirm:
 
 - preview exits `0`, `state` is `not-started`, and `publishPermitted` is false
 - a logged-out Ego exits `2` with `how_to_login`
-- a mismatched `--expect-account` exits `2`
+- a mismatched `--expect-account` exits `2` only when the header identity name is different
+- a logged-in header with no readable name exits `4` with `identity-not-visible`, not `ambiguous-account`
 - `check-login` does not land on `/write`
 
 Optional read-only look, still without `--save-draft`: in the same Ego window, open `https://zhuanlan.zhihu.com/write` by hand and record whether the title hint, the body, 发布, 邀请预览, 已保存, and any 保存草稿 button match `references/editor.md`. Do not click 发布. If the only save affordance is 发布, stop. This skill will not click it. Record that publishing remains unimplemented.

@@ -37,13 +37,13 @@ node scripts/check-login.mjs
 node scripts/check-login.mjs --expect-account "示例作者"
 ```
 
-`check-login` 只打开 `https://www.zhihu.com/`，不打开写文章页。看不到唯一的可见账号名就失败，不会猜。`--expect-account` 对不上也失败。登录过期同样失败。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
+`check-login` 只打开 `https://www.zhihu.com/`，不打开写文章页。账号名只从顶栏身份控件读取（`header`、`banner`，或 `AppHeader` 里的个人主页入口）。推荐流和其他 `/people/` 作者链接不算登录身份。顶栏能读出唯一名字时，`--expect-account` 只和这个名字比较。已经登录但顶栏没有唯一名字时，原因是 `identity-not-visible`，退出码 `4`，不会把信息流作者报成 `ambiguous-account`。登录过期同样失败。不要代填密码，不要粘贴 Cookie，不要抄 token，不要自动登录。
 
 | 退出码 | 含义 | Agent 做什么 |
 |--------|------|----------------|
 | `0` | 已登录，且只看到一个匹配的账号 | 把 `login_tip` 告诉用户 |
 | `2` | 未登录、登录过期、账号不符，或没有 `ego-browser` | 展示 `how_to_login`，**停** |
-| `4` | 看到多个账号，或看不出是哪一个 | **停**。不要猜 |
+| `4` | 顶栏身份控件有多个名字，或已登录但读不到唯一名字（`identity-not-visible`） | **停**。不要猜，也不要用信息流作者凑名字 |
 | `3` | 草稿计划已打印，没有写入 | 把计划给人看。没有 `--save-draft` 不打开编辑器 |
 | `1` | 参数、素材或浏览器错误 | 报告 JSON `error`，不要假装已保存 |
 

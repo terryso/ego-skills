@@ -159,7 +159,8 @@ test("check-login stays on the home page and fails closed", async () => {
   assert.equal(denied.login_required, true);
 
   const unnamed = await executeCheck({}, { browser: browserFor(sessionWith({ probes: [home({ loggedIn: true, accounts: [] })] })) });
-  assert.equal(unnamed.reason, "unidentified-account");
+  assert.equal(unnamed.reason, "identity-not-visible");
+  assert.equal(unnamed.identityVisible, false);
   assert.equal(unnamed.exitCode, 4);
 
   const many = await executeCheck({}, { browser: browserFor(sessionWith({ probes: [home({ accounts: ["示例作者", "另一账号"], ambiguous: true })] })) });

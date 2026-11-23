@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { zhihuAct } from "../lib/dom.mjs";
+import { decideAccount } from "../lib/pure.mjs";
 import { createDocument, h } from "./dom-fixture.mjs";
 
 function editorParts() {
@@ -44,17 +45,21 @@ test("probe separates login, article, answer, idea, and comment surfaces", () =>
 
   const nav = h("a", { attrs: { href: "/question/1" } }, ["写回答"]);
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
-  createDocument(h("body", {}, [nav, profile]), { href: "https://www.zhihu.com/" });
+  const header = h("header", { className: "AppHeader" }, [profile, h("a", {}, ["创作中心"])]);
+  createDocument(h("body", {}, [header, nav]), { href: "https://www.zhihu.com/" });
   const home = zhihuAct({ op: "probe" });
   assert.equal(home.surface, "home");
   assert.equal(home.loggedIn, true);
+  assert.equal(home.identityVisible, true);
   assert.deepEqual(home.accounts, ["示例作者"]);
   assert.equal(home.editorReady, false);
 
   const other = h("a", { attrs: { href: "/people/other" } }, ["另一账号"]);
-  createDocument(h("body", {}, [profile, other]), { href: "https://www.zhihu.com/" });
+  const both = h("header", {}, [profile, other]);
+  createDocument(h("body", {}, [both]), { href: "https://www.zhihu.com/" });
   const many = zhihuAct({ op: "probe" });
   assert.equal(many.ambiguous, true);
+  assert.deepEqual(many.accounts, ["示例作者", "另一账号"]);
   assert.equal(many.loggedIn, true);
 
   createDocument(h("body", {}, [h("button", {}, ["登录"])]), { href: "https://www.zhihu.com/" });
@@ -73,6 +78,60 @@ test("probe separates login, article, answer, idea, and comment surfaces", () =>
   assert.equal(zhihuAct({ op: "probe" }).surface, "comment");
   createDocument(h("body", {}, []), { href: "https://example.com/" });
   assert.equal(zhihuAct({ op: "probe" }).surface, "other");
+});
+
+test("homepage feed authors are not the signed-in account", () => {
+  const self = h("a", {
+    attrs: { href: "/people/self", "aria-label": "点击打开 示例作者 的主页" },
+  });
+  const header = h("header", { className: "AppHeader" }, [
+    self,
+    h("a", {}, ["创作中心"]),
+    h("a", {}, ["私信"]),
+    h("a", {}, ["消息"]),
+  ]);
+  const feed = [
+    ["八云的饭团", "/people/a"],
+    ["木寸上春树", "/people/b"],
+    ["新住", "/people/c"],
+    ["求生之路", "/people/d"],
+    ["王小板儿", "/people/e"],
+    ["import 潘多拉", "/people/f"],
+    ["invalid s", "/people/g"],
+    ["牧之野", "/people/h"],
+    ["刘不是", "/people/i"],
+    ["Zpuzzle", "/people/j"],
+    ["冷哲", "/people/k"],
+  ].map(([name, href]) => h("a", { attrs: { href, "aria-label": `点击打开 ${name} 的主页` } }, [name]));
+  createDocument(h("body", {}, [header, h("main", {}, feed)]), {
+    href: "https://www.zhihu.com/",
+    title: "(5 封私信 / 10 条消息) 首页 - 知乎",
+  });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.loggedIn, true);
+  assert.equal(probe.ambiguous, false);
+  assert.equal(probe.identityVisible, true);
+  assert.deepEqual(probe.accounts, ["示例作者"]);
+  assert.equal(decideAccount(probe, "示例作者").reason, "ok");
+  assert.equal(decideAccount(probe, "八云的饭团").reason, "account-mismatch");
+
+  const avatar = h("img", { className: "Avatar", attrs: { alt: "" } });
+  const nameless = h("header", { className: "AppHeader" }, [
+    h("button", {}, [avatar]),
+    h("a", {}, ["创作中心"]),
+    h("a", {}, ["私信"]),
+  ]);
+  createDocument(h("body", {}, [nameless, h("main", {}, feed)]), { href: "https://www.zhihu.com/" });
+  const hidden = zhihuAct({ op: "probe" });
+  assert.equal(hidden.loggedIn, true);
+  assert.equal(hidden.loginWall, false);
+  assert.equal(hidden.ambiguous, false);
+  assert.deepEqual(hidden.accounts, []);
+  const decision = decideAccount(hidden);
+  assert.equal(decision.reason, "identity-not-visible");
+  assert.equal(decision.exitCode, 4);
+  assert.equal(decision.loginRequired, false);
+  assert.equal(decideAccount(hidden, "示例作者").reason, "identity-not-visible");
 });
 
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {

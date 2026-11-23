@@ -15,7 +15,8 @@ function editorPage() {
   const publish = h("button", {}, ["发布"]);
   const badge = h("span", {}, ["已保存"]);
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
-  createDocument(h("body", {}, [profile, title, body, image, cover, draft, publish, badge]), {
+  const header = h("header", { className: "AppHeader" }, [profile, h("a", {}, ["创作中心"])]);
+  createDocument(h("body", {}, [header, title, body, image, cover, draft, publish, badge]), {
     href: "https://zhuanlan.zhihu.com/write",
   });
   const calls = { files: 0, fills: 0, pastes: 0 };

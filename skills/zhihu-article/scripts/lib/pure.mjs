@@ -672,14 +672,15 @@ export function planOf(article) {
 export function decideAccount(probe, expectAccount = "") {
   const accounts = [...new Set((probe && probe.accounts) || [])].map(normalizeText).filter(Boolean);
   const loggedOut = !probe || probe.loginWall || !probe.loggedIn;
+  const identityVisible = accounts.length === 1;
   if (loggedOut) {
-    return { ok: false, exitCode: 2, loginRequired: true, accounts, reason: "logged-out" };
+    return { ok: false, exitCode: 2, loginRequired: true, accounts, identityVisible: false, reason: "logged-out" };
   }
   if (probe.ambiguous || accounts.length > 1) {
-    return { ok: false, exitCode: 4, loginRequired: false, accounts, reason: "ambiguous-account" };
+    return { ok: false, exitCode: 4, loginRequired: false, accounts, identityVisible: false, reason: "ambiguous-account" };
   }
-  if (accounts.length !== 1) {
-    return { ok: false, exitCode: 4, loginRequired: false, accounts, reason: "unidentified-account" };
+  if (!identityVisible) {
+    return { ok: false, exitCode: 4, loginRequired: false, accounts, identityVisible: false, reason: "identity-not-visible" };
   }
   const account = accounts[0];
   const expected = normalizeText(expectAccount);
@@ -690,10 +691,11 @@ export function decideAccount(probe, expectAccount = "") {
       loginRequired: true,
       account,
       accounts,
+      identityVisible: true,
       reason: "account-mismatch",
     };
   }
-  return { ok: true, exitCode: 0, account, accounts, reason: "ok" };
+  return { ok: true, exitCode: 0, account, accounts, identityVisible: true, reason: "ok" };
 }
 
 export function decideAttempt({ saveDraft, receipt, hash }) {

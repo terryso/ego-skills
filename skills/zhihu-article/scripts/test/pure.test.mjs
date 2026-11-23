@@ -128,7 +128,8 @@ test("flags refuse publish consent and keep draft consent separate", () => {
 test("account decisions fail closed", () => {
   assert.equal(decideAccount({ loginWall: true, loggedIn: false, accounts: [] }).reason, "logged-out");
   assert.equal(decideAccount({ loggedIn: true, accounts: ["示例作者", "另一账号"] }).reason, "ambiguous-account");
-  assert.equal(decideAccount({ loggedIn: true, accounts: [] }).reason, "unidentified-account");
+  assert.equal(decideAccount({ loggedIn: true, accounts: [] }).reason, "identity-not-visible");
+  assert.equal(decideAccount({ loggedIn: true, accounts: [] }).identityVisible, false);
   assert.equal(decideAccount({ loggedIn: true, accounts: ["示例作者"] }, "另一账号").reason, "account-mismatch");
   assert.equal(decideAccount({ loggedIn: true, accounts: ["示例作者"] }, "示例作者").account, "示例作者");
   assert.equal(decideAccount(null).exitCode, 2);

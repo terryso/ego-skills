@@ -39,6 +39,7 @@ function accountFailure(command, decision, article) {
     login_required: Boolean(decision.loginRequired),
     account: decision.account || "",
     accounts: decision.accounts || [],
+    identityVisible: Boolean(decision.identityVisible),
     reason: decision.reason,
     error: decision.reason,
     plan: article ? planOf(article) : undefined,
@@ -247,6 +248,7 @@ export async function executeCheck(config, deps) {
       state: "not-started",
       account: account.account,
       accounts: account.accounts,
+      identityVisible: Boolean(account.identityVisible),
       ...loginTip(account.account),
     });
   } catch (error) {

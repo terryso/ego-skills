@@ -202,19 +202,70 @@ export function zhihuAct(payload) {
     return "";
   }
 
-  function accountNames() {
+  function insideMain(el) {
+    let current = el;
+    while (current) {
+      if (current.tagName === "MAIN") return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function isIdentityRoot(el) {
+    if (!el || insideMain(el)) return false;
+    if (el.tagName === "HEADER") return true;
+    if (attr(el, "role") === "banner") return true;
+    return /(?:^|\s)AppHeader(?:\s|$|-)/.test(String(el.className || ""));
+  }
+
+  function identityRoots() {
+    const found = qsaAny(["header", "nav", "div"]).filter(isIdentityRoot);
+    return found.filter((el) => !found.some((other) => other !== el && contains(other, el)));
+  }
+
+  function isPersonName(value) {
+    const text = normalize(value);
+    if (!text || [...text].length > 32) return false;
+    if (/登录|注册|首页|消息|私信|创作|直答|搜索|草稿|推荐|热榜/.test(text)) return false;
+    if (/点击打开|的主页|阅读全文|写回答|写文章|发想法/.test(text)) return false;
+    return true;
+  }
+
+  function nameFromControl(el) {
+    const aria = normalize(attr(el, "aria-label"));
+    const opened = aria.match(/^点击打开\s*(.+?)\s*的主页$/);
+    if (opened && isPersonName(opened[1])) return opened[1];
+    const alt = normalize(attr(el, "alt"));
+    if (isPersonName(alt)) return alt;
+    const href = attr(el, "href") || attr(el, "data-href");
+    if (!/\/people\//.test(href)) return "";
+    const text = ownLabel(el);
+    if (isPersonName(text)) return text;
+    return "";
+  }
+
+  function accountNames(roots) {
     const names = [];
-    for (const el of qsaAny(["a", "button", "img"])) {
-      if (!shown(el)) continue;
-      const href = attr(el, "href");
-      const label = normalize(attr(el, "aria-label") || attr(el, "alt") || ownLabel(el));
-      const profile = /\/people\//.test(href) || /\/people\//.test(attr(el, "data-href"));
-      if (!profile || !label) continue;
-      if (/登录|注册|首页|消息|私信|创作/.test(label)) continue;
-      if ([...label].length > 32) continue;
-      names.push(label);
+    for (const root of roots) {
+      for (const el of qsaAny(["a", "button", "img"], root)) {
+        if (!shown(el) || insideMain(el)) continue;
+        const name = nameFromControl(el);
+        if (name) names.push(name);
+      }
     }
     return [...new Set(names)];
+  }
+
+  function loggedInChrome(roots) {
+    for (const root of roots) {
+      for (const el of qsaAny(["a", "button", "img"], root)) {
+        if (!shown(el) || insideMain(el)) continue;
+        const label = normalize(attr(el, "aria-label") || attr(el, "alt") || ownLabel(el));
+        if (label === "创作中心" || label === "私信" || label === "消息" || label.startsWith("创作中心")) return true;
+        if (el.tagName === "IMG" && /avatar|Avatar|profile/i.test(`${el.className || ""} ${label}`)) return true;
+      }
+    }
+    return false;
   }
 
   function surfaceOf(url, title, body) {
@@ -305,9 +356,11 @@ export function zhihuAct(payload) {
       ...draftIdsIn(url),
       ...qsaAny(["a"]).map((el) => attr(el, "href")).flatMap((href) => draftIdsIn(href)),
     ])];
-    const accounts = accountNames();
+    const roots = identityRoots();
+    const accounts = accountNames(roots);
+    const chrome = loggedInChrome(roots);
     const loginControl = visibleButtons().some((el) => /^(登录|注册|登录\/注册)$/.test(buttonLabel(el)));
-    const loginWall = surface === "signin" || (accounts.length === 0 && loginControl);
+    const loginWall = surface === "signin" || (accounts.length === 0 && !chrome && loginControl);
     const snap = body ? editorSnapshot(body) : { text: "", headings: [], listItems: [], hrefs: [], imageCount: 0 };
     const currentTitle = titleValue(title);
     const badge = autosaveBadge(body);
@@ -315,8 +368,9 @@ export function zhihuAct(payload) {
       url: redact(url),
       surface,
       loginWall,
-      loggedIn: !loginWall && accounts.length >= 1,
+      loggedIn: !loginWall && (accounts.length >= 1 || chrome),
       accounts,
+      identityVisible: accounts.length === 1,
       ambiguous: accounts.length > 1,
       editorReady: surface === "article" && Boolean(title && body),
       bodyAmbiguous: bodies.length > 1,
