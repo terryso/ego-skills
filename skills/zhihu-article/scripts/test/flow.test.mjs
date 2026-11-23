@@ -108,6 +108,14 @@ function sessionWith(steps) {
       calls.dedupe = (calls.dedupe || 0) + 1;
       return { ok: true, removed: 0 };
     },
+    async clearBody(input) {
+      calls.clearBody = (calls.clearBody || 0) + 1;
+      return steps.clearBody ? steps.clearBody(input) : { ok: false, mutated: false, error: "selection-unverified" };
+    },
+    async restorePlainText(text) {
+      calls.restore = (calls.restore || 0) + 1;
+      return steps.restore ? steps.restore(text) : { ok: true, mutated: true };
+    },
     async uploadBodyImage() {
       calls.upload += 1;
       return steps.upload ? steps.upload() : { ok: true, submitted: true, imageCount: 1 };
@@ -744,6 +752,100 @@ test("an ambiguous body image input records the page and does not publish", asyn
   assert.equal(closed.mutation, "none");
   assert.equal(stuck.calls.upload, 0);
   assert.equal(stuck.calls.capture, 1);
+});
+
+test("repair replaces a duplicated body only after the selection matches", async () => {
+  const dir = dirs().receiptDir;
+  createReceiptStore().write(dir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    account: "示例作者",
+  });
+  const duplicated = editor({
+    draftId: "55",
+    blank: false,
+    title: "示例标题",
+    text: "一段说明 一段说明 小节 第一点 链接",
+    headings: [{ level: 2, text: "小节" }, { level: 2, text: "小节" }],
+    listItems: ["第一点", "第一点"],
+    hrefs: ["https://example.com/docs"],
+    url: "https://zhuanlan.zhihu.com/p/55/edit",
+    pageTitle: "写文章 - 知乎",
+    autosaveLabel: "刚刚 · 草稿",
+  });
+  const mismatch = sessionWith({
+    probes: [home(), duplicated],
+    clearBody: () => ({ ok: false, mutated: false, error: "selection-mismatch" }),
+  });
+  const refused = await executeSave({
+    repairDraft: true,
+    receiptDir: dir,
+    article: article(),
+  }, { browser: browserFor(mismatch) });
+  assert.equal(refused.error, "selection-mismatch");
+  assert.equal(refused.mutation, "none");
+  assert.equal(mismatch.calls.paste, 0);
+  assert.equal(mismatch.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
+
+  const partialDir = dirs().receiptDir;
+  createReceiptStore().write(partialDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const partial = sessionWith({
+    probes: [home(), duplicated],
+    clearBody: () => ({ ok: true, mutated: true }),
+    read: () => readback({
+      draftId: "55",
+      text: "一段说明 一段说明 小节 第一点 链接",
+      headings: [{ level: 2, text: "小节" }, { level: 2, text: "小节" }],
+      listItems: ["第一点", "第一点"],
+    }),
+  });
+  const rolled = await executeSave({
+    repairDraft: true,
+    receiptDir: partialDir,
+    article: article(),
+  }, { browser: browserFor(partial) });
+  assert.equal(rolled.error, "repair-rolled-back");
+  assert.equal(rolled.mutation, "unknown");
+  assert.equal(partial.calls.paste, 1);
+  assert.equal(partial.calls.restore, 1);
+  assert.equal(partial.calls.upload, 0);
+
+  const replacedDir = dirs().receiptDir;
+  createReceiptStore().write(replacedDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const replaced = sessionWith({
+    probes: [home(), duplicated],
+    clearBody: () => ({ ok: true, mutated: true }),
+    read: () => readback({ draftId: "55", autosaveLabel: "刚刚 · 草稿" }),
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+  });
+  const done = await executeSave({
+    repairDraft: true,
+    receiptDir: replacedDir,
+    article: article(),
+  }, { browser: browserFor(replaced) });
+  assert.equal(done.state, "draft-saved");
+  assert.equal(done.mutation, "keyboard-replace");
+  assert.equal(done.draftUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(replaced.calls.paste, 1);
+  assert.equal(replaced.calls.upload, 0);
+  assert.equal(replaced.calls.cover, 0);
+  assert.equal(replaced.calls.restore || 0, 0);
+  assert.equal(replaced.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
 });
 
 test("save-draft does not reopen an unverified receipt", async () => {

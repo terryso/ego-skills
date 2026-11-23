@@ -78,6 +78,35 @@ test("session fills, pastes, and clicks draft save once", async () => {
   assert.deepEqual(wrapped.finished, [{ keep: [] }]);
 });
 
+test("clearBody deletes only a selection that matches the body", async () => {
+  const built = editorPage();
+  built.page.focus = async () => {};
+  built.page.keyboard.press = async (chord) => {
+    built.calls.presses = built.calls.presses || [];
+    built.calls.presses.push(chord);
+    if (chord === "Backspace") built.body.text = "";
+  };
+  globalThis.getSelection = () => ({
+    toString: () => "一段说明",
+    anchorNode: built.body,
+    isCollapsed: false,
+  });
+  try {
+    const session = createZhihuSession({ ...taskWith(built.page), timings: { waitMs: 0 } });
+    const cleared = await session.clearBody({ expectedText: "一段说明", title: "" });
+    assert.equal(cleared.ok, true);
+    assert.deepEqual(built.calls.presses, ["ControlOrMeta+a", "Backspace"]);
+    built.body.text = "一段说明";
+    const mismatch = await session.clearBody({ expectedText: "别的正文", title: "" });
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.mutated, false);
+    assert.equal(mismatch.error, "selection-mismatch");
+    assert.deepEqual(built.calls.presses, ["ControlOrMeta+a", "Backspace", "ControlOrMeta+a"]);
+  } finally {
+    delete globalThis.getSelection;
+  }
+});
+
 test("upload and autosave timeouts do not submit twice", async () => {
   const built = editorPage();
   const session = createZhihuSession({

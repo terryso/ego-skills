@@ -22,7 +22,7 @@ export const USAGE = `Usage:
       [--title TEXT] [--cover /absolute/path/to/cover.png] [--asset-root /absolute/path/to/assets] [--json]
   node scripts/save-draft.mjs (--markdown /absolute/path/to/article.md | --text TEXT | --text-file /absolute/path/to/body.txt)
       [--title TEXT] [--cover /absolute/path/to/cover.png] [--asset-root /absolute/path/to/assets]
-      [--expect-account NAME] [--save-draft | --verify-draft] [--json]
+      [--expect-account NAME] [--save-draft | --verify-draft | --repair-draft] [--json]
       [--receipt-dir /absolute/path/to/receipts]
       [--screenshot-dir /absolute/path/to/screenshots]
   node scripts/cleanup.mjs [--json]
@@ -30,6 +30,7 @@ export const USAGE = `Usage:
 preview and save-draft without --save-draft or --verify-draft are offline. They do not open a browser and do not write a draft.
 --save-draft consents to one new article draft. It does not reopen an unverified hash and it does not permit public publishing.
 --verify-draft reopens the receipt's existing edit URL and only reads it. It does not paste, upload, or delete.
+--repair-draft reopens that same URL and may replace a duplicated body with one keyboard selection. It does not open /write.
 --publish and --yes are refused. Public publishing is not implemented.
 The task space is always closed. --keep is not supported.
 `;
@@ -114,6 +115,7 @@ function emptyArgs() {
     json: false,
     saveDraft: false,
     verifyDraft: false,
+    repairDraft: false,
     markdown: "",
     title: "",
     text: "",
@@ -152,6 +154,12 @@ export function parseArgs(argv, command) {
     if (token === "--verify-draft") {
       if (command !== "save") throw new Error("--verify-draft is only valid for save-draft");
       out.verifyDraft = true;
+      index += 1;
+      continue;
+    }
+    if (token === "--repair-draft") {
+      if (command !== "save") throw new Error("--repair-draft is only valid for save-draft");
+      out.repairDraft = true;
       index += 1;
       continue;
     }
@@ -211,8 +219,9 @@ export function parsePreviewArgs(argv) {
 
 export function parseSaveArgs(argv) {
   const out = parseArgs(argv, "save");
-  if (out.saveDraft && out.verifyDraft) {
-    throw new Error("--verify-draft is read-only and cannot be combined with --save-draft");
+  const modes = [out.saveDraft, out.verifyDraft, out.repairDraft].filter(Boolean).length;
+  if (modes > 1) {
+    throw new Error("--save-draft, --verify-draft, and --repair-draft are separate commands");
   }
   return out;
 }
@@ -774,9 +783,31 @@ export function decideAccount(probe, expectAccount = "") {
   return { ok: true, exitCode: 0, account, accounts, identityVisible: true, reason: "ok" };
 }
 
-export function decideAttempt({ saveDraft, verifyDraft = false, receipt, hash }) {
+export function decideAttempt({ saveDraft, verifyDraft = false, repairDraft = false, receipt, hash }) {
   const same = receipt && receipt.hash === hash;
   const editable = same && draftEditUrl(receipt.draftId);
+  if (repairDraft) {
+    if (editable) {
+      return {
+        action: "repair-draft",
+        repair: true,
+        save: false,
+        exitCode: 0,
+        state: receipt.state || "unverified",
+        consent: "repair-draft",
+        receipt,
+      };
+    }
+    return {
+      action: "repair-unavailable",
+      save: false,
+      exitCode: 4,
+      state: same ? receipt.state : "not-started",
+      consent: "repair-draft",
+      error: "repair-draft-required",
+      receipt: same ? receipt : null,
+    };
+  }
   if (verifyDraft) {
     if (editable) {
       return {

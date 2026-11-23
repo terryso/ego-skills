@@ -572,3 +572,39 @@ test("ambiguous or missing editor controls fail closed", () => {
   createDocument(h("body", {}, [title, one, hiddenDraft, visible]), { href: "https://zhuanlan.zhihu.com/write" });
   assert.equal(zhihuAct({ op: "mark-draft-save" }).label, "存草稿");
 });
+
+test("readback walks Draft blocks under a wrapper and fingerprints images without query secrets", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const wide = h("img", { attrs: { src: "https://pic-private.zhihu.com/a.png?token=secret" } });
+  wide.naturalWidth = 800;
+  wide.naturalHeight = 500;
+  const narrow = h("img", { attrs: { src: "https://pic-private.zhihu.com/b.png?token=other" } });
+  narrow.naturalWidth = 40;
+  narrow.naturalHeight = 40;
+  function block(offset, tag, text, extra) {
+    const kids = [h(tag, {}, [text])];
+    if (extra) kids.push(extra);
+    return h("div", { attrs: { "data-block": "true", "data-offset-key": offset } }, kids);
+  }
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [
+    h("div", { className: "data-contents" }, [
+      block("k1", "p", "这是导语"),
+      block("k2", "h2", "排版检查", wide),
+      block("k3", "p", "别的段落", narrow),
+    ]),
+  ]);
+  createDocument(h("body", {}, [title, body]), { href: "https://zhuanlan.zhihu.com/p/55/edit" });
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.blocks.length, 3);
+  assert.deepEqual(read.blocks.map((item) => item.tag), ["P", "H2", "P"]);
+  assert.deepEqual(read.blocks.map((item) => item.offsetKey), ["k1", "k2", "k3"]);
+  assert.equal(read.blocks[0].text.includes("这是导语"), true);
+  assert.equal(read.imageCount, 2);
+  assert.equal(read.imageInventory.some((item) => String(item.path || item.fingerprint || "").includes("token")), false);
+  assert.notEqual(read.imageInventory[0].fingerprint, read.imageInventory[1].fingerprint);
+  assert.equal(read.imageInventory[0].blockIndex, 1);
+  assert.equal(read.imageInventory[1].blockIndex, 2);
+  assert.equal(read.imageInventory[0].natural.width, 800);
+  assert.equal(read.imageInventory[1].natural.width, 40);
+  assert.equal(read.imageInventory[0].visible, true);
+});

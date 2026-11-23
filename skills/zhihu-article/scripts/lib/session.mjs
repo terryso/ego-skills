@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { zhihuAct } from "./dom.mjs";
-import { normalizeText } from "./pure.mjs";
+import { compactText, normalizeText } from "./pure.mjs";
 
 export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {}) {
   if (!task || !page) throw new Error("createZhihuSession requires task and page");
@@ -142,6 +142,58 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       }
       await page.keyboard.paste({ text: text || "", html: html || "" });
       return { ok: true };
+    },
+    async clearBody({ expectedText = "", title = "" } = {}) {
+      const marked = await act("mark-body");
+      if (!marked.ok) return { ok: false, mutated: false, error: marked.error || "article body not found" };
+      if (typeof page.focus === "function") {
+        try {
+          await page.focus(marked.selector);
+        } catch (error) {
+          return { ok: false, mutated: false, error: `body focus failed: ${error.message || error}` };
+        }
+      } else {
+        const focused = await act("focus-body");
+        if (!focused.ok) return { ok: false, mutated: false, error: focused.error || "body focus failed" };
+      }
+      if (!page.keyboard || typeof page.keyboard.press !== "function") {
+        return { ok: false, mutated: false, error: "keyboard-press-missing" };
+      }
+      await page.keyboard.press("ControlOrMeta+a");
+      const selected = await act("read-selection");
+      if (!selected.ok || !selected.inside || selected.collapsed) {
+        return { ok: false, mutated: false, error: "selection-unverified" };
+      }
+      if (title && normalizeText(selected.title) !== normalizeText(title)) {
+        return { ok: false, mutated: false, error: "title-changed" };
+      }
+      if (compactText(selected.text) !== compactText(expectedText)) {
+        return { ok: false, mutated: false, error: "selection-mismatch" };
+      }
+      await page.keyboard.press("Backspace");
+      const read = await readEditor();
+      if (!read || read.ok === false) return { ok: false, mutated: true, error: "read-failed" };
+      if (title && normalizeText(read.title) !== normalizeText(title)) {
+        return { ok: false, mutated: true, error: "title-changed" };
+      }
+      const left = compactText(read.text);
+      if (left && left !== compactText("请输入正文")) {
+        return { ok: false, mutated: true, error: "body-not-cleared" };
+      }
+      return { ok: true, mutated: true };
+    },
+    async restorePlainText(text) {
+      const read = await readEditor();
+      if (!read || read.ok === false) return { ok: false, mutated: true, error: "read-failed" };
+      if (compactText(read.text)) {
+        const cleared = await this.clearBody({ expectedText: read.text, title: read.title || "" });
+        if (!cleared.ok) return { ok: false, mutated: Boolean(cleared.mutated), error: cleared.error || "rollback-unverified" };
+      }
+      if (!page.keyboard || typeof page.keyboard.paste !== "function") {
+        return { ok: false, mutated: true, error: "keyboard.paste is required" };
+      }
+      await page.keyboard.paste({ text: text || "", html: "" });
+      return { ok: true, mutated: true };
     },
     async replaceBody() {
       // selectNodeContents plus paste appended on the live draft. A DOM range

@@ -58,6 +58,7 @@ node scripts/check-login.mjs --expect-account "示例作者"
 | `preview` | 否。退出码 `0` 只表示本地计划有效，`state` 为 `not-started` |
 | `save-draft` 不加 `--save-draft` 或 `--verify-draft` | 否。退出码 `3` |
 | `save-draft --verify-draft` | 否。只重新打开回执里的草稿地址并读取 |
+| `save-draft --repair-draft` | 只在正文重复、选区与正文一致、并且删除后正文已空时替换一次 |
 | `save-draft --save-draft` | 只同意保存**一篇新的文章草稿**。已有未验证回执时不打开浏览器 |
 | `--publish`、`--yes` | 直接拒绝。它们不是草稿同意，也不是发布许可 |
 
@@ -90,6 +91,13 @@ node skills/zhihu-article/scripts/save-draft.mjs \
   --cover /absolute/path/to/cover.png \
   --expect-account "示例作者" \
   --verify-draft --json \
+  --receipt-dir /absolute/path/to/receipts \
+  --screenshot-dir /absolute/path/to/screenshots
+node skills/zhihu-article/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md \
+  --cover /absolute/path/to/cover.png \
+  --expect-account "示例作者" \
+  --repair-draft --json \
   --receipt-dir /absolute/path/to/receipts \
   --screenshot-dir /absolute/path/to/screenshots
 node skills/zhihu-article/scripts/cleanup.mjs

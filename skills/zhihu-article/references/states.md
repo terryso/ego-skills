@@ -11,6 +11,7 @@
 | `preview` | `none` | no | `0` when the local plan is valid |
 | `save-draft` without `--save-draft` or `--verify-draft` | `none` | no | `3` |
 | `save-draft --verify-draft` | `verify-draft` | yes, read only | `0` only when the existing draft already matches |
+| `save-draft --repair-draft` | `repair-draft` | yes, one bounded replace of a duplicated body | `0` only when the reopened draft matches |
 | `save-draft --save-draft` | `save-draft` | yes, after login, and only when this hash has no unverified receipt | `0` only when `state` is `draft-saved` |
 
 Invalid Markdown, a malformed image, or a refused flag never starts the browser.

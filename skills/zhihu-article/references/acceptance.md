@@ -63,16 +63,26 @@ This change does not edit that draft. The live block structure and the real cove
 
 After, once a later round has a visible editor event that replaces the body and a same-id reopen matches: one title, one copy of the lead, the heading and list shape once, exactly two completed body images, an applied cover outside those images, a saved stamp, and the same draft id. A duplicated body is still a failure.
 
-The next Pro command is read-only. It records `imageInventory` and `blocks` so a later repair can see which third image is the cover panel and which block is the flattened heading.
+Round 13 on `3bb2ccc` stayed `duplicate-content`. All three images were `role: body` on `pic-private.zhihu.com` with the same `ImageDelete-Wrapper` ancestors, so the third image is not a cover thumbnail. The block list was one wrapper `DIV` because only direct children were read. Image records now include a path without the query string, a fingerprint, rect, natural size, visibility, and the parent `data-block` index. Blocks are the `data-block` nodes under that wrapper.
+
+The next Pro command is one `--repair-draft`, then one `--verify-draft` if the repair returns. Copy the receipt into a new directory. Do not move it. Do not pass `--save-draft`. Do not open `/write`. Stop if the account, draft id, or title does not match. The repair presses `ControlOrMeta+a` and `Backspace` only when the selection text is the body, and it pastes only after that body is empty. It does not run when the body is not duplicated. A bad paste is rolled back once. Cover upload uses the existing file input only after that single body is in place.
 
 ```bash
 node skills/zhihu-article/scripts/save-draft.mjs \
   --markdown /absolute/path/to/article.md \
   --cover /absolute/path/to/cover.png \
   --expect-account "BMAD实验室" \
+  --repair-draft --json \
+  --receipt-dir /absolute/path/to/receipts/round-repair \
+  --screenshot-dir /absolute/path/to/screenshots/round-repair
+
+node skills/zhihu-article/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md \
+  --cover /absolute/path/to/cover.png \
+  --expect-account "BMAD实验室" \
   --verify-draft --json \
-  --receipt-dir /absolute/path/to/receipts \
-  --screenshot-dir /absolute/path/to/screenshots
+  --receipt-dir /absolute/path/to/receipts/round-repair \
+  --screenshot-dir /absolute/path/to/screenshots/round-verify
 ```
 
 Copy the existing receipt for that hash into `--receipt-dir` first. Do not pass `--save-draft` on this hash. Do not open `/write`. Keep the previous receipt file. A mismatch of account, id, or title stops before any edit. There is no edit on this command.

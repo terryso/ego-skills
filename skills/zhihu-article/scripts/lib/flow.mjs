@@ -379,11 +379,13 @@ export async function executeSave(config, deps) {
   const decision = decideAttempt({
     saveDraft: Boolean(config.saveDraft),
     verifyDraft: Boolean(config.verifyDraft),
+    repairDraft: Boolean(config.repairDraft),
     receipt: existing,
     hash: article.hash,
   });
   const plan = planOf(article);
   if (decision.resume) return resumeDraft(config, deps, decision, article, store, now, plan);
+  if (decision.repair) return repairDraft(config, deps, decision, article, store, now, plan);
   if (!decision.save) {
     const prior = decision.receipt || {};
     return result(config.verifyDraft ? "verify-draft" : "save-draft", {
@@ -531,6 +533,263 @@ export async function executeSave(config, deps) {
       retryable: true,
       error: String(error.message || error),
       plan,
+    });
+  } finally {
+    if (session) await session.finish().catch(() => {});
+  }
+}
+
+function textShapeOk(check) {
+  return Boolean(check && check.titleOk && !check.duplicateLead && !check.duplicateShape
+    && check.missing.length === 0 && check.missingHeadings.length === 0
+    && check.missingItems.length === 0 && check.missingHrefs.length === 0 && !check.rawMarkup);
+}
+
+function readbackFields(check, editor) {
+  return {
+    titleOk: Boolean(check.titleOk),
+    imagesOk: Boolean(check.imagesOk),
+    coverOk: Boolean(check.coverOk),
+    duplicateLead: Boolean(check.duplicateLead),
+    duplicateShape: Boolean(check.duplicateShape),
+    uploadPending: Boolean(check.uploadPending),
+    missing: check.missing,
+    missingHeadings: check.missingHeadings,
+    missingItems: check.missingItems,
+    missingHrefs: check.missingHrefs,
+    imageCount: check.imageCount,
+    imageInventory: Array.isArray(editor && editor.imageInventory) ? editor.imageInventory.slice(0, 12) : [],
+    blocks: Array.isArray(editor && editor.blocks) ? editor.blocks.slice(0, 80) : [],
+  };
+}
+
+async function repairDraft(config, deps, decision, article, store, now, plan) {
+  const prior = decision.receipt || {};
+  const draftUrl = draftEditUrl(prior.draftId);
+  const command = "repair-draft";
+  if (!draftUrl) {
+    return result(command, {
+      exitCode: 4,
+      state: prior.state || "unverified",
+      mutation: "none",
+      error: "previous-mutation",
+      draftId: prior.draftId || "",
+      plan,
+    });
+  }
+  let session = null;
+  let editor = null;
+  let mutated = false;
+  try {
+    session = await deps.browser.open({ taskName: TASK_NAME, startUrl: HOME_URL });
+    const home = await session.probe();
+    const account = decideAccount(home, config.expectAccount || "");
+    if (!account.ok) return accountFailure(command, account, article);
+    await session.goto(draftUrl);
+    editor = await probeWrite(session, article);
+    const access = classifyAccess(editor, { openedWrite: true });
+    if (!access.ok) return accessFailure(session, config, article, account, editor, access);
+    const stop = editor.published
+      ? "published-url"
+      : (String(editor.draftId || "") !== String(prior.draftId)
+        ? "draft-id-changed"
+        : (editor.blank || !compactText(editor.text)
+          ? "resume-empty"
+          : (!editorLooksLikeArticle(article, editor) ? "resume-mismatch" : "")));
+    const beforeShot = await captureEvidence(session, config, editor, stop || "repair-before");
+    if (stop) {
+      return result(command, {
+        exitCode: 4,
+        state: "unverified",
+        mutation: "none",
+        action: "repair-draft",
+        error: stop,
+        account: account.account,
+        accounts: account.accounts,
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        ...beforeShot,
+      });
+    }
+    const beforeCheck = validateReadback(article, editor);
+    if (!beforeCheck.duplicateLead && !beforeCheck.duplicateShape) {
+      return result(command, {
+        exitCode: 4,
+        state: "unverified",
+        mutation: "none",
+        consent: "repair-draft",
+        action: "repair-draft",
+        error: "repair-not-duplicated",
+        account: account.account,
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        readback: readbackFields(beforeCheck, editor),
+        evidenceScope: "visible-editor-read",
+        ...beforeShot,
+      });
+    }
+    const beforeText = editor.text || "";
+    const cleared = await session.clearBody({ expectedText: beforeText, title: article.title });
+    if (!cleared || !cleared.ok) {
+      return result(command, {
+        exitCode: 4,
+        state: "unverified",
+        mutation: cleared && cleared.mutated ? "unknown" : "none",
+        consent: "repair-draft",
+        action: "repair-draft",
+        error: (cleared && cleared.error) || "selection-unverified",
+        account: account.account,
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        readback: readbackFields(beforeCheck, editor),
+        evidenceScope: "draft-js-keyboard-sequence",
+        ...beforeShot,
+      });
+    }
+    mutated = true;
+    const groups = coalescePastes(article.segments || []);
+    for (const segment of groups) {
+      if (segment.kind !== "html") continue;
+      const pasted = await session.pasteBody(segment.html, segment.text);
+      if (!pasted || !pasted.ok) {
+        return result(command, {
+          exitCode: 4,
+          state: "unverified",
+          mutation: "unknown",
+          consent: "repair-draft",
+          action: "repair-draft",
+          error: (pasted && pasted.error) || "paste-failed",
+          draftId: prior.draftId,
+          draftUrl,
+          plan,
+          account: account.account,
+          ...beforeShot,
+        });
+      }
+    }
+    const mid = await session.readEditor();
+    const midCheck = validateReadback(article, { ...mid, imageCount: article.imageCount, coverApplied: !article.cover });
+    const identityOk = mid && mid.ok !== false && String(mid.draftId || prior.draftId) === String(prior.draftId)
+      && normalizeText(mid.title) === normalizeText(article.title);
+    if (!identityOk || !textShapeOk(midCheck)) {
+      const rolled = typeof session.restorePlainText === "function"
+        ? await session.restorePlainText(beforeText)
+        : { ok: false, error: "rollback-unavailable" };
+      return result(command, {
+        exitCode: 4,
+        state: "unverified",
+        mutation: "unknown",
+        consent: "repair-draft",
+        action: "repair-draft",
+        error: rolled && rolled.ok ? "repair-rolled-back" : "rollback-unverified",
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        account: account.account,
+        readback: readbackFields(midCheck, mid),
+        ...beforeShot,
+      });
+    }
+    for (const segment of groups) {
+      if (segment.kind !== "image") continue;
+      const uploaded = await session.uploadBodyImage(segment.path);
+      if (!uploaded || !uploaded.ok) {
+        return result(command, {
+          exitCode: 4,
+          state: "unverified",
+          mutation: "unknown",
+          consent: "repair-draft",
+          action: "repair-draft",
+          error: (uploaded && (uploaded.code || uploaded.error)) || "upload-failed",
+          draftId: prior.draftId,
+          draftUrl,
+          plan,
+          account: account.account,
+          ...beforeShot,
+        });
+      }
+    }
+    let coverError = "";
+    if (article.cover && article.cover.path) {
+      const cover = await session.uploadCover(article.cover.path);
+      if (!cover || !cover.ok) coverError = (cover && (cover.code || cover.error)) || "cover-unverified";
+    }
+    const settled = await session.waitForSavedDraft();
+    if (settled && settled.draftId && String(settled.draftId) !== String(prior.draftId)) {
+      return result(command, {
+        exitCode: 4,
+        state: "unverified",
+        mutation: "unknown",
+        error: "draft-id-changed",
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        account: account.account,
+      });
+    }
+    await session.goto(draftUrl);
+    const again = await session.readEditor();
+    const againCheck = validateReadback(article, again);
+    const persisted = !coverError && again && String(again.draftId || "") === String(prior.draftId) && againCheck.ok && again.autosaveLabel;
+    const evidence = await captureEvidence(session, config, again || editor, persisted ? "draft-saved" : "repair-unverified");
+    const body = receiptBody(article, account.account, {
+      state: persisted ? "draft-saved" : "unverified",
+      verified: Boolean(persisted),
+      draftId: prior.draftId,
+      error: persisted ? "" : (coverError || (againCheck.duplicateLead || againCheck.duplicateShape ? "duplicate-content" : (again && again.autosaveLabel ? "readback-mismatch" : "autosave-badge-missing"))),
+    }, {
+      phase: persisted ? "draft-saved" : "repair-unverified",
+      coverApplied: Boolean(again && again.coverApplied),
+      observed: again ? { title: again.title || "", imageCount: again.imageCount, draftId: prior.draftId, excerpt: normalizeText(again.text).slice(0, 80) } : null,
+      readback: readbackFields(againCheck, again),
+      updatedAt: now(),
+    });
+    let receiptError = "";
+    try {
+      store.write(config.receiptDir, body);
+    } catch (error) {
+      receiptError = `cannot write receipt: ${error.message}`;
+    }
+    return result(command, {
+      ok: Boolean(persisted),
+      exitCode: persisted ? 0 : 4,
+      state: persisted ? "draft-saved" : "unverified",
+      verified: Boolean(persisted),
+      mutation: "keyboard-replace",
+      consent: "repair-draft",
+      action: "repair-draft",
+      evidenceScope: "draft-js-keyboard-sequence",
+      account: account.account,
+      accounts: account.accounts,
+      draftId: prior.draftId,
+      draftUrl,
+      error: persisted ? "" : body.error,
+      receiptError,
+      plan,
+      readback: readbackFields(againCheck, again),
+      ...evidence,
+    });
+  } catch (error) {
+    let evidence = { pageUrl: "", pageTitle: "", screenshot: "", screenshots: [] };
+    try {
+      evidence = await captureEvidence(session, config, editor, "repair-threw");
+    } catch {
+      // Evidence stays empty when capture also fails.
+    }
+    return result(command, {
+      exitCode: 4,
+      state: "unverified",
+      mutation: mutated ? "unknown" : "none",
+      consent: "repair-draft",
+      action: "repair-draft",
+      error: String(error.message || error),
+      draftId: prior.draftId,
+      draftUrl,
+      plan,
+      ...evidence,
     });
   } finally {
     if (session) await session.finish().catch(() => {});

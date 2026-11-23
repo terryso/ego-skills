@@ -111,6 +111,7 @@ export async function runCli(kind, argv, deps = {}) {
 
   const runner = { ...(RUNNERS[kind] || { command: "preview", exportName: "" }) };
   if (kind === "save" && args.verifyDraft) runner.command = "verify-draft";
+  if (kind === "save" && args.repairDraft) runner.command = "repair-draft";
   let article = null;
   if (kind === "preview" || kind === "save") {
     const prepared = await io.prepare({ ...args, command: kind, fsImpl: io.fs });
@@ -130,7 +131,7 @@ export async function runCli(kind, argv, deps = {}) {
       return 1;
     }
     article = prepared.article;
-    if (kind === "preview" || (!args.saveDraft && !args.verifyDraft)) {
+    if (kind === "preview" || (!args.saveDraft && !args.verifyDraft && !args.repairDraft)) {
       const summary = offlineSummary(kind, article);
       io.stdout.write(formatResult(summary, { asJson: Boolean(args.json) }));
       return summary.exitCode;
@@ -162,6 +163,7 @@ export async function runCli(kind, argv, deps = {}) {
     command: runner.command,
     saveDraft: Boolean(args.saveDraft),
     verifyDraft: Boolean(args.verifyDraft),
+    repairDraft: Boolean(args.repairDraft),
     expectAccount: args.expectAccount || "",
     receiptDir,
     screenshotDir: args.screenshotDir || "",

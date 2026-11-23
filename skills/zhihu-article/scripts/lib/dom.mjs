@@ -482,9 +482,69 @@ export function zhihuAct(payload) {
     return false;
   }
 
-  function imageRecord(el, editor) {
-    const src = srcOf(el);
+  function sourceFingerprint(src) {
     const located = schemeHost(src);
+    let path = "";
+    try {
+      path = new URL(src, "https://www.zhihu.com").pathname || "";
+    } catch {
+      path = "";
+    }
+    const basis = `${located.scheme}://${located.host}${path}`;
+    let hash = 2166136261;
+    for (let index = 0; index < basis.length; index += 1) {
+      hash ^= basis.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return {
+      scheme: located.scheme,
+      host: located.host,
+      path: path.slice(0, 120),
+      fingerprint: (hash >>> 0).toString(16).padStart(8, "0"),
+    };
+  }
+
+  function boxOf(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function") return { width: 0, height: 0 };
+    const box = el.getBoundingClientRect();
+    return { width: Math.round(box.width || 0), height: Math.round(box.height || 0) };
+  }
+
+  function contentBlockNodes(editor) {
+    const marked = qsa(editor, "[data-block='true']");
+    if (marked.length) return marked.slice(0, 80);
+    const semantic = qsaAny(["h1", "h2", "h3", "p", "li", "figure", "blockquote"], editor);
+    return semantic.filter((el) => !semantic.some((other) => other !== el && contains(other, el))).slice(0, 80);
+  }
+
+  function blockRecord(el) {
+    const nested = /^(H1|H2|H3|P|LI|FIGURE|BLOCKQUOTE)$/.test(String(el.tagName || ""))
+      ? el
+      : qsaAny(["h1", "h2", "h3", "p", "li", "figure", "blockquote"], el)[0];
+    const tagSource = nested || el;
+    return {
+      tag: String(tagSource.tagName || ""),
+      offsetKey: attr(el, "data-offset-key").slice(0, 48),
+      text: normalize(el.innerText || el.textContent).slice(0, 80),
+    };
+  }
+
+  function blockIndexFor(el, blocks) {
+    let current = el;
+    while (current) {
+      if (attr(current, "data-block") === "true") {
+        const key = attr(current, "data-offset-key");
+        const index = blocks.findIndex((block) => block.offsetKey && block.offsetKey === key);
+        return index;
+      }
+      current = current.parentElement;
+    }
+    return -1;
+  }
+
+  function imageRecord(el, editor, blocks) {
+    const src = srcOf(el);
+    const located = sourceFingerprint(src);
     const pending = insidePendingUpload(el);
     const cover = inCoverWidget(el, editor);
     let role = "ignored";
@@ -494,7 +554,7 @@ export function zhihuAct(payload) {
     else if (located.scheme === "http" || located.scheme === "https" || located.scheme === "blob") role = "body";
     const ancestors = [];
     let current = el.parentElement;
-    for (let depth = 0; depth < 5 && current && current !== editor && current.tagName !== "BODY"; depth += 1) {
+    for (let depth = 0; depth < 6 && current && current !== editor && current.tagName !== "BODY"; depth += 1) {
       const cls = String(current.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(".");
       ancestors.push(cls ? `${current.tagName}.${cls}` : String(current.tagName || ""));
       current = current.parentElement;
@@ -503,8 +563,17 @@ export function zhihuAct(payload) {
       role,
       scheme: located.scheme,
       host: located.host,
+      path: located.path,
+      fingerprint: located.fingerprint,
       alt: normalize(attr(el, "alt")).slice(0, 40),
       ancestors,
+      rect: boxOf(el),
+      natural: {
+        width: Number(el.naturalWidth) || 0,
+        height: Number(el.naturalHeight) || 0,
+      },
+      visible: shown(el),
+      blockIndex: blockIndexFor(el, blocks),
     };
   }
 
@@ -519,11 +588,8 @@ export function zhihuAct(payload) {
       const href = attr(el, "href");
       if (/^https?:\/\//i.test(href)) hrefs.push(href);
     }
-    const imageInventory = qsaAny(["img"], editor).map((el) => imageRecord(el, editor));
-    const blocks = elementChildren(editor).slice(0, 60).map((el) => ({
-      tag: String(el.tagName || ""),
-      text: normalize(el.innerText || el.textContent).slice(0, 48),
-    }));
+    const blocks = contentBlockNodes(editor).map(blockRecord);
+    const imageInventory = qsaAny(["img"], editor).map((el) => imageRecord(el, editor, blocks));
     const text = normalize(editor && (editor.innerText || editor.textContent));
     return {
       text,
@@ -713,6 +779,24 @@ export function zhihuAct(payload) {
     if (typeof selection.addRange === "function") selection.addRange(range);
     el.setAttribute("data-zhihu-selected", "1");
     return { ok: true, selected: true };
+  }
+
+  if (op === "read-selection") {
+    const body = qsa(doc, "[data-zhihu-body='1']")[0];
+    const selection = typeof globalThis.getSelection === "function" ? globalThis.getSelection() : null;
+    if (!body || !selection || typeof selection.toString !== "function") {
+      return { ok: false, error: "selection is unavailable" };
+    }
+    const anchor = selection.anchorNode
+      ? (selection.anchorNode.nodeType === 1 ? selection.anchorNode : selection.anchorNode.parentElement)
+      : null;
+    return {
+      ok: true,
+      text: normalize(selection.toString()),
+      inside: Boolean(anchor && contains(body, anchor)),
+      collapsed: Boolean(selection.isCollapsed),
+      title: titleValue(findTitle()),
+    };
   }
 
   if (op === "clear-pending-upload" || op === "remove-duplicate-lead") {
