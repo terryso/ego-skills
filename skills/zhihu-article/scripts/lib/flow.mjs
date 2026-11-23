@@ -10,7 +10,6 @@ import {
   decideAccount,
   decideAttempt,
   draftEditUrl,
-  headingWasFlattened,
   howToLogin,
   loginTip,
   normalizeText,
@@ -539,7 +538,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     const account = decideAccount(home, config.expectAccount || "");
     if (!account.ok) return accountFailure("save-draft", account, article);
     await session.goto(draftUrl);
-    const editor = await probeWrite(session, article);
+    let editor = await probeWrite(session, article);
     const access = classifyAccess(editor, { openedWrite: true });
     if (!access.ok) return accessFailure(session, config, article, account, editor, access);
     const stop = editor.published
@@ -588,23 +587,30 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       observed: null,
       readback: null,
     };
-    if (headingWasFlattened(article, editor)) {
-      if (!await fillBody(session, article, progress, { replace: true })) {
-        const evidence = await captureEvidence(session, config, editor, progress.error);
-        return result("save-draft", {
-          exitCode: 4,
-          state: "unverified",
-          retryable: false,
-          error: progress.error,
-          account: account.account,
-          draftId: progress.draftId,
-          draftUrl,
-          plan,
-          mutation: progress.mediaSubmitted ? "autosave" : "none",
-          ...evidence,
-        });
-      }
+    if (editor.uploadPending && typeof session.clearPendingUpload === "function") {
+      await session.clearPendingUpload();
+      const again = await session.probe();
+      if (again && again.ok !== false) editor = again;
     }
+    if (editor.uploadPending) {
+      const evidence = await captureEvidence(session, config, editor, "upload-pending");
+      return result("save-draft", {
+        exitCode: 4,
+        state: "unverified",
+        retryable: false,
+        error: "upload-pending",
+        action: "resume",
+        account: account.account,
+        accounts: account.accounts,
+        draftId: prior.draftId,
+        draftUrl,
+        plan,
+        mutation: "none",
+        ...evidence,
+      });
+    }
+    // A populated draft already contains the lead and any body images.
+    // Replacing it inserts a second copy and uploads the images again.
     if (article.cover && article.cover.path && !progress.coverApplied) {
       const cover = await session.uploadCover(article.cover.path);
       if (cover && cover.submitted) progress.mediaSubmitted = true;
@@ -676,10 +682,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     } catch (error) {
       receiptError = `cannot write receipt: ${error.message}`;
     }
-    let screenshot = "";
-    if (config.screenshotDir && outcome.state !== "draft-saved" && !progress.loginExpired && typeof session.capture === "function") {
-      screenshot = await session.capture(config.screenshotDir, outcome.state);
-    }
+    const evidence = await captureEvidence(session, config, editor, outcome.error || outcome.state);
     const exitCode = exitFor(outcome, progress);
     return result("save-draft", {
       ok: exitCode === 0,
@@ -696,10 +699,10 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
       draftUrl,
       error: outcome.error || "",
       receiptError,
-      screenshot,
       observed: progress.observed,
       readback: progress.readback,
       plan,
+      ...evidence,
       ...loginTip(account.account),
     });
   } catch (error) {

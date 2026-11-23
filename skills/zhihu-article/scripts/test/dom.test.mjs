@@ -345,6 +345,33 @@ test("a detached toolbar image input is unique and unlabeled file inputs are not
   assert.equal(aiImage.getAttribute("data-zhihu-image"), null);
 });
 
+test("a stuck 图片上传中 placeholder is removed and is not a finished image", () => {
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const pendingImage = h("img", { attrs: { src: "blob:pending" } });
+  const pending = h("div", {}, ["图片上传中", pendingImage]);
+  const done = h("img", { attrs: { src: "https://pic1.zhimg.com/body.png" } });
+  const publish = h("button", {}, ["发布"]);
+  const dismiss = h("button", {}, ["删除"]);
+  const withButton = h("div", {}, ["图片上传中", dismiss, publish]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [
+    h("span", {}, ["正文"]),
+    done,
+    pending,
+  ]);
+  createDocument(h("body", {}, [title, body, withButton]), { href: "https://zhuanlan.zhihu.com/p/55/edit", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.uploadPending, true);
+  assert.equal(probe.imageCount, 1);
+  const cleared = zhihuAct({ op: "clear-pending-upload" });
+  assert.equal(cleared.cleared, 2);
+  assert.equal(dismiss.clicked, 1);
+  assert.equal(publish.clicked, 0);
+  const after = zhihuAct({ op: "probe" });
+  assert.equal(after.uploadPending, false);
+  assert.match(after.url, /\/p\/55\/edit/);
+  assert.equal(after.pageTitle, "写文章 - 知乎");
+});
+
 test("cover crop confirms 确定 and does not click 发布", () => {
   const confirm = h("button", {}, ["确定"]);
   const publish = h("button", {}, ["发布"]);

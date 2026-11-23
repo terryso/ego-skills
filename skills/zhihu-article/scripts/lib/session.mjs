@@ -44,13 +44,20 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
 
   async function pollCount(before, readCount) {
     let last = before;
+    let pending = false;
     for (let attempt = 0; attempt < uploadAttempts; attempt += 1) {
       const read = await readEditor();
+      pending = Boolean(read && read.uploadPending);
       last = readCount(read);
-      if (last >= before + 1) return { ok: true, submitted: true, value: last };
+      if (!pending && last >= before + 1) return { ok: true, submitted: true, value: last };
       await pause(waitMs);
     }
-    return { ok: false, submitted: true, code: "upload-timeout", error: "upload timed out", value: last };
+    const cleared = await act("clear-pending-upload");
+    const again = await readEditor();
+    pending = Boolean(again && again.uploadPending);
+    last = readCount(again);
+    if (!pending && last >= before + 1) return { ok: true, submitted: true, value: last, cleared: cleared && cleared.cleared };
+    return { ok: false, submitted: true, code: "upload-timeout", error: "upload timed out", value: last, pending };
   }
 
   return {
@@ -146,8 +153,18 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       await page.keyboard.paste({ text: text || "", html: html || "" });
       return { ok: true, replaced: true };
     },
+    async clearPendingUpload() {
+      return act("clear-pending-upload");
+    },
     async uploadBodyImage(file) {
-      const beforeRead = await readEditor();
+      let beforeRead = await readEditor();
+      if (beforeRead && beforeRead.uploadPending) {
+        await act("clear-pending-upload");
+        beforeRead = await readEditor();
+        if (beforeRead && beforeRead.uploadPending) {
+          return { ok: false, submitted: false, code: "upload-pending", error: "image upload is still in progress" };
+        }
+      }
       const before = beforeRead && typeof beforeRead.imageCount === "number" ? beforeRead.imageCount : 0;
       const marked = await act("mark-image-input");
       if (!marked.ok) return { ok: false, submitted: false, code: "image-control-missing", error: marked.error || "image input not found" };

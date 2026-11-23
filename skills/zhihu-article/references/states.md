@@ -35,7 +35,7 @@ Invalid Markdown, a malformed image, or a refused flag never starts the browser.
 | `unverified` | false | false | `4`, or `2` when the session expired after content was entered |
 | `draft-saved` | true | false | `0` |
 
-A previous `uploaded` or `unverified` receipt for the same content hash does not open `/write`. If it has a numeric draft id, `--save-draft` reopens `https://zhuanlan.zhihu.com/p/<id>/edit`, checks that the title and lead text are still there, and does not paste a second copy. A heading whose text was glued into the following paragraph is replaced once inside that same draft, then missing body images and the cover are uploaded. A blank editor, a different id, or a title that does not match stops with no edit. A receipt with no draft id stays exit `4` and does not open the editor. A previous verified `draft-saved` receipt returns that id and does not write again.
+A previous `uploaded` or `unverified` receipt for the same content hash does not open `/write`. If it has a numeric draft id, `--save-draft` reopens `https://zhuanlan.zhihu.com/p/<id>/edit` and checks that the title and lead text are still there. It does not paste the article again and does not upload body images that are already in the draft. A visible `图片上传中` placeholder is cleared when its text is exactly that phrase; 发布 is not used to dismiss it. The cover is uploaded only when it is still missing. A blank editor, a different id, or a title that does not match stops with no edit. A receipt with no draft id stays exit `4` and does not open the editor. A previous verified `draft-saved` receipt returns that id and does not write again.
 
 ## Receipt
 

@@ -100,6 +100,10 @@ function sessionWith(steps) {
       calls.replace = (calls.replace || 0) + 1;
       return steps.replace ? steps.replace() : { ok: true, replaced: true };
     },
+    async clearPendingUpload() {
+      calls.clear = (calls.clear || 0) + 1;
+      return steps.clear ? steps.clear() : { ok: true, cleared: 1 };
+    },
     async uploadBodyImage() {
       calls.upload += 1;
       return steps.upload ? steps.upload() : { ok: true, submitted: true, imageCount: 1 };
@@ -810,33 +814,75 @@ test("an unverified receipt reopens its draft and does not open /write", async (
       text: "这是草稿 排版检查这段包含 列表 正文配图",
       headings: [{ level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
       coverApplied: false,
+      imageCount: 2,
       imageInput: true,
+      uploadPending: false,
       autosaveLabel: "刚刚 · 草稿",
+      url: "https://zhuanlan.zhihu.com/p/55/edit",
+      pageTitle: "写文章 - 知乎",
     })],
     settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
     read: () => readback({
       draftId: "55",
       title: "技能验收测试草稿（可删）",
-      text: "这是草稿 排版检查 这段包含 列表 正文配图",
-      headings: [{ level: 2, text: "排版检查" }, { level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
+      text: "这是草稿 排版检查这段包含 列表 正文配图",
+      headings: [{ level: 3, text: "列表" }, { level: 2, text: "正文配图" }],
       listItems: [],
       hrefs: [],
       imageCount: 1,
       coverApplied: true,
       autosaveLabel: "刚刚 · 草稿",
+      url: "https://zhuanlan.zhihu.com/p/55/edit",
+      pageTitle: "写文章 - 知乎",
     }),
   });
   const repaired = await executeSave({
     saveDraft: true,
     receiptDir: repairDir,
+    screenshotDir: dirs().screenshotDir,
     article: repairArticle,
   }, { browser: browserFor(repairing) });
-  assert.equal(repaired.state, "draft-saved");
-  assert.equal(repairing.calls.replace, 1);
+  assert.equal(repaired.error, "readback-mismatch");
+  assert.equal(repaired.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(repaired.pageTitle, "写文章 - 知乎");
+  assert.equal(repairing.calls.replace || 0, 0);
   assert.equal(repairing.calls.paste, 0);
-  assert.equal(repairing.calls.upload, 1);
+  assert.equal(repairing.calls.upload, 0);
   assert.equal(repairing.calls.cover, 1);
   assert.equal(repairing.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
+
+  const pendingDir = dirs().receiptDir;
+  createReceiptStore().write(pendingDir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    account: "示例作者",
+  });
+  const pendingEditor = editor({
+    draftId: "55",
+    blank: false,
+    title: "示例标题",
+    text: "一段说明 图片上传中",
+    headings: [{ level: 2, text: "小节" }],
+    uploadPending: true,
+    url: "https://zhuanlan.zhihu.com/p/55/edit",
+    pageTitle: "写文章 - 知乎",
+  });
+  const pending = sessionWith({
+    probes: [home(), pendingEditor, { ...pendingEditor }],
+  });
+  const stillPending = await executeSave({
+    saveDraft: true,
+    receiptDir: pendingDir,
+    article: article(),
+  }, { browser: browserFor(pending) });
+  assert.equal(stillPending.error, "upload-pending");
+  assert.equal(stillPending.pageUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(stillPending.pageTitle, "写文章 - 知乎");
+  assert.equal(pending.calls.clear, 1);
+  assert.equal(pending.calls.upload, 0);
+  assert.equal(pending.calls.paste, 0);
 
   const emptyDir = dirs().receiptDir;
   createReceiptStore().write(emptyDir, {

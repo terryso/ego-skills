@@ -20,7 +20,7 @@ metadata:
 
 Prepare **one** Zhihu article draft in the visible editor. `--save-draft` is the only mutation consent. It does not publish. Public publishing is not implemented in this version.
 
-成功不是点到了某个按钮。回读必须同时满足：编辑地址里有唯一的数字草稿 id、正文不是空的、页面有「已保存」或带时间的「刚刚 · 草稿」这类保存戳、标题、正文、标题层级、列表、链接和图片张数都对得上。图片的 alt 不会变成可见说明，不拿它当正文。封面必须是编辑器正文之外的一张 http 预览。没有这条回读，结果是 `unverified` 或 `uploaded`。同一篇的未验证回执会重新打开那一个草稿地址，不会再打开一篇新的 `/write`。空编辑器上的「刚刚 · 草稿」仍然不是成功。
+成功不是点到了某个按钮。回读必须同时满足：编辑地址里有唯一的数字草稿 id、正文不是空的、页面有「已保存」或带时间的「刚刚 · 草稿」这类保存戳、标题、正文、标题层级、列表、链接和图片张数都对得上。图片的 alt 不会变成可见说明，不拿它当正文。封面必须是编辑器正文之外的一张 http 预览。没有这条回读，结果是 `unverified` 或 `uploaded`。同一篇的未验证回执会重新打开那一个草稿地址，不会再打开一篇新的 `/write`，也不会把已经写过的正文再贴一遍。空编辑器上的「刚刚 · 草稿」仍然不是成功。
 
 Success is not a click. The editor must show one numeric draft id, a saved stamp, and matching title, body, headings, lists, links, and image count. An empty editor showing 刚刚 · 草稿 is not success. An unverified receipt reopens that draft URL instead of `/write`.
 

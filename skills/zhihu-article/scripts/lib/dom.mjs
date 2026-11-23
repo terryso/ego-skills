@@ -469,16 +469,28 @@ export function zhihuAct(payload) {
       if (/^https?:\/\//i.test(href)) hrefs.push(href);
     }
     const images = qsaAny(["img"], editor).filter((el) => {
+      if (insidePendingUpload(el)) return false;
       const src = attr(el, "src") || el.src || "";
       return Boolean(src) && !src.startsWith("data:image/svg");
     });
+    const text = normalize(editor && (editor.innerText || editor.textContent));
     return {
-      text: normalize(editor && (editor.innerText || editor.textContent)),
+      text,
       headings,
       listItems,
       hrefs: [...new Set(hrefs)],
       imageCount: images.length,
+      uploadPending: text.includes("图片上传中"),
     };
+  }
+
+  function insidePendingUpload(el) {
+    let current = el;
+    while (current && current.tagName !== "BODY") {
+      if (normalize(current.innerText || current.textContent || "") === "图片上传中") return true;
+      current = current.parentElement;
+    }
+    return false;
   }
 
   function coverApplied(editor) {
@@ -648,6 +660,33 @@ export function zhihuAct(payload) {
     if (typeof selection.addRange === "function") selection.addRange(range);
     el.setAttribute("data-zhihu-selected", "1");
     return { ok: true, selected: true };
+  }
+
+  if (op === "clear-pending-upload") {
+    const nodes = qsaAny(["div", "figure", "section", "p", "span", "li"]).filter((el) => (
+      normalize(el.innerText || el.textContent || "") === "图片上传中"
+    ));
+    const leaves = nodes.filter((el) => !nodes.some((other) => other !== el && contains(el, other)));
+    let cleared = 0;
+    for (const el of leaves) {
+      const dismiss = qsaAny(["button", "a"], el).filter((button) => {
+        if (!shown(button)) return false;
+        const label = buttonLabel(button);
+        if (!label || isPublish(label) || isPreviewInvite(label) || label.includes("发布")) return false;
+        return label === "删除" || label === "移除" || label === "取消" || label === "关闭" || label === "×" || label === "✕";
+      });
+      if (dismiss.length > 1) continue;
+      if (dismiss.length === 1) {
+        if (typeof dismiss[0].click === "function") dismiss[0].click();
+        cleared += 1;
+        continue;
+      }
+      const parent = el.parentElement;
+      if (!parent || !parent.childNodes) continue;
+      parent.childNodes = parent.childNodes.filter((node) => node !== el);
+      cleared += 1;
+    }
+    return { ok: true, cleared };
   }
 
   if (op === "confirm-cover-crop") {
