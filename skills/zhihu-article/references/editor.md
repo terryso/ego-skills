@@ -52,7 +52,7 @@ After reopen, the script compares:
 - list item text
 - absolute http(s) hrefs
 - completed body image count inside the article editor. An `https` or `blob` image counts. An image whose block text is `图片上传中`, an SVG data image, and an image inside a 封面 / UploadPicture widget do not. A cover thumbnail inside that widget is not treated as an applied cover. An image outside the article editor, including a sidebar, is not a body image.
-- cover preview outside the article body when `--cover` was passed
+- cover preview outside the article body when `--cover` was passed. The preview counts only when it is an http image wider than 330px on screen or in its natural width. The empty 添加封面 slot and its small thumbnail do not count. `--verify-draft` also returns `coverProbe`: file-input accept, owner, class, rect, ancestor chain, outside-editor image fingerprints and sizes, and visible cover labels other than 发布.
 - a saved stamp outside the article body
 - the same draft id
 

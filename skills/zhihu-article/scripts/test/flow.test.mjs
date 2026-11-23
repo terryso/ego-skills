@@ -893,7 +893,11 @@ test("an unverified receipt reopens its draft and does not open /write", async (
       autosaveLabel: "刚刚 · 草稿",
     })],
     settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
-    read: () => readback({ draftId: "55", autosaveLabel: "刚刚 · 草稿" }),
+    read: () => readback({
+      draftId: "55",
+      autosaveLabel: "刚刚 · 草稿",
+      coverProbe: { emptyHint: true, labels: ["添加封面"], inputs: [], images: [] },
+    }),
   });
   const summary = await executeSave({
     verifyDraft: true,
@@ -901,6 +905,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     article: article(),
   }, { browser: browserFor(session) });
   assert.equal(summary.action, "verify-draft");
+  assert.equal(summary.readback.coverProbe.emptyHint, true);
   assert.equal(summary.state, "draft-saved");
   assert.equal(summary.verified, true);
   assert.deepEqual(session.calls.goto, [
@@ -910,6 +915,8 @@ test("an unverified receipt reopens its draft and does not open /write", async (
   assert.equal(session.calls.paste, 0);
   assert.equal(session.calls.replace || 0, 0);
   assert.equal(session.calls.upload, 0);
+  assert.equal(session.calls.cover, 0);
+  assert.equal(session.calls.clearBody || 0, 0);
 
   const repairDir = dirs().receiptDir;
   createReceiptStore().write(repairDir, {

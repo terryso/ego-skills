@@ -612,20 +612,87 @@ export function zhihuAct(payload) {
     return false;
   }
 
+  function coverAncestorText(el) {
+    let blob = `${el.className || ""} ${hintOf(el)}`;
+    let current = el.parentElement;
+    for (let depth = 0; depth < 4 && current && current.tagName !== "BODY"; depth += 1) {
+      blob += ` ${current.className || ""} ${hintOf(current)} ${directText(current)}`;
+      current = current.parentElement;
+    }
+    return blob;
+  }
+
+  function looksLikeCover(el) {
+    const blob = coverAncestorText(el);
+    return /封面|题图|UploadPicture/.test(blob) || /(?:^|[^a-z])cover(?:[^a-z]|$)/i.test(blob);
+  }
+
+  function largeCoverPreview(el) {
+    const box = boxOf(el);
+    const naturalW = Number(el.naturalWidth) || 0;
+    return box.width > 330 || naturalW > 330;
+  }
+
   function coverApplied(editor) {
     const images = qsaAny(["img"]).filter((el) => {
       if (editor && contains(editor, el)) return false;
       const src = attr(el, "src") || el.src || "";
       if (!/^https?:\/\//i.test(src)) return false;
-      let blob = `${el.className || ""} ${hintOf(el)}`;
-      let current = el.parentElement;
-      for (let depth = 0; depth < 4 && current && current.tagName !== "BODY"; depth += 1) {
-        blob += ` ${current.className || ""} ${hintOf(current)} ${directText(current)}`;
-        current = current.parentElement;
-      }
-      return /封面|题图|UploadPicture/.test(blob) || /(?:^|[^a-z])cover(?:[^a-z]|$)/i.test(blob);
+      if (!looksLikeCover(el) || !largeCoverPreview(el)) return false;
+      return true;
     });
     return images.length > 0;
+  }
+
+  function ancestorChain(el) {
+    const chain = [];
+    let current = el && el.parentElement;
+    for (let depth = 0; depth < 6 && current && current.tagName !== "BODY"; depth += 1) {
+      const cls = String(current.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(".");
+      chain.push(cls ? `${current.tagName}.${cls}` : String(current.tagName || ""));
+      current = current.parentElement;
+    }
+    return chain;
+  }
+
+  function coverProbe(editor) {
+    const pageText = normalize((doc.body && (doc.body.innerText || doc.body.textContent)) || "");
+    const inputs = fileInputs().slice(0, 12).map((el) => ({
+      accept: String(attr(el, "accept") || el.accept || "").slice(0, 80),
+      owner: ownerName(el).slice(0, 24),
+      className: String(el.className || "").split(/\s+/).filter(Boolean).slice(0, 3).join(" "),
+      visible: shown(el),
+      rect: boxOf(el),
+      cover: isCoverInput(el),
+      ancestors: ancestorChain(el),
+    }));
+    const images = qsaAny(["img"]).filter((el) => !(editor && contains(editor, el))).slice(0, 8).map((el) => {
+      const located = sourceFingerprint(srcOf(el));
+      return {
+        host: located.host,
+        path: located.path,
+        fingerprint: located.fingerprint,
+        rect: boxOf(el),
+        natural: { width: Number(el.naturalWidth) || 0, height: Number(el.naturalHeight) || 0 },
+        visible: shown(el),
+        ancestors: ancestorChain(el),
+      };
+    });
+    const labels = [];
+    for (const el of qsaAny(["button", "label", "a", "div", "span"])) {
+      if (!shown(el)) continue;
+      const label = controlName(el);
+      if (!label || label.includes("发布") || isPreviewInvite(label)) continue;
+      if (!/封面|裁剪|上传|确定|完成|确认/.test(label)) continue;
+      if (!labels.includes(label)) labels.push(label);
+      if (labels.length >= 12) break;
+    }
+    return {
+      emptyHint: pageText.includes("图片上传格式"),
+      inputs,
+      images,
+      labels,
+    };
   }
 
   function titleValue(title) {
@@ -695,6 +762,7 @@ export function zhihuAct(payload) {
       title: currentTitle,
       ...snap,
       coverApplied: coverApplied(body),
+      coverProbe: coverProbe(body),
     };
   }
 

@@ -916,6 +916,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
           imageCount: check.imageCount,
           imageInventory: Array.isArray(again.imageInventory) ? again.imageInventory.slice(0, 12) : [],
           blocks: Array.isArray(again.blocks) ? again.blocks.slice(0, 60) : [],
+          coverProbe: again.coverProbe || null,
         };
         progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId && !progress.error);
         if (!check.ok && !progress.error) progress.error = readbackError(check);

@@ -485,6 +485,9 @@ test("readback counts structure inside the editor and ignores a badge inside the
   const inside = h("span", {}, ["已保存"]);
   const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明 小节 第一点 链接" }, [heading, item, link, image, coverWidget, inside]);
   const cover = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic1.zhimg.com/cover.png" } });
+  cover.naturalWidth = 1200;
+  cover.naturalHeight = 400;
+  cover.getBoundingClientRect = () => ({ width: 600, height: 200 });
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
   const editLink = h("a", { attrs: { href: "/p/77/edit?token=secret" } }, ["继续编辑"]);
   createDocument(h("body", {}, [profile, title, body, cover, editLink]), {
@@ -496,6 +499,26 @@ test("readback counts structure inside the editor and ignores a badge inside the
   assert.equal(read.imageInventory.filter((item) => item.role === "body").length, 1);
   assert.equal(read.imageInventory.some((item) => item.role === "cover-widget"), true);
   assert.equal(read.coverApplied, true);
+  assert.equal(read.coverProbe.inputs.some((item) => item.cover), false);
+  const small = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic3.zhimg.com/icon.png" } });
+  small.naturalWidth = 24;
+  small.naturalHeight = 24;
+  small.getBoundingClientRect = () => ({ width: 24, height: 24 });
+  createDocument(h("body", {}, [
+    profile,
+    title,
+    body,
+    h("div", { className: "UploadPicture" }, [
+      h("button", {}, ["添加封面"]),
+      "图片上传格式支持 JPEG、JPG、PNG",
+      small,
+    ]),
+  ]), { href: "https://zhuanlan.zhihu.com/p/77/edit" });
+  const placeholder = zhihuAct({ op: "read" });
+  assert.equal(placeholder.coverApplied, false);
+  assert.equal(placeholder.coverProbe.emptyHint, true);
+  assert.equal(placeholder.coverProbe.labels.includes("添加封面"), true);
+  assert.equal(placeholder.coverProbe.images[0].natural.width, 24);
   assert.equal(read.autosaveLabel, "");
   const fresh = h("span", {}, ["刚刚 · 草稿"]);
   const blobCover = h("img", { className: "UploadPicture-preview", attrs: { src: "blob:cover" } });
