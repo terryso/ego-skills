@@ -240,16 +240,28 @@ function exitFor(outcome, progress) {
   return 1;
 }
 
-async function probeWrite(session) {
-  const attempts = typeof session.pause === "function" ? 4 : 1;
+function controlsReady(editor, article) {
+  if (!article) return true;
+  if (article.imageCount && (!editor || !editor.imageInput || editor.imageAmbiguous)) return false;
+  if (article.cover && (!editor || !editor.coverInput || editor.coverAmbiguous)) return false;
+  return true;
+}
+
+async function probeWrite(session, article) {
+  const canWait = typeof session.pause === "function";
+  const attempts = canWait ? 4 : 1;
   let last = null;
   for (let index = 0; index < attempts; index += 1) {
     last = await session.probe();
     const access = classifyAccess(last, { openedWrite: true });
-    if (access.ok || (last && (last.loginWall || last.challenge || last.evaluateFailed || last.surface === "signin"))) {
-      return last;
+    const terminal = Boolean(last && (last.loginWall || last.challenge || last.evaluateFailed || last.surface === "signin"));
+    if (!access.ok || terminal) {
+      if (terminal || !canWait || index + 1 === attempts) return last;
+      await session.pause();
+      continue;
     }
-    if (index + 1 < attempts) await session.pause();
+    if (!canWait || index + 1 === attempts || controlsReady(last, article)) return last;
+    await session.pause();
   }
   return last;
 }
@@ -352,7 +364,7 @@ export async function executeSave(config, deps) {
     if (!account.ok) return accountFailure("save-draft", account, article);
 
     await session.goto(WRITE_URL);
-    const editor = await probeWrite(session);
+    const editor = await probeWrite(session, article);
     const access = classifyAccess(editor, { openedWrite: true });
     if (!access.ok) return accessFailure(session, config, article, account, editor, access);
     const blocked = precondition(editor, article);

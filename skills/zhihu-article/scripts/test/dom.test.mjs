@@ -9,17 +9,18 @@ function editorParts() {
   const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
   const body = h("div", { className: "public-DraftEditor-content", editable: true });
   const image = h("input", { type: "file", accept: "image/png,image/jpeg", attrs: { multiple: "true" }, zero: true });
+  const imageControl = h("button", { attrs: { "aria-label": "图片" } }, [image]);
   const cover = h("input", { type: "file", accept: "image/png", className: "UploadPicture-input", zero: true });
   const draft = h("button", {}, ["保存草稿"]);
   const publish = h("button", {}, ["发布"]);
   const invite = h("button", {}, ["邀请预览"]);
   const badge = h("span", {}, ["已保存"]);
-  return { profile, title, body, image, cover, draft, publish, invite, badge };
+  return { profile, title, body, image, imageControl, cover, draft, publish, invite, badge };
 }
 
 function mount(parts, href = "https://zhuanlan.zhihu.com/write") {
   createDocument(h("body", {}, [
-    parts.profile, parts.title, parts.body, parts.image, parts.cover, parts.draft, parts.publish, parts.invite, parts.badge,
+    parts.profile, parts.title, parts.body, parts.imageControl, parts.cover, parts.draft, parts.publish, parts.invite, parts.badge,
   ]), { href, title: "写文章" });
   return parts;
 }
@@ -247,10 +248,101 @@ test("body image input is the toolbar 图片 control, not cover or extras", () =
     other,
     h("button", {}, ["发布"]),
   ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const unlabeled = zhihuAct({ op: "probe" });
+  assert.equal(unlabeled.imageInput, false);
+  assert.equal(unlabeled.imageAmbiguous, false);
+  assert.match(zhihuAct({ op: "mark-image-input" }).error, /not found/);
+});
+
+test("a detached toolbar image input is unique and unlabeled file inputs are not candidates", () => {
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const article = h("div", { className: "public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const bodyImage = h("input", {
+    type: "file",
+    accept: "image/webp,image/png,image/jpeg",
+    attrs: { multiple: "true" },
+    zero: true,
+  });
+  const attachment = h("input", { type: "file", accept: "", zero: true });
+  const imported = h("input", { type: "file", accept: ".docx,.md", zero: true });
+  const video = h("input", { type: "file", accept: "video/mp4", zero: true });
+  const assistantImage = h("input", { type: "file", accept: "image/png", zero: true });
+  const cover = h("input", { type: "file", accept: "image/jpeg", className: "UploadPicture-input", zero: true });
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  createDocument(h("body", {}, [
+    avatar,
+    title,
+    article,
+    h("div", {}, [
+      h("button", { attrs: { "aria-label": "图片" } }),
+      h("button", { attrs: { "aria-label": "视频" } }),
+      h("button", { attrs: { "aria-label": "附件" } }),
+      h("button", { attrs: { "aria-label": "导入" } }),
+    ]),
+    bodyImage,
+    attachment,
+    imported,
+    video,
+    h("div", {}, [
+      h("div", {}, ["创作助手"]),
+      h("div", {}, ["AI 配图", assistantImage]),
+    ]),
+    h("button", {}, ["添加文章封面", cover]),
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.imageInput, true);
+  assert.equal(probe.imageAmbiguous, false);
+  assert.equal(probe.coverInput, true);
+  const marked = zhihuAct({ op: "mark-image-input" });
+  assert.equal(marked.ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(attachment.getAttribute("data-zhihu-image"), null);
+  assert.equal(assistantImage.getAttribute("data-zhihu-image"), null);
+  assert.equal(cover.getAttribute("data-zhihu-image"), null);
+
+  const second = h("input", { type: "file", accept: "image/webp,image/jpeg", attrs: { multiple: "true" }, zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    second,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
   const ambiguous = zhihuAct({ op: "probe" });
   assert.equal(ambiguous.imageInput, false);
   assert.equal(ambiguous.imageAmbiguous, true);
   assert.match(zhihuAct({ op: "mark-image-input" }).error, /ambiguous/);
+
+  const plain = h("input", { type: "file", accept: "image/png", zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    plain,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  assert.equal(zhihuAct({ op: "probe" }).imageInput, true);
+  assert.equal(zhihuAct({ op: "mark-image-input" }).ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(plain.getAttribute("data-zhihu-image"), null);
+
+  const aiImage = h("input", { type: "file", accept: "image/webp,image/png", attrs: { multiple: "true" }, zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    h("button", {}, ["AI 配图", aiImage]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const ai = zhihuAct({ op: "probe" });
+  assert.equal(ai.imageInput, true);
+  assert.equal(ai.imageAmbiguous, false);
+  assert.equal(zhihuAct({ op: "mark-image-input" }).ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(aiImage.getAttribute("data-zhihu-image"), null);
 });
 
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {
@@ -349,7 +441,12 @@ test("ambiguous or missing editor controls fail closed", () => {
   const one = h("div", { className: "public-DraftEditor-content", editable: true });
   const imageA = h("input", { type: "file", accept: "image/png" });
   const imageB = h("input", { type: "file", accept: "image/jpeg" });
-  createDocument(h("body", {}, [title, one, imageA, imageB]), { href: "https://zhuanlan.zhihu.com/write" });
+  createDocument(h("body", {}, [
+    title,
+    one,
+    h("button", { attrs: { "aria-label": "图片" } }, [imageA]),
+    h("button", { attrs: { "aria-label": "图片" } }, [imageB]),
+  ]), { href: "https://zhuanlan.zhihu.com/write" });
   assert.equal(zhihuAct({ op: "probe" }).imageAmbiguous, true);
   assert.match(zhihuAct({ op: "mark-image-input" }).error, /ambiguous/);
 

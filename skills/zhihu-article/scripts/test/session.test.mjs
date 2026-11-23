@@ -10,13 +10,14 @@ function editorPage() {
   const title = h("textarea", { placeholder: "请输入标题" });
   const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明" });
   const image = h("input", { type: "file", accept: "image/png", attrs: { multiple: "true" }, zero: true });
+  const imageControl = h("button", { attrs: { "aria-label": "图片" } }, [image]);
   const cover = h("input", { type: "file", accept: "image/png", className: "UploadPicture-input", zero: true });
   const draft = h("button", {}, ["保存草稿"]);
   const publish = h("button", {}, ["发布"]);
   const badge = h("span", {}, ["已保存"]);
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
   const header = h("header", { className: "AppHeader" }, [profile, h("a", {}, ["创作中心"])]);
-  createDocument(h("body", {}, [header, title, body, image, cover, draft, publish, badge]), {
+  createDocument(h("body", {}, [header, title, body, imageControl, cover, draft, publish, badge]), {
     href: "https://zhuanlan.zhihu.com/write",
   });
   const calls = { files: 0, fills: 0, pastes: 0 };
@@ -167,9 +168,25 @@ test("missing browser APIs and evaluate failures stay fail-closed", async () => 
   const shots = createZhihuSession({ ...taskWith(shotPage), fsImpl: fs });
   assert.equal(await shots.capture("", "failed"), "");
   assert.equal(await shots.capture(dir, "failed"), "");
-  shotPage.screenshot = async () => Buffer.from("png");
-  const written = await shots.capture(dir, "unverified");
-  assert.match(written, /zhihu-article-unverified\.png/);
+  const seen = [];
+  shotPage.screenshot = async (options) => {
+    seen.push(options);
+    if (!options || !options.path || options.type) throw new Error("path required");
+    await fs.promises.writeFile(options.path, Buffer.from("png"));
+    return options.path;
+  };
+  const written = await shots.capture(dir, "image-control-ambiguous");
+  assert.match(written, /zhihu-article-image-control-ambiguous\.png/);
+  assert.equal(fs.existsSync(written), true);
+  assert.equal(seen[0].type, undefined);
+  assert.equal(path.isAbsolute(seen[0].path), true);
+  shotPage.screenshot = async (options) => {
+    if (!options || !options.path) throw new Error("path required");
+    return Buffer.from("png");
+  };
+  const buffered = await shots.capture(dir, "unverified");
+  assert.match(buffered, /zhihu-article-unverified\.png/);
+  assert.equal(fs.readFileSync(buffered).toString(), "png");
   const noShot = createZhihuSession(taskWith({ async evaluate() { return { ok: true }; }, async goto() {} }));
   assert.equal(await noShot.capture(dir, "failed"), "");
 });

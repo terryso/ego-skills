@@ -656,6 +656,84 @@ test("an ambiguous body image input records the page and does not publish", asyn
   assert.equal(session.calls.paste, 0);
   assert.equal(session.calls.upload, 0);
   assert.equal(session.calls.click, 0);
+
+  const early = editor({
+    imageInput: false,
+    imageAmbiguous: true,
+    url: "https://zhuanlan.zhihu.com/write",
+    pageTitle: "写文章 - 知乎",
+    accounts: ["BMAD实验室"],
+    identityVisible: true,
+  });
+  const ready = editor({
+    url: "https://zhuanlan.zhihu.com/write",
+    pageTitle: "写文章 - 知乎",
+    accounts: ["BMAD实验室"],
+    identityVisible: true,
+  });
+  let pauses = 0;
+  const settling = sessionWith({
+    probes: [home({ accounts: ["BMAD实验室"] }), early, ready],
+    upload: () => ({ ok: false, submitted: false, code: "upload-api-missing", error: "stop" }),
+  });
+  settling.pause = async () => { pauses += 1; };
+  const settled = await executeSave({
+    saveDraft: true,
+    expectAccount: "BMAD实验室",
+    receiptDir: dirs().receiptDir,
+    article: article({
+      imageCount: 1,
+      images: [{ name: "body.png", sha256: "abc", bytes: 10 }],
+      segments: [{ kind: "image", path: "/absolute/path/to/body.png", alt: "配图" }],
+      snippets: ["配图"],
+      headings: [],
+      listItems: [],
+      links: [],
+    }),
+  }, { browser: browserFor(settling) });
+  assert.equal(pauses, 1);
+  assert.equal(settling.calls.upload, 1);
+  assert.notEqual(settled.error, "image-control-ambiguous");
+
+  const still = editor({
+    imageInput: false,
+    imageAmbiguous: true,
+    url: "https://zhuanlan.zhihu.com/write",
+    pageTitle: "写文章 - 知乎",
+    accounts: ["BMAD实验室"],
+    identityVisible: true,
+  });
+  let extraPauses = 0;
+  const stuck = sessionWith({
+    probes: [
+      home({ accounts: ["BMAD实验室"] }),
+      still,
+      { ...still },
+      { ...still },
+      { ...still },
+    ],
+  });
+  stuck.pause = async () => { extraPauses += 1; };
+  const closed = await executeSave({
+    saveDraft: true,
+    expectAccount: "BMAD实验室",
+    receiptDir: dirs().receiptDir,
+    screenshotDir: dirs().screenshotDir,
+    article: article({
+      imageCount: 1,
+      images: [{ name: "body.png", sha256: "abc", bytes: 10 }],
+      segments: [{ kind: "image", path: "/absolute/path/to/body.png", alt: "配图" }],
+      snippets: ["配图"],
+      headings: [],
+      listItems: [],
+      links: [],
+    }),
+  }, { browser: browserFor(stuck) });
+  assert.equal(extraPauses, 3);
+  assert.equal(closed.error, "image-control-ambiguous");
+  assert.equal(closed.mutation, "none");
+  assert.equal(stuck.calls.upload, 0);
+  assert.equal(stuck.calls.capture, 1);
 });
 
 test("cleanup closes only this skill's task spaces", async () => {

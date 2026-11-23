@@ -192,11 +192,18 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
     },
     async capture(dir, state) {
       if (!dir || typeof page.screenshot !== "function") return "";
+      const safe = String(state || "probe").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "probe";
+      const file = path.join(dir, `zhihu-article-${safe}.png`);
+      if (!path.isAbsolute(file)) return "";
       try {
-        const buffer = await page.screenshot({ type: "png" });
         await fsImpl.promises.mkdir(dir, { recursive: true });
-        const file = path.join(dir, `zhihu-article-${state}.png`);
-        await fsImpl.promises.writeFile(file, buffer);
+        // ego-browser writes the PNG itself and returns the path. `type` is not a valid option.
+        const written = await page.screenshot({ path: file });
+        if (Buffer.isBuffer(written)) {
+          await fsImpl.promises.writeFile(file, written);
+          return file;
+        }
+        if (typeof written === "string" && written) return written;
         return file;
       } catch {
         return "";

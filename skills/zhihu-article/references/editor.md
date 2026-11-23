@@ -32,7 +32,7 @@ The editor must be blank (empty title, empty body, no images) before typing. Exi
 - anything containing 定时
 - 邀请预览
 
-File inputs may be zero-size. That is the control behind a visible upload button, the same pattern as `wechat-article-ego`. A disabled file input is ignored. The body image input is the file input owned by a control labeled exactly 图片. Cover (封面, 题图, `UploadPicture`, or `cover`), 附件, 导入, 视频, AI 配图, and inputs inside 创作助手 are not body images. If that rule does not leave exactly one body input, the command stops. Those class names and the parent/label link were not confirmed against a live input listing.
+File inputs may be zero-size. That is the control behind a visible upload button, the same pattern as `wechat-article-ego`. A disabled file input is ignored. The body image input is the file input owned by the one visible control whose name is exactly 图片. Ownership is the input inside that control, or the only image file input under an ancestor that contains that one control. An empty `accept` is not an image input. Cover (封面, 题图, `UploadPicture`, or `cover`), 附件, 导入, 视频, AI 配图, and inputs inside 创作助手 are not body images. A label that only contains 图片, such as AI 配图, is not the toolbar control. If more than one input still matches, the one whose `accept` starts with `image/webp` and has `multiple` is used only when it is the only such input. Otherwise the command stops. Unlabeled file inputs are not a fallback.
 
 ## Save signal
 

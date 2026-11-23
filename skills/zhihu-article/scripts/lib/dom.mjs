@@ -135,22 +135,6 @@ export function zhihuAct(payload) {
     return null;
   }
 
-  function inAssistant(el) {
-    let current = el && el.parentElement;
-    while (current) {
-      const aria = normalize(attr(current, "aria-label"));
-      const cls = String(current.className || "");
-      if (/创作助手/.test(aria) || /CreationAssistant|assistant-panel/i.test(cls)) return true;
-      const direct = [...(current.childNodes || [])]
-        .filter((node) => node && node.nodeType === 3)
-        .map((node) => node.textContent || "")
-        .join("");
-      if (normalize(direct) === "创作助手") return true;
-      current = current.parentElement;
-    }
-    return false;
-  }
-
   function areaOf(el) {
     if (!el || typeof el.getBoundingClientRect !== "function") return 0;
     const rect = el.getBoundingClientRect();
@@ -178,48 +162,139 @@ export function zhihuAct(payload) {
     return pool;
   }
 
-  function isCoverInput(el) {
-    const blob = `${el.className || ""} ${hintOf(el)} ${controlLabel(el)}`;
-    return /封面|题图|UploadPicture|cover/i.test(blob);
+  function directText(el) {
+    return normalize([...(el && el.childNodes || [])]
+      .filter((node) => node && node.nodeType === 3)
+      .map((node) => node.textContent || "")
+      .join(""));
   }
 
-  function controlLabel(el) {
-    const own = normalize(attr(el, "aria-label") || attr(el, "title") || "");
+  function elementChildren(el) {
+    return [...(el && el.childNodes || [])].filter((node) => node && node.nodeType === 1);
+  }
+
+  function controlName(el) {
+    if (!el || el.nodeType !== 1) return "";
+    const aria = normalize(attr(el, "aria-label"));
+    if (aria) return aria;
+    const title = normalize(attr(el, "title"));
+    if (title) return title;
+    const direct = directText(el);
+    if (direct) return direct;
+    const textual = el.tagName === "BUTTON" || el.tagName === "LABEL" || el.tagName === "A" || attr(el, "role") === "button";
+    if (!textual) return "";
+    const text = normalize(el.innerText || el.textContent || "");
+    if (!text || [...text].length > 12) return "";
+    return text;
+  }
+
+  function selfMarksAssistant(el) {
+    const aria = normalize(attr(el, "aria-label"));
+    const cls = String(el.className || "");
+    if (/创作助手/.test(aria) || /CreationAssistant|assistant-panel/i.test(cls)) return true;
+    const direct = directText(el);
+    return direct === "创作助手" || direct === "AI 配图" || /AI\s*配图/.test(direct);
+  }
+
+  function subtreeHasImageAnchor(root) {
+    const nodes = [root, ...qsaAny(["button", "a", "label", "div", "span"], root)];
+    return nodes.some((el) => controlName(el) === "图片");
+  }
+
+  function inAssistant(el) {
+    let current = el && el.parentElement;
+    while (current && current.tagName !== "BODY") {
+      if (selfMarksAssistant(current)) return true;
+      const marker = elementChildren(current).find((kid) => !contains(kid, el) && selfMarksAssistant(kid));
+      if (marker && !subtreeHasImageAnchor(current)) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function acceptsImages(el) {
+    const accept = (attr(el, "accept") || el.accept || "").toLowerCase();
+    if (!accept) return false;
+    return /image\/|\.png|\.jpe?g|\.webp/.test(accept);
+  }
+
+  function excludedName(name) {
+    return /附件|导入|视频|AI\s*配图|创作助手|发布设置|封面|题图/.test(String(name || ""));
+  }
+
+  function fileInputsUnder(root) {
+    return fileInputs().filter((el) => !root || el === root || contains(root, el));
+  }
+
+  function namedControlsUnder(root) {
+    return qsaAny(["button", "a", "label", "div", "span"], root).filter((el) => controlName(el));
+  }
+
+  function ownerName(el) {
+    const own = controlName(el);
     if (own) return own;
     let current = el.parentElement;
-    for (let depth = 0; depth < 4 && current; depth += 1) {
-      if (current.tagName === "BUTTON" || current.tagName === "LABEL" || current.tagName === "A") {
-        const label = buttonLabel(current);
-        if (label) return label;
+    for (let depth = 0; depth < 8 && current && current.tagName !== "BODY"; depth += 1) {
+      const wrapped = current.tagName === "BUTTON" || current.tagName === "LABEL" || current.tagName === "A" || attr(current, "role") === "button";
+      if (wrapped && controlName(current)) return controlName(current);
+      if (fileInputsUnder(current).length === 1) {
+        const names = [...new Set(namedControlsUnder(current).map((node) => controlName(node)).filter(Boolean))];
+        if (names.length === 1) return names[0];
       }
-      const controls = [...(current.childNodes || [])].filter((node) => (
-        node && node.nodeType === 1 && node !== el && (node.tagName === "BUTTON" || node.tagName === "LABEL")
-      ));
-      if (controls.length === 1) {
-        const label = buttonLabel(controls[0]);
-        if (label) return label;
-      }
-      if (current.tagName === "BODY" || current.tagName === "MAIN" || current.tagName === "HEADER") break;
       current = current.parentElement;
     }
     return "";
   }
 
-  function fileRole(el) {
-    if (inAssistant(el) || isCoverInput(el)) return "excluded";
-    const label = normalize(`${controlLabel(el)} ${hintOf(el)} ${attr(el, "name")} ${el.id || ""}`);
-    if (/附件|导入|视频|AI\s*配图|创作助手|发布设置|封面|题图/.test(label)) return "excluded";
-    if (normalize(controlLabel(el)) === "图片" || normalize(attr(el, "aria-label")) === "图片" || normalize(attr(el, "title")) === "图片") {
-      return "body";
+  function isCoverInput(el) {
+    const blob = `${el.className || ""} ${hintOf(el)} ${ownerName(el)} ${controlName(el)}`;
+    return /封面|题图|UploadPicture|cover/i.test(blob);
+  }
+
+  function exactImageAnchors(root) {
+    const nodes = qsaAny(["button", "a", "label", "div", "span"], root).filter((el) => (
+      controlName(el) === "图片" && shown(el) && !inAssistant(el)
+    ));
+    return nodes.filter((el) => !nodes.some((other) => other !== el && contains(other, el)));
+  }
+
+  function toolbarImageSignature(el) {
+    const accept = (attr(el, "accept") || el.accept || "").toLowerCase().trim();
+    const multiple = hasAttr(el, "multiple") || el.multiple === true;
+    return multiple && /^image\/webp\b/.test(accept);
+  }
+
+  function imageInputsForAnchor(anchor, pool) {
+    const inside = pool.filter((el) => contains(anchor, el));
+    if (inside.length >= 1) return inside;
+    let current = anchor.parentElement;
+    for (let depth = 0; depth < 10 && current; depth += 1) {
+      if (exactImageAnchors(current).length !== 1) break;
+      const candidates = pool.filter((el) => contains(current, el));
+      if (candidates.length === 1) return candidates;
+      if (candidates.length > 1) {
+        const signed = candidates.filter(toolbarImageSignature);
+        return signed.length === 1 ? signed : candidates;
+      }
+      if (current.tagName === "BODY") break;
+      current = current.parentElement;
     }
-    return "unknown";
+    return [];
   }
 
   function bodyImageInputs(files) {
-    const pool = files.filter((el) => fileRole(el) !== "excluded");
-    const toolbar = pool.filter((el) => fileRole(el) === "body");
-    if (toolbar.length === 1 || toolbar.length > 1) return toolbar;
-    return pool;
+    const pool = files.filter((el) => (
+      acceptsImages(el)
+      && !inAssistant(el)
+      && !isCoverInput(el)
+      && !excludedName(ownerName(el))
+      && !excludedName(controlName(el))
+    ));
+    const owned = pool.filter((el) => controlName(el) === "图片" || ownerName(el) === "图片");
+    if (owned.length >= 1) return owned;
+    const anchors = exactImageAnchors();
+    if (anchors.length !== 1) return [];
+    return imageInputsForAnchor(anchors[0], pool);
   }
 
   function fileInputs() {
@@ -227,11 +302,6 @@ export function zhihuAct(payload) {
       const type = (attr(el, "type") || el.type || "").toLowerCase();
       return type === "file" && !hasAttr(el, "disabled");
     });
-  }
-
-  function acceptImage(el) {
-    const accept = (attr(el, "accept") || el.accept || "").toLowerCase();
-    return !accept || accept.includes("image") || accept.includes("png") || accept.includes("jpg") || accept.includes("jpeg");
   }
 
   function mark(el, name) {
@@ -429,7 +499,7 @@ export function zhihuAct(payload) {
     const bodies = findBodies(title);
     const body = bodies.length === 1 ? bodies[0] : null;
     const surface = surfaceOf(url, title, body);
-    const files = fileInputs().filter(acceptImage);
+    const files = fileInputs();
     const coverCandidates = files.filter(isCoverInput);
     const imageCandidates = bodyImageInputs(files);
     const buttons = visibleButtons();
@@ -520,7 +590,7 @@ export function zhihuAct(payload) {
   }
 
   if (op === "mark-image-input" || op === "mark-cover-input") {
-    const files = fileInputs().filter(acceptImage);
+    const files = fileInputs();
     const wantCover = op === "mark-cover-input";
     const matches = wantCover ? files.filter(isCoverInput) : bodyImageInputs(files);
     if (matches.length !== 1) {
