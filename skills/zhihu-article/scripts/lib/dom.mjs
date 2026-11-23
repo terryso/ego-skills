@@ -655,6 +655,67 @@ export function zhihuAct(payload) {
     return chain;
   }
 
+  function dedicatedCoverInputs() {
+    return fileInputs().filter((el) => {
+      const cls = String(el.className || "");
+      const owner = ownerName(el);
+      return /UploadPicture-input/.test(cls) || owner === "添加文章封面" || owner === "添加封面";
+    });
+  }
+
+  function substantialExternalImage(el, editor) {
+    if (editor && contains(editor, el)) return false;
+    const src = srcOf(el);
+    if (!/^https?:\/\//i.test(src) || !shown(el)) return false;
+    const naturalW = Number(el.naturalWidth) || 0;
+    const naturalH = Number(el.naturalHeight) || 0;
+    const box = boxOf(el);
+    return naturalW >= 80 || naturalH >= 80 || (naturalW === 0 && naturalH === 0 && box.width >= 80);
+  }
+
+  function coverImageRecord(el) {
+    const located = sourceFingerprint(srcOf(el));
+    return {
+      host: located.host,
+      path: located.path,
+      fingerprint: located.fingerprint,
+      rect: boxOf(el),
+      natural: { width: Number(el.naturalWidth) || 0, height: Number(el.naturalHeight) || 0 },
+      visible: shown(el),
+      ancestors: ancestorChain(el),
+    };
+  }
+
+  function coverWidget(editor) {
+    const inputs = dedicatedCoverInputs();
+    if (inputs.length !== 1) return { inputCount: inputs.length, images: [] };
+    const input = inputs[0];
+    let current = input.parentElement;
+    for (let depth = 0; depth < 8 && current && current.tagName !== "BODY"; depth += 1) {
+      const imgs = qsaAny(["img"], current).filter((el) => substantialExternalImage(el, editor));
+      if (imgs.length) {
+        const cls = String(current.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(".");
+        return {
+          inputCount: 1,
+          accept: String(attr(input, "accept") || input.accept || "").slice(0, 80),
+          owner: ownerName(input).slice(0, 24),
+          className: String(input.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(" "),
+          root: cls ? `${current.tagName}.${cls}` : String(current.tagName || ""),
+          images: imgs.slice(0, 4).map(coverImageRecord),
+        };
+      }
+      current = current.parentElement;
+    }
+    return {
+      inputCount: 1,
+      accept: String(attr(input, "accept") || input.accept || "").slice(0, 80),
+      owner: ownerName(input).slice(0, 24),
+      className: String(input.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(" "),
+      root: "",
+      images: [],
+    };
+  }
+
   function coverProbe(editor) {
     const pageText = normalize((doc.body && (doc.body.innerText || doc.body.textContent)) || "");
     const inputs = fileInputs().slice(0, 12).map((el) => ({
@@ -692,6 +753,7 @@ export function zhihuAct(payload) {
       inputs,
       images,
       labels,
+      widget: coverWidget(editor),
     };
   }
 

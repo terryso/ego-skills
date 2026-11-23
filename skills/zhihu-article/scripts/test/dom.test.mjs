@@ -596,6 +596,47 @@ test("ambiguous or missing editor controls fail closed", () => {
   assert.equal(zhihuAct({ op: "mark-draft-save" }).label, "存草稿");
 });
 
+test("the cover file is the image beside UploadPicture-input, not the format hint", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const preview = h("img", { attrs: { src: "https://pic-private.zhihu.com/v2-0b3cdf5d86168a573f61589036729da0~resize:1440:q75.png?auth=secret" } });
+  preview.naturalWidth = 1200;
+  preview.naturalHeight = 400;
+  preview.getBoundingClientRect = () => ({ width: 150, height: 100 });
+  const input = h("input", { type: "file", accept: ".jpeg, .jpg, .png", className: "UploadPicture-input", zero: true });
+  const label = h("label", { className: "UploadPicture-wrapper css-1la3xpt" }, [
+    "添加文章封面",
+    input,
+    "图片上传格式支持 JPEG、JPG、PNG",
+  ]);
+  const avatar = h("img", { attrs: { src: "https://pic1.zhimg.com/avatar.png" } });
+  avatar.naturalWidth = 34;
+  avatar.naturalHeight = 34;
+  avatar.getBoundingClientRect = () => ({ width: 34, height: 34 });
+  const editor = h("div", { className: "public-DraftEditor-content", editable: true, text: "正文" });
+  createDocument(h("body", {}, [
+    title,
+    h("div", { className: "css-1pysja1" }, [
+      h("div", {}, [h("div", { className: "css-6e7dvl" }, [preview])]),
+      h("div", {}, [label]),
+    ]),
+    h("input", { type: "file", accept: "image/webp,image/jpeg,image/png" }),
+    h("input", { type: "file", accept: ".pdf,.md,.png,.jpg" }),
+    avatar,
+    editor,
+  ]), { href: "https://zhuanlan.zhihu.com/p/55/edit" });
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.coverApplied, false);
+  assert.equal(read.coverProbe.emptyHint, true);
+  assert.equal(read.coverProbe.widget.inputCount, 1);
+  assert.equal(read.coverProbe.widget.className.includes("UploadPicture-input"), true);
+  assert.equal(read.coverProbe.widget.images.length, 1);
+  assert.equal(read.coverProbe.widget.images[0].natural.width, 1200);
+  assert.equal(read.coverProbe.widget.images[0].natural.height, 400);
+  assert.equal(read.coverProbe.widget.images[0].rect.width, 150);
+  assert.equal(read.coverProbe.widget.images[0].path.includes("auth"), false);
+  assert.equal(read.coverProbe.widget.images[0].path.includes("v2-0b3cdf5d86168a573f61589036729da0"), true);
+});
+
 test("readback walks Draft blocks under a wrapper and fingerprints images without query secrets", () => {
   const title = h("textarea", { placeholder: "请输入标题" });
   const wide = h("img", { attrs: { src: "https://pic-private.zhihu.com/a.png?token=secret" } });

@@ -194,12 +194,13 @@ async function compose(session, article, initial) {
     return progress;
   }
   if (again.autosaveLabel) progress.autosaveBadge = true;
-  if (again.coverApplied) progress.coverApplied = true;
   const check = validateReadback(article, again);
+  if (again.coverApplied || (article.cover && check.coverOk)) progress.coverApplied = true;
   progress.readback = {
     titleOk: check.titleOk,
     imagesOk: check.imagesOk,
     coverOk: check.coverOk,
+    coverMatch: Boolean(check.coverMatch),
     missing: check.missing,
     missingHeadings: check.missingHeadings,
     missingItems: check.missingItems,
@@ -215,7 +216,7 @@ async function compose(session, article, initial) {
     title: again.title || "",
     imageCount: again.imageCount,
     autosaveLabel: again.autosaveLabel || "",
-    coverApplied: Boolean(again.coverApplied),
+    coverApplied: Boolean(progress.coverApplied),
     draftId: again.draftId || progress.draftId,
     excerpt: normalizeText(again.text).slice(0, 80),
   };
@@ -742,7 +743,7 @@ async function repairDraft(config, deps, decision, article, store, now, plan) {
       error: persisted ? "" : (coverError || (againCheck.duplicateLead || againCheck.duplicateShape ? "duplicate-content" : (again && again.autosaveLabel ? "readback-mismatch" : "autosave-badge-missing"))),
     }, {
       phase: persisted ? "draft-saved" : "repair-unverified",
-      coverApplied: Boolean(again && again.coverApplied),
+      coverApplied: Boolean(againCheck.coverOk),
       observed: again ? { title: again.title || "", imageCount: again.imageCount, draftId: prior.draftId, excerpt: normalizeText(again.text).slice(0, 80) } : null,
       readback: readbackFields(againCheck, again),
       updatedAt: now(),
@@ -899,12 +900,13 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
         progress.error = "draft-id-changed";
       } else {
         if (again.autosaveLabel) progress.autosaveBadge = true;
-        if (again.coverApplied) progress.coverApplied = true;
         const check = validateReadback(article, again);
+        if (again.coverApplied || (article.cover && check.coverOk)) progress.coverApplied = true;
         progress.readback = {
           titleOk: check.titleOk,
           imagesOk: check.imagesOk,
           coverOk: check.coverOk,
+          coverMatch: Boolean(check.coverMatch),
           missing: check.missing,
           missingHeadings: check.missingHeadings,
           missingItems: check.missingItems,
@@ -926,7 +928,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
           imageInventory: Array.isArray(again.imageInventory) ? again.imageInventory.slice(0, 12) : [],
           blocks: Array.isArray(again.blocks) ? again.blocks.slice(0, 60) : [],
           autosaveLabel: again.autosaveLabel || "",
-          coverApplied: Boolean(again.coverApplied),
+          coverApplied: Boolean(progress.coverApplied),
           draftId: again.draftId || progress.draftId,
           excerpt: normalizeText(again.text).slice(0, 80),
         };

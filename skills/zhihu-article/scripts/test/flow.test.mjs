@@ -848,6 +848,63 @@ test("repair replaces a duplicated body only after the selection matches", async
   assert.equal(replaced.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
 });
 
+test("a saved cover thumbnail matches the file dimensions without another upload", async () => {
+  const dir = dirs().receiptDir;
+  createReceiptStore().write(dir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    account: "示例作者",
+  });
+  const session = sessionWith({
+    probes: [home(), editor({
+      draftId: "55",
+      blank: false,
+      title: "示例标题",
+      text: "一段说明 小节 第一点",
+      headings: [{ level: 2, text: "小节" }],
+      imageCount: 0,
+      coverApplied: false,
+      url: "https://zhuanlan.zhihu.com/p/55/edit",
+      pageTitle: "写文章 - 知乎",
+      autosaveLabel: "刚刚 · 草稿",
+    })],
+    settled: { ok: true, draftId: "55", autosaveLabel: "刚刚 · 草稿", published: false, draftAmbiguous: false },
+    read: () => readback({
+      draftId: "55",
+      autosaveLabel: "刚刚 · 草稿",
+      coverApplied: false,
+      imageCount: 0,
+      coverProbe: {
+        emptyHint: true,
+        labels: ["添加文章封面", "图片上传格式支持 JPEG、JPG、PNG"],
+        widget: {
+          inputCount: 1,
+          images: [{ visible: true, natural: { width: 1200, height: 400 }, fingerprint: "318dc0ff" }],
+        },
+      },
+    }),
+  });
+  const summary = await executeSave({
+    verifyDraft: true,
+    receiptDir: dir,
+    article: article({
+      cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 20, width: 1200, height: 400 },
+    }),
+  }, { browser: browserFor(session) });
+  assert.equal(summary.state, "draft-saved");
+  assert.equal(summary.readback.coverMatch, true);
+  assert.equal(summary.readback.coverOk, true);
+  assert.equal(summary.mutation, "none");
+  assert.equal(session.calls.paste, 0);
+  assert.equal(session.calls.upload, 0);
+  assert.equal(session.calls.cover, 0);
+  assert.equal(session.calls.clearBody || 0, 0);
+  assert.equal(session.calls.goto.includes("https://zhuanlan.zhihu.com/write"), false);
+});
+
 test("save-draft does not reopen an unverified receipt", async () => {
   const dir = dirs().receiptDir;
   createReceiptStore().write(dir, {

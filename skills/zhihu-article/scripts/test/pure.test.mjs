@@ -263,6 +263,46 @@ test("readback requires structure, not a button", () => {
   assert.equal(doubled.ok, false);
   assert.equal(doubled.duplicateLead, true);
   assert.equal(doubled.duplicateShape, true);
+  const coverSource = {
+    title: "标题",
+    snippets: ["导语"],
+    headings: [],
+    listItems: [],
+    links: [],
+    imageCount: 2,
+    cover: { name: "cover.png", width: 1200, height: 400 },
+  };
+  const coverSaved = validateReadback(coverSource, {
+    title: "标题",
+    text: "导语",
+    headings: [],
+    listItems: [],
+    hrefs: [],
+    imageCount: 2,
+    coverApplied: false,
+    coverProbe: {
+      emptyHint: true,
+      widget: { inputCount: 1, images: [{ visible: true, natural: { width: 1200, height: 400 } }] },
+    },
+  });
+  assert.equal(coverSaved.coverMatch, true);
+  assert.equal(coverSaved.coverOk, true);
+  assert.equal(coverSaved.ok, true);
+  const coverWrong = validateReadback(coverSource, {
+    title: "标题",
+    text: "导语",
+    headings: [],
+    listItems: [],
+    hrefs: [],
+    imageCount: 2,
+    coverApplied: false,
+    coverProbe: {
+      emptyHint: true,
+      widget: { inputCount: 1, images: [{ visible: true, natural: { width: 800, height: 500 } }] },
+    },
+  });
+  assert.equal(coverWrong.coverMatch, false);
+  assert.equal(coverWrong.coverOk, false);
   const spaced = validateReadback({
     title: "标题",
     snippets: ["这段包含 粗体 和 斜体，以及一个链接：知乎专栏常见问题。", "验收配图一"],

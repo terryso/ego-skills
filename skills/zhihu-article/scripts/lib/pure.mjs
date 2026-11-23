@@ -991,6 +991,17 @@ export function headingWasFlattened(article, editor) {
   });
 }
 
+function widgetCoverMatches(article, actual) {
+  const cover = article && article.cover;
+  const widget = actual && actual.coverProbe && actual.coverProbe.widget;
+  if (!cover || !widget || widget.inputCount !== 1) return false;
+  const images = Array.isArray(widget.images) ? widget.images : [];
+  if (images.length !== 1 || !images[0].visible) return false;
+  const natural = images[0].natural || {};
+  return natural.width === cover.width && natural.height === cover.height
+    && natural.width > 330 && natural.height > 100;
+}
+
 export function validateReadback(article, actual) {
   const titleOk = normalizeText(actual && actual.title) === normalizeText(article.title);
   const imageCount = actual && typeof actual.imageCount === "number" ? actual.imageCount : -1;
@@ -1013,7 +1024,8 @@ export function validateReadback(article, actual) {
   const missingHrefs = (article.links || []).filter((link) => link.href && !hrefs.has(link.href)).map((link) => link.href);
   const rawMarkup = /<\s*(p|h1|h2|h3|ul|ol|li|strong|em|a)\b/i.test(String(actual && actual.text || ""));
   const coverRequired = Boolean(article.cover);
-  const coverOk = !coverRequired || Boolean(actual && actual.coverApplied);
+  const coverMatch = widgetCoverMatches(article, actual);
+  const coverOk = !coverRequired || Boolean(actual && actual.coverApplied) || coverMatch;
   const duplicateLead = timesIn(haystack, compactText(leadSnippet(article))) > 1;
   const expectedHeadings = (article.headings || []).map((item) => `${item.level}:${compactText(item.text)}`);
   const actualHeadingKeys = (actual && actual.headings || []).map((item) => `${item.level}:${compactText(item.text)}`);
@@ -1028,6 +1040,7 @@ export function validateReadback(article, actual) {
     titleOk,
     imagesOk,
     coverOk,
+    coverMatch,
     duplicateLead,
     duplicateShape,
     uploadPending,
