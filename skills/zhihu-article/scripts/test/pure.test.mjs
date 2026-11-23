@@ -118,6 +118,8 @@ test("flags refuse publish consent and keep draft consent separate", () => {
   assert.equal(parseSaveArgs(["--save-draft", "--markdown", "/absolute/path/to/article.md"]).saveDraft, true);
   assert.throws(() => parseSaveArgs(["--publish"]), /does not grant permission to publish/);
   assert.throws(() => parseSaveArgs(["--save-draft", "--yes"]), /not draft-save consent/);
+  assert.equal(parseSaveArgs(["--verify-draft", "--markdown", "/absolute/path/to/article.md"]).verifyDraft, true);
+  assert.throws(() => parseSaveArgs(["--save-draft", "--verify-draft"]), /read-only/);
   assert.throws(() => parsePreviewArgs(["--schedule"]), /Scheduling/);
   assert.throws(() => parseSaveArgs(["--answer"]), /articles only/);
   assert.throws(() => parseSaveArgs(["--idea"]), /articles only/);
@@ -158,8 +160,11 @@ test("attempt and outcome states never treat a click or autosave as publish", ()
   const saved = { hash: "a", state: "draft-saved", verified: true, draftId: "9" };
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: saved }).action, "already-saved");
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified" } }).action, "blocked-previous-mutation");
-  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified", draftId: "55" } }).action, "resume");
-  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded", draftId: "55" } }).resume, true);
+  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified", draftId: "55" } }).action, "verify-required");
+  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "unverified", draftId: "55" } }).error, "verify-draft-required");
+  assert.equal(decideAttempt({ verifyDraft: true, hash: "a", receipt: { hash: "a", state: "unverified", draftId: "55" } }).action, "verify-draft");
+  assert.equal(decideAttempt({ verifyDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded", draftId: "55" } }).resume, true);
+  assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded", draftId: "55" } }).resume, undefined);
   assert.equal(decideAttempt({ saveDraft: true, hash: "a", receipt: { hash: "a", state: "uploaded" } }).exitCode, 4);
   assert.equal(decideAttempt({ saveDraft: true, hash: "b", receipt: saved }).action, "save");
 
@@ -244,6 +249,17 @@ test("readback requires structure, not a button", () => {
   });
   assert.equal(good.ok, true);
   assert.equal(good.missing.includes("配图"), false);
+  const doubled = validateReadback(built, {
+    title: "示例标题",
+    text: "一段说明，带一个链接。 一段说明，带一个链接。 小节 第一点 第二点",
+    headings: [{ level: 2, text: "小节" }, { level: 2, text: "小节" }],
+    listItems: ["第一点", "第二点", "第一点", "第二点"],
+    hrefs: ["https://example.com/docs"],
+    imageCount: 1,
+  });
+  assert.equal(doubled.ok, false);
+  assert.equal(doubled.duplicateLead, true);
+  assert.equal(doubled.duplicateShape, true);
   const spaced = validateReadback({
     title: "标题",
     snippets: ["这段包含 粗体 和 斜体，以及一个链接：知乎专栏常见问题。", "验收配图一"],

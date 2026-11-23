@@ -22,13 +22,14 @@ export const USAGE = `Usage:
       [--title TEXT] [--cover /absolute/path/to/cover.png] [--asset-root /absolute/path/to/assets] [--json]
   node scripts/save-draft.mjs (--markdown /absolute/path/to/article.md | --text TEXT | --text-file /absolute/path/to/body.txt)
       [--title TEXT] [--cover /absolute/path/to/cover.png] [--asset-root /absolute/path/to/assets]
-      [--expect-account NAME] [--save-draft] [--json]
+      [--expect-account NAME] [--save-draft | --verify-draft] [--json]
       [--receipt-dir /absolute/path/to/receipts]
       [--screenshot-dir /absolute/path/to/screenshots]
   node scripts/cleanup.mjs [--json]
 
-preview and save-draft without --save-draft are offline. They do not open a browser and do not write a draft.
---save-draft consents to one article draft. It does not permit public publishing.
+preview and save-draft without --save-draft or --verify-draft are offline. They do not open a browser and do not write a draft.
+--save-draft consents to one new article draft. It does not reopen an unverified hash and it does not permit public publishing.
+--verify-draft reopens the receipt's existing edit URL and only reads it. It does not paste, upload, or delete.
 --publish and --yes are refused. Public publishing is not implemented.
 The task space is always closed. --keep is not supported.
 `;
@@ -112,6 +113,7 @@ function emptyArgs() {
     help: false,
     json: false,
     saveDraft: false,
+    verifyDraft: false,
     markdown: "",
     title: "",
     text: "",
@@ -144,6 +146,12 @@ export function parseArgs(argv, command) {
     if (token === "--save-draft") {
       if (command !== "save") throw new Error("--save-draft is only valid for save-draft");
       out.saveDraft = true;
+      index += 1;
+      continue;
+    }
+    if (token === "--verify-draft") {
+      if (command !== "save") throw new Error("--verify-draft is only valid for save-draft");
+      out.verifyDraft = true;
       index += 1;
       continue;
     }
@@ -202,7 +210,11 @@ export function parsePreviewArgs(argv) {
 }
 
 export function parseSaveArgs(argv) {
-  return parseArgs(argv, "save");
+  const out = parseArgs(argv, "save");
+  if (out.saveDraft && out.verifyDraft) {
+    throw new Error("--verify-draft is read-only and cannot be combined with --save-draft");
+  }
+  return out;
 }
 
 export function normalizeText(value) {
@@ -762,11 +774,34 @@ export function decideAccount(probe, expectAccount = "") {
   return { ok: true, exitCode: 0, account, accounts, identityVisible: true, reason: "ok" };
 }
 
-export function decideAttempt({ saveDraft, receipt, hash }) {
+export function decideAttempt({ saveDraft, verifyDraft = false, receipt, hash }) {
+  const same = receipt && receipt.hash === hash;
+  const editable = same && draftEditUrl(receipt.draftId);
+  if (verifyDraft) {
+    if (editable) {
+      return {
+        action: "verify-draft",
+        save: false,
+        resume: true,
+        exitCode: 0,
+        state: receipt.state || "unverified",
+        consent: "verify-draft",
+        receipt,
+      };
+    }
+    return {
+      action: "verify-required",
+      save: false,
+      exitCode: 4,
+      state: same ? receipt.state : "not-started",
+      consent: "verify-draft",
+      error: "verify-draft-required",
+      receipt: same ? receipt : null,
+    };
+  }
   if (!saveDraft) {
     return { action: "preview", save: false, exitCode: 3, state: "not-started", consent: "none" };
   }
-  const same = receipt && receipt.hash === hash;
   if (same && receipt.state === "draft-saved" && receipt.draftId && receipt.verified === true) {
     return {
       action: "already-saved",
@@ -778,14 +813,14 @@ export function decideAttempt({ saveDraft, receipt, hash }) {
     };
   }
   if (same && (receipt.state === "unverified" || receipt.state === "uploaded")) {
-    if (draftEditUrl(receipt.draftId)) {
+    if (editable) {
       return {
-        action: "resume",
+        action: "verify-required",
         save: false,
-        resume: true,
-        exitCode: 0,
+        exitCode: 4,
         state: receipt.state,
-        consent: "save-draft",
+        consent: "none",
+        error: "verify-draft-required",
         receipt,
       };
     }
@@ -795,6 +830,7 @@ export function decideAttempt({ saveDraft, receipt, hash }) {
       exitCode: 4,
       state: receipt.state,
       consent: "save-draft",
+      error: "previous-mutation",
       receipt,
     };
   }
@@ -883,6 +919,17 @@ function leadSnippet(article) {
   return (article.snippets || []).map(normalizeText).find((item) => item && !captions.has(item) && !(article.headings || []).some((heading) => normalizeText(heading.text) === item)) || "";
 }
 
+function hasExtraCopies(expected, actual) {
+  const exp = new Map();
+  for (const item of expected) exp.set(item, (exp.get(item) || 0) + 1);
+  const got = new Map();
+  for (const item of actual) got.set(item, (got.get(item) || 0) + 1);
+  for (const [key, count] of got) {
+    if (count > (exp.get(key) || 0)) return true;
+  }
+  return false;
+}
+
 function timesIn(haystack, needle) {
   if (!needle) return 0;
   let count = 0;
@@ -937,16 +984,21 @@ export function validateReadback(article, actual) {
   const coverRequired = Boolean(article.cover);
   const coverOk = !coverRequired || Boolean(actual && actual.coverApplied);
   const duplicateLead = timesIn(haystack, compactText(leadSnippet(article))) > 1;
+  const expectedHeadings = (article.headings || []).map((item) => `${item.level}:${compactText(item.text)}`);
+  const actualHeadingKeys = (actual && actual.headings || []).map((item) => `${item.level}:${compactText(item.text)}`);
+  const duplicateShape = hasExtraCopies(expectedHeadings, actualHeadingKeys)
+    || hasExtraCopies((article.listItems || []).map((item) => normalizeText(item)), actualItems);
   const uploadPending = Boolean(actual && actual.uploadPending) || haystack.includes(compactText("图片上传中"));
   const ok = titleOk && imagesOk && missing.length === 0 && missingHeadings.length === 0
     && missingItems.length === 0 && missingHrefs.length === 0 && !rawMarkup && coverOk
-    && !duplicateLead && !uploadPending;
+    && !duplicateLead && !duplicateShape && !uploadPending;
   return {
     ok,
     titleOk,
     imagesOk,
     coverOk,
     duplicateLead,
+    duplicateShape,
     uploadPending,
     missing,
     missingHeadings,

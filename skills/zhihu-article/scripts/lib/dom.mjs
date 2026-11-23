@@ -457,6 +457,57 @@ export function zhihuAct(payload) {
     return "other";
   }
 
+  function srcOf(el) {
+    return attr(el, "src") || (el && el.src) || "";
+  }
+
+  function schemeHost(src) {
+    if (String(src).startsWith("blob:")) return { scheme: "blob", host: "" };
+    if (String(src).startsWith("data:")) return { scheme: "data", host: "" };
+    try {
+      const url = new URL(src, "https://www.zhihu.com");
+      return { scheme: url.protocol.replace(":", ""), host: url.host };
+    } catch {
+      return { scheme: "other", host: "" };
+    }
+  }
+
+  function inCoverWidget(el, editor) {
+    let current = el;
+    for (let depth = 0; depth < 6 && current && current !== editor && current.tagName !== "BODY"; depth += 1) {
+      const blob = `${current.className || ""} ${hintOf(current)} ${directText(current)}`;
+      if (/封面|题图|UploadPicture|添加封面/.test(blob) || /(?:^|[^a-z])cover(?:[^a-z]|$)/i.test(blob)) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function imageRecord(el, editor) {
+    const src = srcOf(el);
+    const located = schemeHost(src);
+    const pending = insidePendingUpload(el);
+    const cover = inCoverWidget(el, editor);
+    let role = "ignored";
+    if (!src || src.startsWith("data:image/svg")) role = "ignored";
+    else if (pending) role = "pending";
+    else if (cover) role = "cover-widget";
+    else if (located.scheme === "http" || located.scheme === "https" || located.scheme === "blob") role = "body";
+    const ancestors = [];
+    let current = el.parentElement;
+    for (let depth = 0; depth < 5 && current && current !== editor && current.tagName !== "BODY"; depth += 1) {
+      const cls = String(current.className || "").split(/\s+/).filter(Boolean).slice(0, 2).join(".");
+      ancestors.push(cls ? `${current.tagName}.${cls}` : String(current.tagName || ""));
+      current = current.parentElement;
+    }
+    return {
+      role,
+      scheme: located.scheme,
+      host: located.host,
+      alt: normalize(attr(el, "alt")).slice(0, 40),
+      ancestors,
+    };
+  }
+
   function editorSnapshot(editor) {
     const headings = qsaAny(["h1", "h2", "h3"], editor).filter(shown).map((el) => ({
       level: Number(String(el.tagName || "").replace(/\D/g, "")) || 0,
@@ -468,19 +519,21 @@ export function zhihuAct(payload) {
       const href = attr(el, "href");
       if (/^https?:\/\//i.test(href)) hrefs.push(href);
     }
-    const images = qsaAny(["img"], editor).filter((el) => {
-      if (insidePendingUpload(el)) return false;
-      const src = attr(el, "src") || el.src || "";
-      return Boolean(src) && !src.startsWith("data:image/svg");
-    });
+    const imageInventory = qsaAny(["img"], editor).map((el) => imageRecord(el, editor));
+    const blocks = elementChildren(editor).slice(0, 60).map((el) => ({
+      tag: String(el.tagName || ""),
+      text: normalize(el.innerText || el.textContent).slice(0, 48),
+    }));
     const text = normalize(editor && (editor.innerText || editor.textContent));
     return {
       text,
       headings,
       listItems,
       hrefs: [...new Set(hrefs)],
-      imageCount: images.length,
-      uploadPending: text.includes("图片上传中"),
+      imageCount: imageInventory.filter((item) => item.role === "body").length,
+      imageInventory,
+      blocks,
+      uploadPending: text.includes("图片上传中") || imageInventory.some((item) => item.role === "pending"),
     };
   }
 

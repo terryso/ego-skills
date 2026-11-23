@@ -109,7 +109,8 @@ export async function runCli(kind, argv, deps = {}) {
     return 0;
   }
 
-  const runner = RUNNERS[kind] || { command: "preview", exportName: "" };
+  const runner = { ...(RUNNERS[kind] || { command: "preview", exportName: "" }) };
+  if (kind === "save" && args.verifyDraft) runner.command = "verify-draft";
   let article = null;
   if (kind === "preview" || kind === "save") {
     const prepared = await io.prepare({ ...args, command: kind, fsImpl: io.fs });
@@ -129,7 +130,7 @@ export async function runCli(kind, argv, deps = {}) {
       return 1;
     }
     article = prepared.article;
-    if (kind === "preview" || !args.saveDraft) {
+    if (kind === "preview" || (!args.saveDraft && !args.verifyDraft)) {
       const summary = offlineSummary(kind, article);
       io.stdout.write(formatResult(summary, { asJson: Boolean(args.json) }));
       return summary.exitCode;
@@ -160,6 +161,7 @@ export async function runCli(kind, argv, deps = {}) {
   const config = {
     command: runner.command,
     saveDraft: Boolean(args.saveDraft),
+    verifyDraft: Boolean(args.verifyDraft),
     expectAccount: args.expectAccount || "",
     receiptDir,
     screenshotDir: args.screenshotDir || "",

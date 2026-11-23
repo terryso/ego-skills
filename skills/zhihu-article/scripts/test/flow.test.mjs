@@ -746,6 +746,31 @@ test("an ambiguous body image input records the page and does not publish", asyn
   assert.equal(stuck.calls.capture, 1);
 });
 
+test("save-draft does not reopen an unverified receipt", async () => {
+  const dir = dirs().receiptDir;
+  createReceiptStore().write(dir, {
+    hash: "hash-1",
+    state: "unverified",
+    verified: false,
+    draftId: "55",
+    draftUrl: "https://zhuanlan.zhihu.com/p/55/edit",
+    account: "示例作者",
+  });
+  const session = sessionWith({ probes: [] });
+  const refused = await executeSave({
+    saveDraft: true,
+    receiptDir: dir,
+    article: article(),
+  }, { browser: browserFor(session) });
+  assert.equal(refused.exitCode, 4);
+  assert.equal(refused.error, "verify-draft-required");
+  assert.equal(refused.action, "verify-required");
+  assert.equal(refused.mutation, "none");
+  assert.equal(refused.draftUrl, "https://zhuanlan.zhihu.com/p/55/edit");
+  assert.equal(session.calls.goto.length, 0);
+  assert.equal(session.calls.paste, 0);
+});
+
 test("an unverified receipt reopens its draft and does not open /write", async () => {
   const dir = dirs().receiptDir;
   createReceiptStore().write(dir, {
@@ -769,7 +794,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     read: () => readback({ draftId: "55", autosaveLabel: "刚刚 · 草稿" }),
   });
   const summary = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: dir,
     article: article(),
   }, { browser: browserFor(session) });
@@ -841,7 +866,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     }),
   });
   const repaired = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: repairDir,
     screenshotDir: dirs().screenshotDir,
     article: repairArticle,
@@ -883,7 +908,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     }),
   });
   const stillPending = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: pendingDir,
     article: article(),
   }, { browser: browserFor(pending) });
@@ -924,7 +949,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     }),
   });
   const coverTimeout = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: coverDir,
     screenshotDir: dirs().screenshotDir,
     article: article({ cover: { name: "cover.png", path: "/absolute/path/to/cover.png", sha256: "c", bytes: 20 } }),
@@ -953,7 +978,7 @@ test("an unverified receipt reopens its draft and does not open /write", async (
     probes: [home(), editor({ draftId: "55", blank: true, title: "", text: "", autosaveLabel: "刚刚 · 草稿" })],
   });
   const untouched = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: emptyDir,
     article: article(),
   }, { browser: browserFor(empty) });
@@ -986,7 +1011,7 @@ test("an exception during read-only verify keeps the page and does not claim mut
     read: () => { throw new Error("childNodes.filter is not a function"); },
   });
   const thrown = await executeSave({
-    saveDraft: true,
+    verifyDraft: true,
     receiptDir: dir,
     screenshotDir: dirs().screenshotDir,
     article: article(),

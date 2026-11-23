@@ -54,7 +54,9 @@ test("synthetic childNodes arrays do not stand in for a browser NodeList", () =>
   <p id="other">别的段落</p>
   <figure id="done"><img src="https://pic1.zhimg.com/done.png" alt=""></figure>
   <div id="pending">图片上传中<img src="blob:pending" alt=""></div>
+  <div class="UploadPicture" id="cover-widget">添加封面<img src="https://pic2.zhimg.com/panel.png" alt=""></div>
 </div>
+<img id="sidebar" src="https://pic3.zhimg.com/sidebar.png" alt="">
 <script>
 const zhihuAct = ${zhihuAct.toString()};
 const body = document.getElementById("body");
@@ -70,7 +72,12 @@ try { body.childNodes = []; } catch { assignChanged = true; }
 assignChanged = assignChanged || body.childNodes.length === 0;
 const removeResult = zhihuAct({ op: "remove-duplicate-lead", lead });
 const clearResult = zhihuAct({ op: "clear-pending-upload" });
+const read = zhihuAct({ op: "read" });
 document.documentElement.setAttribute("data-result", JSON.stringify({
+  evidenceScope: "offline-contenteditable-dom",
+  imageCount: read.imageCount,
+  coverApplied: read.coverApplied,
+  roles: (read.imageInventory || []).map((item) => item.role),
   filterError,
   filterType: typeof nodeList.filter,
   nodeList: nodeList.constructor.name,
@@ -98,4 +105,46 @@ document.documentElement.setAttribute("data-result", JSON.stringify({
   assert.equal(result.done, true);
   assert.equal(result.pending, true);
   assert.deepEqual(result.events, []);
+  assert.equal(result.evidenceScope, "offline-contenteditable-dom");
+  assert.equal(result.imageCount, 1);
+  assert.equal(result.coverApplied, false);
+  assert.deepEqual(result.roles.slice().sort(), ["body", "cover-widget", "pending"]);
+});
+
+test("beforeinput state stays put when the DOM is cleared without an editor event", () => {
+  const result = runProductionAct(`<!doctype html><meta charset="utf-8"><title>写文章 - 知乎</title>
+<textarea placeholder="请输入标题（最多 100 个字）"></textarea>
+<div class="public-DraftEditor-content" contenteditable="true" id="body"><p>原文</p><p>原文</p></div>
+<script>
+const zhihuAct = ${zhihuAct.toString()};
+const body = document.getElementById("body");
+let state = "原文原文";
+const events = [];
+body.addEventListener("beforeinput", (event) => {
+  events.push(event.inputType || "beforeinput");
+  event.preventDefault();
+});
+zhihuAct({ op: "mark-body" });
+const selected = zhihuAct({ op: "select-body" });
+body.textContent = "";
+const removed = zhihuAct({ op: "remove-duplicate-lead", lead: "原文" });
+document.documentElement.setAttribute("data-result", JSON.stringify({
+  evidenceScope: "contenteditable-beforeinput-harness",
+  draftJsPersistence: false,
+  selected: Boolean(selected && selected.selected),
+  state,
+  domEmpty: body.textContent === "",
+  events,
+  removedError: removed && removed.error,
+  mutated: Boolean(removed && removed.mutated),
+}));
+</script>`);
+  assert.equal(result.evidenceScope, "contenteditable-beforeinput-harness");
+  assert.equal(result.draftJsPersistence, false);
+  assert.equal(result.selected, true);
+  assert.equal(result.state, "原文原文");
+  assert.equal(result.domEmpty, true);
+  assert.deepEqual(result.events, []);
+  assert.equal(result.removedError, "editor-mutation-unverified");
+  assert.equal(result.mutated, false);
 });

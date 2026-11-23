@@ -174,6 +174,20 @@ test("a consented save spawns ego-browser and a missing binary soft-fails", asyn
   const emptyHome = io({ whichEgo: () => "ego-browser", home: "", env: {}, spawn() { throw new Error("no"); } });
   assert.equal(await runCli("save", ["--text", "正文", "--title", "示例标题", "--save-draft"], emptyHome), 1);
   assert.match(emptyHome.stdout.text(), /receipt dir is empty/);
+
+  let verifyEntry = "";
+  const verify = io({
+    fs: { promises: { writeFile: async (_file, source) => { verifyEntry = source; }, rm: async () => {} } },
+    spawn() {
+      return childWith({
+        stdout: `${RESULT_TAG}${JSON.stringify({ exitCode: 4, command: "verify-draft", state: "unverified", error: "duplicate-content" })}`,
+      });
+    },
+  });
+  assert.equal(await runCli("save", ["--markdown", "/absolute/path/to/article.md", "--verify-draft", "--json"], verify), 4);
+  assert.match(verifyEntry, /"verifyDraft":true/);
+  assert.doesNotMatch(verifyEntry, /"saveDraft":true/);
+  assert.equal(await runCli("save", ["--verify-draft", "--save-draft", "--markdown", "/absolute/path/to/article.md"], io()), 1);
 });
 
 test("spawn failures and cleanup output stay outside a real account", async () => {

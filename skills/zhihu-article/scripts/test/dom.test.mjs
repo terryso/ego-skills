@@ -479,9 +479,11 @@ test("readback counts structure inside the editor and ignores a badge inside the
   const heading = h("h2", {}, ["小节"]);
   const item = h("li", {}, ["第一点"]);
   const link = h("a", { attrs: { href: "https://example.com/docs" } }, ["链接"]);
-  const image = h("img", { attrs: { src: "blob:body" } });
+  const image = h("img", { attrs: { src: "https://pic1.zhimg.com/body.png" } });
+  const coverThumb = h("img", { attrs: { src: "https://pic2.zhimg.com/panel.png" } });
+  const coverWidget = h("div", { className: "UploadPicture" }, ["添加封面", coverThumb]);
   const inside = h("span", {}, ["已保存"]);
-  const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明 小节 第一点 链接" }, [heading, item, link, image, inside]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明 小节 第一点 链接" }, [heading, item, link, image, coverWidget, inside]);
   const cover = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic1.zhimg.com/cover.png" } });
   const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
   const editLink = h("a", { attrs: { href: "/p/77/edit?token=secret" } }, ["继续编辑"]);
@@ -491,6 +493,8 @@ test("readback counts structure inside the editor and ignores a badge inside the
   const read = zhihuAct({ op: "read" });
   assert.equal(read.draftId, "77");
   assert.equal(read.imageCount, 1);
+  assert.equal(read.imageInventory.filter((item) => item.role === "body").length, 1);
+  assert.equal(read.imageInventory.some((item) => item.role === "cover-widget"), true);
   assert.equal(read.coverApplied, true);
   assert.equal(read.autosaveLabel, "");
   const fresh = h("span", {}, ["刚刚 · 草稿"]);

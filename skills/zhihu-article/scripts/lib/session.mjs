@@ -143,16 +143,11 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       await page.keyboard.paste({ text: text || "", html: html || "" });
       return { ok: true };
     },
-    async replaceBody(html, text) {
-      const marked = await act("mark-body");
-      if (!marked.ok) return marked;
-      const selected = await act("select-body");
-      if (!selected.ok) return { ok: false, error: selected.error || "body selection is unavailable" };
-      if (!page.keyboard || typeof page.keyboard.paste !== "function") {
-        return { ok: false, error: "keyboard.paste is required" };
-      }
-      await page.keyboard.paste({ text: text || "", html: html || "" });
-      return { ok: true, replaced: true };
+    async replaceBody() {
+      // selectNodeContents plus paste appended on the live draft. A DOM range
+      // is not Draft.js selection, and this VM cannot prove a key sequence
+      // persists. Refuse the write.
+      return { ok: false, replaced: false, mutated: false, error: "editor-replacement-unproven" };
     },
     async clearPendingUpload() {
       return act("clear-pending-upload");

@@ -9,8 +9,9 @@
 | Input | `consent` | Browser | Exit |
 |-------|-----------|---------|------|
 | `preview` | `none` | no | `0` when the local plan is valid |
-| `save-draft` without `--save-draft` | `none` | no | `3` |
-| `save-draft --save-draft` | `save-draft` | yes, after login | `0` only when `state` is `draft-saved` |
+| `save-draft` without `--save-draft` or `--verify-draft` | `none` | no | `3` |
+| `save-draft --verify-draft` | `verify-draft` | yes, read only | `0` only when the existing draft already matches |
+| `save-draft --save-draft` | `save-draft` | yes, after login, and only when this hash has no unverified receipt | `0` only when `state` is `draft-saved` |
 
 Invalid Markdown, a malformed image, or a refused flag never starts the browser.
 
@@ -35,7 +36,7 @@ Invalid Markdown, a malformed image, or a refused flag never starts the browser.
 | `unverified` | false | false | `4`, or `2` when the session expired after content was entered |
 | `draft-saved` | true | false | `0` |
 
-A previous `uploaded` or `unverified` receipt for the same content hash does not open `/write`. If it has a numeric draft id, `--save-draft` reopens `https://zhuanlan.zhihu.com/p/<id>/edit` and only reads it: no paste, no image upload, no cover upload, and no block deletion. Direct DOM removal is disabled because a browser `childNodes` list is not an array and a removal that does not emit an editor input is not a saved change. A duplicated lead or a `图片上传中` placeholder stays `unverified`. A blank editor, a different id, or a title that does not match stops with no edit. A receipt with no draft id stays exit `4` and does not open the editor. A previous verified `draft-saved` receipt returns that id and does not write again. An exception reports `mutation: unknown` and still includes the page URL, title, and screenshot when they can be captured.
+A previous `uploaded` or `unverified` receipt for the same content hash does not open `/write`. `--save-draft` on that receipt exits `4` with `verify-draft-required` and does not open a browser. `--verify-draft` is the only reopen. It reads `https://zhuanlan.zhihu.com/p/<id>/edit` and does not paste, upload, or delete. Its result is `evidenceScope: visible-editor-read`. That is a live page read, not proof that a DOM edit persisted in Draft.js. Direct DOM removal stays disabled. `replaceBody` stays disabled because a DOM range plus paste appended on the live draft and did not emit an editor input in the local harness. A duplicated lead, a duplicated heading or list item, or a `图片上传中` placeholder stays `unverified`. A blank editor, a different id, or a title that does not match stops with no edit. A receipt with no draft id stays exit `4` and does not open the editor. A previous verified `draft-saved` receipt returns that id and does not write again. An exception reports `mutation: unknown` and still includes the page URL, title, and screenshot when they can be captured.
 
 ## Receipt
 

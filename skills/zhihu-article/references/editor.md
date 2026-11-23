@@ -51,12 +51,12 @@ After reopen, the script compares:
 - heading level and text
 - list item text
 - absolute http(s) hrefs
-- image count inside the body
-- cover preview when `--cover` was passed
+- completed body image count inside the article editor. An `https` or `blob` image counts. An image whose block text is `图片上传中`, an SVG data image, and an image inside a 封面 / UploadPicture widget do not. A cover thumbnail inside that widget is not treated as an applied cover. An image outside the article editor, including a sidebar, is not a body image.
+- cover preview outside the article body when `--cover` was passed
 - a saved stamp outside the article body
 - the same draft id
 
-Raw HTML left in the body text fails the readback. Image alt text is not required in the body, because the live editor did not show it as a caption. A heading pasted as its own clipboard item after a paragraph was flattened; consecutive HTML blocks are pasted together. A unit fixture can satisfy this contract without proving the live page will.
+Raw HTML left in the body text fails the readback. A repeated lead, heading, or list item fails it too. Image alt text is not required in the body, because the live editor did not show it as a caption. A heading pasted as its own clipboard item after a paragraph was flattened; consecutive HTML blocks are pasted together on a blank editor. Replacing an existing body is not available: selecting the contenteditable and pasting appended a second copy, and clearing nodes does not emit `beforeinput`. A unit fixture or an offline contenteditable harness can satisfy this contract without proving Draft.js on Zhihu. `--verify-draft` records `imageInventory` and `blocks` from the visible page. That record is `visible-editor-read`.
 
 ## Timeouts
 

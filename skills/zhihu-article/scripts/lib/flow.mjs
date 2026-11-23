@@ -205,9 +205,12 @@ async function compose(session, article, initial) {
     missingItems: check.missingItems,
     missingHrefs: check.missingHrefs,
     rawMarkup: check.rawMarkup,
+    duplicateLead: Boolean(check.duplicateLead),
+    duplicateShape: Boolean(check.duplicateShape),
+    uploadPending: Boolean(check.uploadPending),
   };
   progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId);
-  if (!check.ok && !progress.error) progress.error = "readback-mismatch";
+  if (!check.ok && !progress.error) progress.error = readbackError(check);
   progress.observed = {
     title: again.title || "",
     imageCount: again.imageCount,
@@ -219,10 +222,17 @@ async function compose(session, article, initial) {
   return progress;
 }
 
+function readbackError(check) {
+  if (!check || check.ok) return "";
+  if (check.duplicateLead || check.duplicateShape) return "duplicate-content";
+  if (check.uploadPending) return "upload-pending";
+  return "readback-mismatch";
+}
+
 async function fillBody(session, article, progress, { replace = false } = {}) {
   const groups = coalescePastes(article.segments || []);
-  if (replace && (!groups[0] || groups[0].kind !== "html")) {
-    progress.error = "resume-shape";
+  if (replace) {
+    progress.error = "editor-replacement-unproven";
     return false;
   }
   let replacing = replace;
@@ -368,6 +378,7 @@ export async function executeSave(config, deps) {
   const existing = store.read(config.receiptDir, article.hash);
   const decision = decideAttempt({
     saveDraft: Boolean(config.saveDraft),
+    verifyDraft: Boolean(config.verifyDraft),
     receipt: existing,
     hash: article.hash,
   });
@@ -375,19 +386,20 @@ export async function executeSave(config, deps) {
   if (decision.resume) return resumeDraft(config, deps, decision, article, store, now, plan);
   if (!decision.save) {
     const prior = decision.receipt || {};
-    return result("save-draft", {
+    return result(config.verifyDraft ? "verify-draft" : "save-draft", {
       ok: decision.exitCode === 0 || decision.action === "preview",
       exitCode: decision.exitCode,
       state: decision.state,
       verified: decision.state === "draft-saved",
       retryable: false,
+      mutation: "none",
       consent: decision.consent,
       action: decision.action,
       duplicate: decision.action === "already-saved",
       confirmation_required: decision.action === "preview",
       draftId: prior.draftId || "",
       draftUrl: prior.draftUrl || draftEditUrl(prior.draftId),
-      error: decision.action === "blocked-previous-mutation" ? "previous-mutation" : "",
+      error: decision.error || (decision.action === "blocked-previous-mutation" ? "previous-mutation" : ""),
       plan,
       account: prior.account || "",
     });
@@ -528,8 +540,9 @@ export async function executeSave(config, deps) {
 async function resumeDraft(config, deps, decision, article, store, now, plan) {
   const prior = decision.receipt || {};
   const draftUrl = draftEditUrl(prior.draftId);
+  const command = "verify-draft";
   if (!draftUrl) {
-    return result("save-draft", {
+    return result(command, {
       exitCode: 4,
       state: prior.state || "unverified",
       retryable: false,
@@ -545,7 +558,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     session = await deps.browser.open({ taskName: TASK_NAME, startUrl: HOME_URL });
     const home = await session.probe();
     const account = decideAccount(home, config.expectAccount || "");
-    if (!account.ok) return accountFailure("save-draft", account, article);
+    if (!account.ok) return accountFailure(command, account, article);
     await session.goto(draftUrl);
     editor = await probeWrite(session, article);
     const access = classifyAccess(editor, { openedWrite: true });
@@ -560,7 +573,7 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     if (stop) {
       const error = stop;
       const evidence = await captureEvidence(session, config, editor, error);
-      return result("save-draft", {
+      return result(command, {
         exitCode: editor.published || error === "draft-id-changed" ? 4 : 4,
         state: "unverified",
         retryable: false,
@@ -639,15 +652,19 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
           missingHrefs: check.missingHrefs,
           rawMarkup: check.rawMarkup,
           duplicateLead: Boolean(check.duplicateLead),
+          duplicateShape: Boolean(check.duplicateShape),
           uploadPending: Boolean(check.uploadPending),
+          imageCount: check.imageCount,
+          imageInventory: Array.isArray(again.imageInventory) ? again.imageInventory.slice(0, 12) : [],
+          blocks: Array.isArray(again.blocks) ? again.blocks.slice(0, 60) : [],
         };
         progress.readbackOk = Boolean(check.ok && again.draftId === progress.draftId && !progress.error);
-        if (!check.ok && !progress.error) {
-          progress.error = check.duplicateLead ? "duplicate-content" : (check.uploadPending ? "upload-pending" : "readback-mismatch");
-        }
+        if (!check.ok && !progress.error) progress.error = readbackError(check);
         progress.observed = {
           title: again.title || "",
           imageCount: again.imageCount,
+          imageInventory: Array.isArray(again.imageInventory) ? again.imageInventory.slice(0, 12) : [],
+          blocks: Array.isArray(again.blocks) ? again.blocks.slice(0, 60) : [],
           autosaveLabel: again.autosaveLabel || "",
           coverApplied: Boolean(again.coverApplied),
           draftId: again.draftId || progress.draftId,
@@ -671,15 +688,17 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     }
     const evidence = await captureEvidence(session, config, editor, outcome.error || outcome.state);
     const exitCode = exitFor(outcome, progress);
-    return result("save-draft", {
+    return result(command, {
       ok: exitCode === 0,
       exitCode,
       state: outcome.state,
       verified: outcome.verified,
       retryable: false,
       mutation: "none",
-      consent: "save-draft",
+      consent: "verify-draft",
       action: "verify-draft",
+      evidenceScope: "visible-editor-read",
+      repair: { status: "blocked", reason: "editor-replacement-unproven" },
       account: account.account,
       accounts: account.accounts,
       draftId: outcome.draftId || prior.draftId,
@@ -699,12 +718,15 @@ async function resumeDraft(config, deps, decision, article, store, now, plan) {
     } catch {
       // Evidence is best-effort after an exception.
     }
-    return result("save-draft", {
+    return result(command, {
       exitCode: 4,
       state: "unverified",
       retryable: false,
       mutation: "unknown",
+      consent: "verify-draft",
       action: "verify-draft",
+      evidenceScope: "visible-editor-read",
+      repair: { status: "blocked", reason: "editor-replacement-unproven" },
       error: String(error.message || error),
       draftId: prior.draftId,
       draftUrl,

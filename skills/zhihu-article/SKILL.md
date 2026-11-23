@@ -3,7 +3,7 @@ name: zhihu-article
 slug: ego-zhihu-article
 displayName: Ego 知乎文章草稿
 summary: 用已登录的 Ego 浏览器准备一篇知乎专栏文章草稿。默认只做离线预览；--save-draft 只保存草稿，不发布。
-description: "Prepare one long-form Zhihu article (专栏文章) through the visible zhuanlan editor in Ego Lite. Articles only: not answers, comments, 想法, scheduling, or bulk publishing. Login-check first. Soft-fail with exit 2 when ego-browser is missing, Zhihu is logged out, the session expires, or --expect-account does not match. preview and save-draft without --save-draft are offline and do not open a browser. --save-draft consents to one draft mutation and does not permit publishing. --publish and --yes are refused. Public publishing is not implemented. Success is one numeric draft id, a non-empty readback, and a saved stamp (已保存 or 刚刚 · 草稿). An empty 刚刚 · 草稿 is not success. An unverified receipt reopens that draft URL and does not open /write again. Never report success from a click alone. Use when the user asks for a 知乎文章草稿, 专栏草稿, or zhuanlan.zhihu.com/write."
+description: "Prepare one long-form Zhihu article (专栏文章) through the visible zhuanlan editor in Ego Lite. Articles only: not answers, comments, 想法, scheduling, or bulk publishing. Login-check first. Soft-fail with exit 2 when ego-browser is missing, Zhihu is logged out, the session expires, or --expect-account does not match. preview and save-draft without --save-draft or --verify-draft are offline and do not open a browser. --save-draft consents to one new draft mutation and does not permit publishing. --verify-draft only reopens an existing receipt URL and reads it. --publish and --yes are refused. Public publishing is not implemented. Success is one numeric draft id, a non-empty readback, and a saved stamp (已保存 or 刚刚 · 草稿). An empty 刚刚 · 草稿 is not success. An unverified receipt is not reopened by --save-draft and must not open /write again. Never report success from a click alone. Use when the user asks for a 知乎文章草稿, 专栏草稿, or zhuanlan.zhihu.com/write."
 metadata:
   version: "0.1.0"
   requires:
@@ -20,7 +20,7 @@ metadata:
 
 Prepare **one** Zhihu article draft in the visible editor. `--save-draft` is the only mutation consent. It does not publish. Public publishing is not implemented in this version.
 
-成功不是点到了某个按钮。回读必须同时满足：编辑地址里有唯一的数字草稿 id、正文不是空的、页面有「已保存」或带时间的「刚刚 · 草稿」这类保存戳、标题、正文、标题层级、列表、链接和图片张数都对得上。图片的 alt 不会变成可见说明，不拿它当正文。封面必须是编辑器正文之外的一张 http 预览。没有这条回读，结果是 `unverified` 或 `uploaded`。同一篇的未验证回执只会重新打开那一个草稿地址做只读核对，不会再打开 `/write`，也不会粘贴、上传或删除块。重复的导语、没传完的图片或对不上的回读仍然是 `unverified`。空编辑器上的「刚刚 · 草稿」仍然不是成功。
+成功不是点到了某个按钮。回读必须同时满足：编辑地址里有唯一的数字草稿 id、正文不是空的、页面有「已保存」或带时间的「刚刚 · 草稿」这类保存戳、标题、正文、标题层级、列表、链接和完成的正文图片张数都对得上，而且导语、标题和列表不能重复。图片的 alt 不会变成可见说明，不拿它当正文。封面必须是正文图片之外的一张 http 预览；封面面板里的缩略图不算正文图片，也不单独当成封面已上传。没有这条回读，结果是 `unverified` 或 `uploaded`。`--verify-draft` 才会重新打开回执里的那一个草稿地址做只读核对。`--save-draft` 看到同一哈希的未验证回执就停，不再打开 `/write`，也不粘贴、上传或删除块。重复正文仍然是 `unverified`。空编辑器上的「刚刚 · 草稿」仍然不是成功。
 
 Success is not a click. The editor must show one numeric draft id, a saved stamp, and matching title, body, headings, lists, links, and image count. An empty editor showing 刚刚 · 草稿 is not success. An unverified receipt reopens that draft URL instead of `/write`.
 
@@ -56,8 +56,9 @@ node scripts/check-login.mjs --expect-account "示例作者"
 | 命令 | 写入？ |
 |------|--------|
 | `preview` | 否。退出码 `0` 只表示本地计划有效，`state` 为 `not-started` |
-| `save-draft` 不加 `--save-draft` | 否。退出码 `3` |
-| `save-draft --save-draft` | 是。只同意保存**一篇文章草稿** |
+| `save-draft` 不加 `--save-draft` 或 `--verify-draft` | 否。退出码 `3` |
+| `save-draft --verify-draft` | 否。只重新打开回执里的草稿地址并读取 |
+| `save-draft --save-draft` | 只同意保存**一篇新的文章草稿**。已有未验证回执时不打开浏览器 |
 | `--publish`、`--yes` | 直接拒绝。它们不是草稿同意，也不是发布许可 |
 
 `publishPermitted` 和 `publishSupported` 始终是 `false`。
@@ -70,7 +71,7 @@ node scripts/check-login.mjs --expect-account "示例作者"
 | `unverified` | 可能已经有草稿，但身份或正文对不上；包括只看到「已保存」、只点了按钮、自动保存和显式保存分不清 | 否 |
 | `failed` | 本地失败，没有观察到远程写入 | 只有 `retryable: true` 时可以修输入后再跑 |
 
-回执在 `--receipt-dir`，默认是用户状态目录下的 `zhihu-article/receipts`。同一哈希如果已经是 `unverified` 或 `uploaded`，下一次会退出 `4`，不再打开编辑器。
+回执在 `--receipt-dir`，默认是用户状态目录下的 `zhihu-article/receipts`。同一哈希如果已经是 `unverified` 或 `uploaded`，`--save-draft` 退出 `4` 且错误是 `verify-draft-required`，不打开编辑器。要读现有草稿，单独加 `--verify-draft`。
 
 ## 命令
 
@@ -84,6 +85,13 @@ node skills/zhihu-article/scripts/save-draft.mjs \
   --cover /absolute/path/to/cover.png \
   --expect-account "示例作者" \
   --save-draft --json
+node skills/zhihu-article/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md \
+  --cover /absolute/path/to/cover.png \
+  --expect-account "示例作者" \
+  --verify-draft --json \
+  --receipt-dir /absolute/path/to/receipts \
+  --screenshot-dir /absolute/path/to/screenshots
 node skills/zhihu-article/scripts/cleanup.mjs
 ```
 
