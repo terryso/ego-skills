@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { zhihuAct } from "../lib/dom.mjs";
-import { decideAccount } from "../lib/pure.mjs";
+import { classifyAccess, decideAccount } from "../lib/pure.mjs";
 import { createDocument, h } from "./dom-fixture.mjs";
 
 function editorParts() {
@@ -172,6 +172,38 @@ test("header avatar alt is the signed-in name, with or without spaces", () => {
   assert.deepEqual(outside.accounts, []);
   assert.equal(outside.identityVisible, false);
   assert.equal(outside.loggedIn, false);
+});
+
+test("zhuanlan write page keeps the header avatar and ignores the assistant", () => {
+  const logo = h("a", { className: "AppHeader-zhihuLogo" }, ["知乎"]);
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const article = h("div", { className: "notranslate public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const assistant = h("div", { className: "assistant-panel" }, [
+    h("div", { editable: true, text: "创作助手" }),
+  ]);
+  const publishSettings = h("button", {}, ["发布设置"]);
+  const preview = h("button", {}, ["预览"]);
+  const publish = h("button", {}, ["发布"]);
+  createDocument(h("body", {}, [logo, avatar, title, article, assistant, publishSettings, preview, publish]), {
+    href: "https://zhuanlan.zhihu.com/write",
+    title: "写文章 - 知乎",
+  });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.loginWall, false);
+  assert.equal(probe.loggedIn, true);
+  assert.equal(probe.surface, "article");
+  assert.equal(probe.editorReady, true);
+  assert.equal(probe.bodyAmbiguous, false);
+  assert.equal(probe.blank, true);
+  assert.deepEqual(probe.accounts, ["BMAD实验室"]);
+  assert.equal(probe.identityVisible, true);
+  assert.equal(probe.pageTitle, "写文章 - 知乎");
+  assert.deepEqual(probe.publishLabels, ["发布"]);
+  assert.equal(classifyAccess(probe, { openedWrite: true }).reason, "ok");
+  assert.equal(decideAccount(probe, "BMAD实验室").reason, "ok");
+  assert.equal(publishSettings.clicked, 0);
+  assert.equal(publish.clicked, 0);
 });
 
 test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {

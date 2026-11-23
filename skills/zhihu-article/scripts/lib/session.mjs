@@ -38,7 +38,7 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
       const url = described.url || await currentUrl();
       return { ...described, url };
     } catch (error) {
-      return { ok: false, loginWall: true, loggedIn: false, accounts: [], error: String(error.message || error) };
+      return { ok: false, evaluateFailed: true, loginWall: false, loggedIn: false, accounts: [], error: String(error.message || error) };
     }
   }
 
@@ -71,7 +71,8 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
         if (!described || described.ok === false) {
           return {
             ok: false,
-            loginWall: true,
+            evaluateFailed: true,
+            loginWall: false,
             loggedIn: false,
             accounts: [],
             error: (described && described.error) || "empty evaluate result",
@@ -79,8 +80,18 @@ export function createZhihuSession({ task, page, timings = {}, fsImpl = fs } = {
         }
         return described;
       } catch (error) {
-        return { ok: false, loginWall: true, loggedIn: false, accounts: [], error: String(error.message || error) };
+        return {
+          ok: false,
+          evaluateFailed: true,
+          loginWall: false,
+          loggedIn: false,
+          accounts: [],
+          error: String(error.message || error),
+        };
       }
+    },
+    async pause() {
+      await pause(waitMs);
     },
     readEditor,
     async fillTitle(title) {

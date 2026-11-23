@@ -12,7 +12,9 @@ Exit `2`, `login_required: true`, and `how_to_login` / `how_to_login_zh` when:
 - `--expect-account` does not match the one visible name
 - the session expires after the flow has started (`error: login-expired`)
 
-The signed-in name comes only from the top identity control: a `header`, a `banner`, or an `AppHeader` profile link or avatar. A plain nickname on a `/people/` control in that surface is used as-is. `alt`, `aria-label`, `title`, and the control's own text are also read when they match `点击打开<name>的主页`. Spaces around `<name>` are optional, so `点击打开BMAD实验室的主页` and `点击打开 BMAD实验室 的主页` both yield `BMAD实验室`. The same phrase on a recommendation-feed author is ignored. A header logo alt such as `知乎` is not a person name.
+The signed-in name comes from the top identity control: a `header`, a `banner`, an element whose class token is `AppHeader`, or an avatar whose class contains `AppHeader-profileAvatar`. `AppHeader-zhihuLogo` is the logo and is not an identity root. `alt`, `aria-label`, `title`, and the control text match `点击打开<name>的主页` with optional spaces. Feed authors are ignored.
+
+On `zhuanlan.zhihu.com/write` the bar may not say 创作中心, 私信, or 消息. A visible title field, one `public-DraftEditor-content` body, and that avatar still count as logged in. An evaluate failure is `probe-failed`, not a login wall. A real sign-in URL after the write page opens is `login-expired`. A verification page is `challenge`. The failure result includes `pageUrl`, `pageTitle`, and a screenshot when a directory is available. Opening `/write` can make Zhihu show `刚刚 · 草稿` before this skill types; that is not `draft-saved`.
 
 Exit `4` with `ambiguous-account` only when that identity surface itself shows more than one name. Exit `4` with `identity-not-visible` when the page is logged in (创作中心, 私信, 消息, or a header avatar) but no unique name can be read. `--expect-account` is compared only with that unique name. A correct name still fails when the header does not show it. Feed authors never create `ambiguous-account`.
 

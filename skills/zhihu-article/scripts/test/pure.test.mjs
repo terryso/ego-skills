@@ -9,6 +9,7 @@ import {
   buildArticle,
   charCount,
   classifyOutcome,
+  classifyAccess,
   decideAccount,
   decideAttempt,
   defaultReceiptDir,
@@ -133,6 +134,13 @@ test("account decisions fail closed", () => {
   assert.equal(decideAccount({ loggedIn: true, accounts: ["示例作者"] }, "另一账号").reason, "account-mismatch");
   assert.equal(decideAccount({ loggedIn: true, accounts: ["示例作者"] }, "示例作者").account, "示例作者");
   assert.equal(decideAccount(null).exitCode, 2);
+  const write = { ok: true, loginWall: false, loggedIn: true, editorReady: true, accounts: ["BMAD实验室"] };
+  assert.equal(classifyAccess(write, { openedWrite: true }).reason, "ok");
+  assert.equal(classifyAccess({ ok: true, loginWall: false, loggedIn: false, editorReady: false }, { openedWrite: true }).reason, "session-unrecognized");
+  assert.equal(classifyAccess({ ok: false, evaluateFailed: true, loginWall: false }, { openedWrite: true }).reason, "probe-failed");
+  assert.equal(classifyAccess({ ok: true, loginWall: true, surface: "signin" }, { openedWrite: true }).reason, "login-expired");
+  assert.equal(classifyAccess({ ok: true, loginWall: true }, { openedWrite: false }).reason, "logged-out");
+  assert.equal(classifyAccess({ ok: true, challenge: true, loginWall: false }).reason, "challenge");
 });
 
 test("attempt and outcome states never treat a click or autosave as publish", () => {

@@ -669,6 +669,31 @@ export function planOf(article) {
   };
 }
 
+export function classifyAccess(probe, { openedWrite = false } = {}) {
+  if (!probe || probe.evaluateFailed) {
+    return { ok: false, exitCode: 1, reason: "probe-failed", loginRequired: false };
+  }
+  if (probe.challenge) {
+    return { ok: false, exitCode: 2, reason: "challenge", loginRequired: true };
+  }
+  const wall = Boolean(probe.loginWall) || probe.surface === "signin";
+  if (wall) {
+    return {
+      ok: false,
+      exitCode: 2,
+      reason: openedWrite ? "login-expired" : "logged-out",
+      loginRequired: true,
+    };
+  }
+  if (probe.ok === false) {
+    return { ok: false, exitCode: 1, reason: "probe-failed", loginRequired: false };
+  }
+  if (probe.loggedIn || probe.editorReady || probe.editorVisible) {
+    return { ok: true, exitCode: 0, reason: "ok", loginRequired: false };
+  }
+  return { ok: false, exitCode: 1, reason: "session-unrecognized", loginRequired: false };
+}
+
 export function decideAccount(probe, expectAccount = "") {
   const accounts = [...new Set((probe && probe.accounts) || [])].map(normalizeText).filter(Boolean);
   const loggedOut = !probe || probe.loginWall || !probe.loggedIn;

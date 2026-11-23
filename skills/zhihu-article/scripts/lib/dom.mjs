@@ -135,17 +135,47 @@ export function zhihuAct(payload) {
     return null;
   }
 
+  function inAssistant(el) {
+    let current = el && el.parentElement;
+    while (current) {
+      const aria = normalize(attr(current, "aria-label"));
+      const cls = String(current.className || "");
+      if (/创作助手/.test(aria) || /CreationAssistant|assistant-panel/i.test(cls)) return true;
+      const direct = [...(current.childNodes || [])]
+        .filter((node) => node && node.nodeType === 3)
+        .map((node) => node.textContent || "")
+        .join("");
+      if (normalize(direct) === "创作助手") return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function areaOf(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function") return 0;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, rect.width) * Math.max(0, rect.height);
+  }
+
   function findBodies(title) {
     const nodes = qsaAny(["div", "textarea"]);
     const found = [];
     for (const el of nodes) {
-      if (el === title || !shown(el)) continue;
+      if (el === title || !shown(el) || inAssistant(el)) continue;
       const editable = Boolean(el.isContentEditable) || attr(el, "contenteditable") === "true";
       if (!editable) continue;
       found.push(el);
     }
-    const hinted = found.filter((el) => /DraftEditor|Editable-content|public-Draft/i.test(String(el.className || "")));
-    return hinted.length ? hinted : found;
+    const article = found.filter((el) => /public-DraftEditor-content/.test(String(el.className || "")));
+    if (article.length === 1) return article;
+    const hinted = (article.length ? article : found).filter((el) => /DraftEditor|Editable-content|public-Draft/i.test(String(el.className || "")));
+    const pool = hinted.length ? hinted : found;
+    const placeholder = pool.filter((el) => /请输入正文/.test(`${hintOf(el)} ${ownLabel(el)}`));
+    if (placeholder.length === 1) return placeholder;
+    if (pool.length <= 1) return pool;
+    const ranked = [...pool].sort((left, right) => areaOf(right) - areaOf(left));
+    if (areaOf(ranked[0]) > areaOf(ranked[1]) * 1.5) return [ranked[0]];
+    return pool;
   }
 
   function isCoverInput(el) {
@@ -179,7 +209,10 @@ export function zhihuAct(payload) {
   }
 
   function isPublish(label) {
-    return /发布|发表|定时/.test(label);
+    const text = normalize(label);
+    if (!text || text.includes("发布设置")) return false;
+    if (text === "发布" || text === "发表") return true;
+    return /定时/.test(text) && /发布|发表/.test(text);
   }
 
   function isPreviewInvite(label) {
@@ -213,13 +246,16 @@ export function zhihuAct(payload) {
 
   function isIdentityRoot(el) {
     if (!el || insideMain(el)) return false;
+    const cls = String(el.className || "");
+    if (/zhihuLogo/i.test(cls)) return false;
     if (el.tagName === "HEADER") return true;
     if (attr(el, "role") === "banner") return true;
-    return /(?:^|\s)AppHeader(?:\s|$|-)/.test(String(el.className || ""));
+    if (/(?:^|\s)AppHeader(?:\s|$)/.test(cls)) return true;
+    return /AppHeader-profileAvatar|(?:^|\s)profileAvatar(?:\s|$)/i.test(cls);
   }
 
   function identityRoots() {
-    const found = qsaAny(["header", "nav", "div"]).filter(isIdentityRoot);
+    const found = qsaAny(["header", "nav", "div", "a", "img", "button"]).filter(isIdentityRoot);
     return found.filter((el) => !found.some((other) => other !== el && contains(other, el)));
   }
 
@@ -255,7 +291,8 @@ export function zhihuAct(payload) {
   function accountNames(roots) {
     const names = [];
     for (const root of roots) {
-      for (const el of qsaAny(["a", "button", "img"], root)) {
+      const nodes = [root, ...qsaAny(["a", "button", "img"], root)];
+      for (const el of nodes) {
         if (!shown(el) || insideMain(el)) continue;
         const name = nameFromControl(el);
         if (name) names.push(name);
@@ -270,7 +307,8 @@ export function zhihuAct(payload) {
         if (!shown(el) || insideMain(el)) continue;
         const label = normalize(attr(el, "aria-label") || attr(el, "alt") || ownLabel(el));
         if (label === "创作中心" || label === "私信" || label === "消息" || label.startsWith("创作中心")) return true;
-        if (el.tagName === "IMG" && /avatar|Avatar|profile/i.test(`${el.className || ""} ${label}`)) return true;
+        if (/AppHeader-profileAvatar|(?:^|\s)Avatar(?:\s|$)/.test(String(el.className || ""))) return true;
+        if (el.tagName === "IMG" && /avatar|profile/i.test(`${el.className || ""} ${label}`)) return true;
       }
     }
     return false;
@@ -368,21 +406,28 @@ export function zhihuAct(payload) {
     const accounts = accountNames(roots);
     const chrome = loggedInChrome(roots);
     const loginControl = visibleButtons().some((el) => /^(登录|注册|登录\/注册)$/.test(buttonLabel(el)));
-    const loginWall = surface === "signin" || (accounts.length === 0 && !chrome && loginControl);
+    const challenge = /安全验证|人机验证|请完成验证/.test(normalize(doc.title));
+    const editorVisible = Boolean(title && body);
+    const loginWall = surface === "signin" || (accounts.length === 0 && !chrome && !editorVisible && loginControl);
     const snap = body ? editorSnapshot(body) : { text: "", headings: [], listItems: [], hrefs: [], imageCount: 0 };
     const currentTitle = titleValue(title);
     const badge = autosaveBadge(body);
+    const bodyText = normalize(snap.text);
+    const blankBody = !bodyText || bodyText === "请输入正文";
     return {
       url: redact(url),
+      pageTitle: doc.title || "",
       surface,
+      challenge,
       loginWall,
-      loggedIn: !loginWall && (accounts.length >= 1 || chrome),
+      editorVisible,
+      loggedIn: !loginWall && !challenge && (accounts.length >= 1 || chrome || editorVisible),
       accounts,
       identityVisible: accounts.length === 1,
       ambiguous: accounts.length > 1,
       editorReady: surface === "article" && Boolean(title && body),
       bodyAmbiguous: bodies.length > 1,
-      blank: !currentTitle && !snap.text && snap.imageCount === 0 && !published(url),
+      blank: !currentTitle && blankBody && snap.imageCount === 0 && !published(url),
       explicitDraftLabel: draftLabels[0] || "",
       publishLabels,
       previewLabels,

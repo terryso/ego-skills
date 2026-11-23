@@ -531,6 +531,86 @@ test("reopening a draft that expired, changed, or published stays unverified", a
   assert.match(partial.receiptError, /disk full/);
 });
 
+test("a visible write editor is not reported as login-expired", async () => {
+  const write = editor({
+    ok: true,
+    loginWall: false,
+    loggedIn: true,
+    editorReady: true,
+    editorVisible: true,
+    accounts: ["BMAD实验室"],
+    identityVisible: true,
+    url: "https://zhuanlan.zhihu.com/write",
+    pageTitle: "写文章 - 知乎",
+  });
+  let probes = 0;
+  const session = sessionWith({
+    probes: [home(), {
+      ok: true,
+      loginWall: false,
+      loggedIn: false,
+      editorReady: false,
+      editorVisible: false,
+      accounts: [],
+      url: "https://zhuanlan.zhihu.com/write",
+      pageTitle: "写文章 - 知乎",
+    }, write, home()],
+  });
+  session.pause = async () => { probes += 1; };
+  const summary = await executeSave({
+    saveDraft: true,
+    receiptDir: dirs().receiptDir,
+    article: article(),
+  }, { browser: browserFor(session) });
+  assert.equal(summary.state, "draft-saved");
+  assert.equal(summary.error || "", "");
+  assert.equal(probes, 1);
+  assert.equal(session.calls.goto[0], "https://zhuanlan.zhihu.com/write");
+
+  const failed = sessionWith({
+    probes: [home(), {
+      ok: false,
+      evaluateFailed: true,
+      loginWall: false,
+      loggedIn: false,
+      url: "https://zhuanlan.zhihu.com/write",
+      pageTitle: "写文章 - 知乎",
+      error: "evaluate exploded",
+    }],
+  });
+  const probeFailure = await executeSave({
+    saveDraft: true,
+    receiptDir: dirs().receiptDir,
+    article: article(),
+  }, { browser: browserFor(failed) });
+  assert.equal(probeFailure.reason || probeFailure.error, "probe-failed");
+  assert.notEqual(probeFailure.error, "login-expired");
+  assert.equal(probeFailure.exitCode, 1);
+  assert.equal(probeFailure.pageUrl, "https://zhuanlan.zhihu.com/write");
+  assert.equal(probeFailure.pageTitle, "写文章 - 知乎");
+  assert.equal(failed.calls.capture, 1);
+
+  const wall = sessionWith({
+    probes: [home(), {
+      ok: true,
+      loginWall: true,
+      surface: "signin",
+      loggedIn: false,
+      url: "https://www.zhihu.com/signin",
+      pageTitle: "登录 - 知乎",
+    }],
+  });
+  const expired = await executeSave({
+    saveDraft: true,
+    receiptDir: dirs().receiptDir,
+    article: article(),
+  }, { browser: browserFor(wall) });
+  assert.equal(expired.error, "login-expired");
+  assert.equal(expired.exitCode, 2);
+  assert.equal(expired.pageUrl, "https://www.zhihu.com/signin");
+  assert.equal(wall.calls.capture, 1);
+});
+
 test("cleanup closes only this skill's task spaces", async () => {
   const spaces = [{ name: "zhihu-article", id: "a" }, { name: "zhihu-article-2" }, { name: "other" }];
   const browser = {

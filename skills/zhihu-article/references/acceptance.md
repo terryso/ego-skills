@@ -4,7 +4,9 @@ Unit tests do not open Zhihu and do not prove this plan. Do not treat a green `n
 
 Unit fixtures do not prove the live homepage. Browser layout, selectors, paste formatting, and image persistence stay **unverified** until a later owner run records them.
 
-On commit `da7883c`, a logged-in Pro homepage correctly stopped listing feed authors, then exited `4` with `identity-not-visible`. The header avatar `alt` was `点击打开BMAD实验室的主页` with no spaces. That string was only parsed from `aria-label`, and a raw `alt` was rejected because it contained `点击打开`. The avatar `alt` is now parsed the same way, spaces optional. Re-run `check-login --json` on that homepage. A pass is exit `0`, `account` `BMAD实验室`, `identityVisible: true`, and no feed authors in `accounts`. `--expect-account` must use that same name. This fixture does not replace that re-run. If the avatar is outside `header` / `banner` / `AppHeader`, the result stays `identity-not-visible`.
+`781b4fe` check-login on the homepage exited `0` with `BMAD实验室`. The following `save-draft` exited `2` `login-expired` immediately after opening `https://zhuanlan.zhihu.com/write`. A read-only look at that same URL showed the title box, `public-DraftEditor-content`, and the avatar, with no login wall. The write page has no `<header>` and no 创作中心/私信/消息 text; its avatar class is `AppHeader-profileAvatar`, while an earlier matcher could stop on `AppHeader-zhihuLogo`. Several contenteditables also made `bodyAmbiguous` true, so the surface stayed `home` and `loggedIn` stayed false. That false result was labeled `login-expired`.
+
+The write-page probe now reads the profile avatar, prefers the article DraftEditor over the 创作助手, and does not call an evaluate failure a login wall. Re-run only through the editor gate: `save-draft` may open `/write` and Zhihu can show `刚刚 · 草稿` by itself. Stop before typing if you have not given a separate permission to save. A pass for this gate is not `login-expired` while the editor and avatar are visible, and it is still not `draft-saved` until a verified reopen. This fixture is not that live pass.
 
 ## Before any draft write
 

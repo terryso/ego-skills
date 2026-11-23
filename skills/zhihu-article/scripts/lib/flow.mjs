@@ -3,6 +3,7 @@ import {
   HOME_URL,
   TASK_NAME,
   WRITE_URL,
+  classifyAccess,
   classifyOutcome,
   decideAccount,
   decideAttempt,
@@ -142,9 +143,11 @@ async function compose(session, article, initial) {
   }
 
   const mid = await session.probe();
-  if (!mid || mid.loginWall || !mid.loggedIn) {
-    progress.loginExpired = true;
-    progress.error = "login-expired";
+  const midAccess = classifyAccess(mid, { openedWrite: true });
+  if (!midAccess.ok) {
+    progress.loginExpired = midAccess.reason === "login-expired";
+    progress.challenge = midAccess.reason === "challenge";
+    progress.error = midAccess.reason;
     return progress;
   }
 
@@ -187,9 +190,11 @@ async function compose(session, article, initial) {
 
   await session.goto(draftEditUrl(progress.draftId));
   const again = await session.readEditor();
-  if (!again.ok || again.loginWall || again.loggedIn === false) {
-    progress.loginExpired = true;
-    progress.error = "login-expired";
+  const againAccess = classifyAccess(again, { openedWrite: true });
+  if (!againAccess.ok) {
+    progress.loginExpired = againAccess.reason === "login-expired";
+    progress.challenge = againAccess.reason === "challenge";
+    progress.error = againAccess.reason;
     return progress;
   }
   if (again.published) {
@@ -229,10 +234,49 @@ async function compose(session, article, initial) {
 }
 
 function exitFor(outcome, progress) {
-  if (progress && progress.loginExpired) return 2;
+  if (progress && (progress.loginExpired || progress.challenge)) return 2;
   if (outcome.state === "draft-saved") return 0;
   if (outcome.state === "uploaded" || outcome.state === "unverified") return 4;
   return 1;
+}
+
+async function probeWrite(session) {
+  const attempts = typeof session.pause === "function" ? 4 : 1;
+  let last = null;
+  for (let index = 0; index < attempts; index += 1) {
+    last = await session.probe();
+    const access = classifyAccess(last, { openedWrite: true });
+    if (access.ok || (last && (last.loginWall || last.challenge || last.evaluateFailed || last.surface === "signin"))) {
+      return last;
+    }
+    if (index + 1 < attempts) await session.pause();
+  }
+  return last;
+}
+
+async function accessFailure(session, config, article, account, probe, access) {
+  const pageUrl = (probe && (probe.url || probe.pageUrl)) || "";
+  const pageTitle = (probe && (probe.pageTitle || probe.title)) || "";
+  let screenshot = "";
+  const dir = config.screenshotDir || config.receiptDir;
+  if (dir && session && typeof session.capture === "function") {
+    screenshot = await session.capture(dir, access.reason || "probe-failed");
+  }
+  return result("save-draft", {
+    exitCode: access.exitCode,
+    state: "not-started",
+    retryable: access.reason === "probe-failed" || access.reason === "session-unrecognized",
+    error: access.reason,
+    login_required: Boolean(access.loginRequired),
+    account: account.account,
+    accounts: account.accounts,
+    identityVisible: Boolean(probe && probe.identityVisible),
+    pageUrl,
+    pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+    screenshot,
+    plan: planOf(article),
+    ...(access.loginRequired ? howToLogin() : {}),
+  });
 }
 
 export async function executeCheck(config, deps) {
@@ -305,19 +349,9 @@ export async function executeSave(config, deps) {
     if (!account.ok) return accountFailure("save-draft", account, article);
 
     await session.goto(WRITE_URL);
-    const editor = await session.probe();
-    if (!editor || editor.loginWall || !editor.loggedIn) {
-      return result("save-draft", {
-        exitCode: 2,
-        state: "not-started",
-        retryable: false,
-        error: "login-expired",
-        account: account.account,
-        accounts: account.accounts,
-        plan,
-        ...howToLogin(),
-      });
-    }
+    const editor = await probeWrite(session);
+    const access = classifyAccess(editor, { openedWrite: true });
+    if (!access.ok) return accessFailure(session, config, article, account, editor, access);
     const blocked = precondition(editor, article);
     if (blocked) {
       return result("save-draft", {

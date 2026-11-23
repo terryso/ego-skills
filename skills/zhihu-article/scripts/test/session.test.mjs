@@ -136,7 +136,8 @@ test("missing browser APIs and evaluate failures stay fail-closed", async () => 
   };
   const session = createZhihuSession(taskWith(page));
   const probe = await session.probe();
-  assert.equal(probe.loginWall, true);
+  assert.equal(probe.evaluateFailed, true);
+  assert.equal(probe.loginWall, false);
   await assert.rejects(session.goto("https://www.zhihu.com/"), /navigation failed/);
   const throwing = {
     async evaluate() { throw new Error("evaluate exploded"); },
@@ -144,7 +145,8 @@ test("missing browser APIs and evaluate failures stay fail-closed", async () => 
     async url() { throw new Error("url"); },
   };
   const broken = createZhihuSession(taskWith(throwing));
-  assert.equal((await broken.probe()).loginWall, true);
+  assert.equal((await broken.probe()).evaluateFailed, true);
+  assert.equal((await broken.probe()).loginWall, false);
   assert.match((await broken.readEditor()).error, /evaluate exploded/);
   const bare = editorPage();
   delete bare.page.fill;
