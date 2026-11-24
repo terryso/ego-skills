@@ -1,0 +1,674 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { zhihuAct } from "../lib/dom.mjs";
+import { classifyAccess, decideAccount } from "../lib/pure.mjs";
+import { createDocument, h } from "./dom-fixture.mjs";
+
+function editorParts() {
+  const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const body = h("div", { className: "public-DraftEditor-content", editable: true });
+  const image = h("input", { type: "file", accept: "image/png,image/jpeg", attrs: { multiple: "true" }, zero: true });
+  const imageControl = h("button", { attrs: { "aria-label": "图片" } }, [image]);
+  const cover = h("input", { type: "file", accept: "image/png", className: "UploadPicture-input", zero: true });
+  const draft = h("button", {}, ["保存草稿"]);
+  const publish = h("button", {}, ["发布"]);
+  const invite = h("button", {}, ["邀请预览"]);
+  const badge = h("span", {}, ["已保存"]);
+  return { profile, title, body, image, imageControl, cover, draft, publish, invite, badge };
+}
+
+function mount(parts, href = "https://zhuanlan.zhihu.com/write") {
+  createDocument(h("body", {}, [
+    parts.profile, parts.title, parts.body, parts.imageControl, parts.cover, parts.draft, parts.publish, parts.invite, parts.badge,
+  ]), { href, title: "写文章" });
+  return parts;
+}
+
+test("zhihuAct requires a document and ignores unknown operations", () => {
+  const previous = globalThis.document;
+  delete globalThis.document;
+  assert.match(zhihuAct({ op: "probe" }).error, /document/);
+  globalThis.document = previous;
+  mount(editorParts());
+  assert.match(zhihuAct({ op: "nope" }).error, /unknown op/);
+  const isolated = new Function(`return (${zhihuAct.toString()})`)();
+  assert.equal(isolated({ op: "probe" }).editorReady, true);
+});
+
+test("probe separates login, article, answer, idea, and comment surfaces", () => {
+  createDocument(h("body", {}, [h("a", {}, ["登录"])]), { href: "https://www.zhihu.com/signin?token=secret" });
+  const wall = zhihuAct({ op: "probe" });
+  assert.equal(wall.loginWall, true);
+  assert.equal(wall.loggedIn, false);
+  assert.match(wall.url, /token=redacted/);
+  assert.equal(wall.surface, "signin");
+
+  const nav = h("a", { attrs: { href: "/question/1" } }, ["写回答"]);
+  const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
+  const header = h("header", { className: "AppHeader" }, [profile, h("a", {}, ["创作中心"])]);
+  createDocument(h("body", {}, [header, nav]), { href: "https://www.zhihu.com/" });
+  const home = zhihuAct({ op: "probe" });
+  assert.equal(home.surface, "home");
+  assert.equal(home.loggedIn, true);
+  assert.equal(home.identityVisible, true);
+  assert.deepEqual(home.accounts, ["示例作者"]);
+  assert.equal(home.editorReady, false);
+
+  const other = h("a", { attrs: { href: "/people/other" } }, ["另一账号"]);
+  const both = h("header", {}, [profile, other]);
+  createDocument(h("body", {}, [both]), { href: "https://www.zhihu.com/" });
+  const many = zhihuAct({ op: "probe" });
+  assert.equal(many.ambiguous, true);
+  assert.deepEqual(many.accounts, ["示例作者", "另一账号"]);
+  assert.equal(many.loggedIn, true);
+
+  createDocument(h("body", {}, [h("button", {}, ["登录"])]), { href: "https://www.zhihu.com/" });
+  assert.equal(zhihuAct({ op: "probe" }).loginWall, true);
+  createDocument(h("body", {}, [h("div", {}, ["首页"])]), { href: "https://www.zhihu.com/" });
+  const unnamed = zhihuAct({ op: "probe" });
+  assert.equal(unnamed.loginWall, false);
+  assert.equal(unnamed.loggedIn, false);
+
+  const answerTitle = h("textarea", { placeholder: "写回答" });
+  createDocument(h("body", {}, [answerTitle]), { href: "https://www.zhihu.com/question/1" });
+  assert.equal(zhihuAct({ op: "probe" }).surface, "answer");
+  createDocument(h("body", {}, [h("div", { editable: true, placeholder: "写想法" })]), { href: "https://www.zhihu.com/pin/1" });
+  assert.equal(zhihuAct({ op: "probe" }).surface, "idea");
+  createDocument(h("body", {}, [h("div", { editable: true, attrs: { "aria-label": "写评论" } })]), { href: "https://www.zhihu.com/follow" });
+  assert.equal(zhihuAct({ op: "probe" }).surface, "comment");
+  createDocument(h("body", {}, []), { href: "https://example.com/" });
+  assert.equal(zhihuAct({ op: "probe" }).surface, "other");
+});
+
+test("homepage feed authors are not the signed-in account", () => {
+  const self = h("a", {
+    attrs: { href: "/people/self", "aria-label": "点击打开 示例作者 的主页" },
+  });
+  const header = h("header", { className: "AppHeader" }, [
+    self,
+    h("a", {}, ["创作中心"]),
+    h("a", {}, ["私信"]),
+    h("a", {}, ["消息"]),
+  ]);
+  const feed = [
+    ["八云的饭团", "/people/a"],
+    ["木寸上春树", "/people/b"],
+    ["新住", "/people/c"],
+    ["求生之路", "/people/d"],
+    ["王小板儿", "/people/e"],
+    ["import 潘多拉", "/people/f"],
+    ["invalid s", "/people/g"],
+    ["牧之野", "/people/h"],
+    ["刘不是", "/people/i"],
+    ["Zpuzzle", "/people/j"],
+    ["冷哲", "/people/k"],
+  ].map(([name, href]) => h("a", { attrs: { href, "aria-label": `点击打开 ${name} 的主页` } }, [name]));
+  createDocument(h("body", {}, [header, h("main", {}, feed)]), {
+    href: "https://www.zhihu.com/",
+    title: "(5 封私信 / 10 条消息) 首页 - 知乎",
+  });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.loggedIn, true);
+  assert.equal(probe.ambiguous, false);
+  assert.equal(probe.identityVisible, true);
+  assert.deepEqual(probe.accounts, ["示例作者"]);
+  assert.equal(decideAccount(probe, "示例作者").reason, "ok");
+  assert.equal(decideAccount(probe, "八云的饭团").reason, "account-mismatch");
+
+  const avatar = h("img", { className: "Avatar", attrs: { alt: "" } });
+  const nameless = h("header", { className: "AppHeader" }, [
+    h("button", {}, [avatar]),
+    h("a", {}, ["创作中心"]),
+    h("a", {}, ["私信"]),
+  ]);
+  createDocument(h("body", {}, [nameless, h("main", {}, feed)]), { href: "https://www.zhihu.com/" });
+  const hidden = zhihuAct({ op: "probe" });
+  assert.equal(hidden.loggedIn, true);
+  assert.equal(hidden.loginWall, false);
+  assert.equal(hidden.ambiguous, false);
+  assert.deepEqual(hidden.accounts, []);
+  const decision = decideAccount(hidden);
+  assert.equal(decision.reason, "identity-not-visible");
+  assert.equal(decision.exitCode, 4);
+  assert.equal(decision.loginRequired, false);
+  assert.equal(decideAccount(hidden, "示例作者").reason, "identity-not-visible");
+});
+
+test("header avatar alt is the signed-in name, with or without spaces", () => {
+  const feed = [
+    ["八云的饭团", "/people/a"],
+    ["木寸上春树", "/people/b"],
+    ["冷哲", "/people/c"],
+  ].map(([name, href]) => h("a", { attrs: { href, "aria-label": `点击打开${name}的主页` } }, [name]));
+  function page(alt) {
+    const logo = h("img", { attrs: { alt: "知乎" } });
+    const avatar = h("img", { className: "Avatar", attrs: { alt } });
+    const header = h("header", { className: "AppHeader" }, [
+      logo,
+      h("a", { attrs: { href: "/people/self" } }, [avatar]),
+      h("a", {}, ["创作中心"]),
+      h("a", {}, ["私信"]),
+      h("a", {}, ["消息"]),
+    ]);
+    createDocument(h("body", {}, [header, h("main", {}, feed)]), {
+      href: "https://www.zhihu.com/",
+      title: "(5 封私信 / 10 条消息) 首页 - 知乎",
+    });
+    return zhihuAct({ op: "probe" });
+  }
+  for (const alt of ["点击打开BMAD实验室的主页", "点击打开 BMAD实验室 的主页"]) {
+    const probe = page(alt);
+    assert.equal(probe.loggedIn, true, alt);
+    assert.equal(probe.ambiguous, false, alt);
+    assert.equal(probe.identityVisible, true, alt);
+    assert.deepEqual(probe.accounts, ["BMAD实验室"], alt);
+    assert.equal(decideAccount(probe, "BMAD实验室").reason, "ok", alt);
+    assert.equal(decideAccount(probe, "八云的饭团").reason, "account-mismatch", alt);
+  }
+  createDocument(h("body", {}, [
+    h("main", {}, [h("img", { className: "Avatar", attrs: { alt: "点击打开BMAD实验室的主页" } }), ...feed]),
+  ]), { href: "https://www.zhihu.com/" });
+  const outside = zhihuAct({ op: "probe" });
+  assert.deepEqual(outside.accounts, []);
+  assert.equal(outside.identityVisible, false);
+  assert.equal(outside.loggedIn, false);
+});
+
+test("zhuanlan write page keeps the header avatar and ignores the assistant", () => {
+  const logo = h("a", { className: "AppHeader-zhihuLogo" }, ["知乎"]);
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const article = h("div", { className: "notranslate public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const assistant = h("div", { className: "assistant-panel" }, [
+    h("div", { editable: true, text: "创作助手" }),
+  ]);
+  const publishSettings = h("button", {}, ["发布设置"]);
+  const preview = h("button", {}, ["预览"]);
+  const publish = h("button", {}, ["发布"]);
+  createDocument(h("body", {}, [logo, avatar, title, article, assistant, publishSettings, preview, publish]), {
+    href: "https://zhuanlan.zhihu.com/write",
+    title: "写文章 - 知乎",
+  });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.loginWall, false);
+  assert.equal(probe.loggedIn, true);
+  assert.equal(probe.surface, "article");
+  assert.equal(probe.editorReady, true);
+  assert.equal(probe.bodyAmbiguous, false);
+  assert.equal(probe.blank, true);
+  assert.deepEqual(probe.accounts, ["BMAD实验室"]);
+  assert.equal(probe.identityVisible, true);
+  assert.equal(probe.pageTitle, "写文章 - 知乎");
+  assert.deepEqual(probe.publishLabels, ["发布"]);
+  assert.equal(classifyAccess(probe, { openedWrite: true }).reason, "ok");
+  assert.equal(decideAccount(probe, "BMAD实验室").reason, "ok");
+  assert.equal(publishSettings.clicked, 0);
+  assert.equal(publish.clicked, 0);
+});
+
+test("body image input is the toolbar 图片 control, not cover or extras", () => {
+  const bodyImage = h("input", { type: "file", accept: "image/png,image/jpeg" });
+  const attachment = h("input", { type: "file", accept: "" });
+  const imported = h("input", { type: "file", accept: ".docx,.md" });
+  const assistantImage = h("input", { type: "file", accept: "image/png" });
+  const cover = h("input", { type: "file", accept: "image/jpeg", className: "UploadPicture-input" });
+  const article = h("div", { className: "public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  createDocument(h("body", {}, [
+    avatar,
+    title,
+    article,
+    h("button", {}, ["图片", bodyImage]),
+    h("button", {}, ["附件", attachment]),
+    h("button", {}, ["导入", imported]),
+    h("div", { className: "assistant-panel" }, [h("button", {}, ["AI 配图", assistantImage])]),
+    h("button", {}, ["添加文章封面", cover]),
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.imageInput, true);
+  assert.equal(probe.imageAmbiguous, false);
+  assert.equal(probe.coverInput, true);
+  assert.equal(probe.coverAmbiguous, false);
+  const marked = zhihuAct({ op: "mark-image-input" });
+  assert.equal(marked.ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(attachment.getAttribute("data-zhihu-image"), null);
+  assert.equal(assistantImage.getAttribute("data-zhihu-image"), null);
+  assert.equal(cover.getAttribute("data-zhihu-image"), null);
+
+  const extra = h("input", { type: "file", accept: "image/png" });
+  const other = h("input", { type: "file", accept: "image/jpeg" });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    extra,
+    other,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const unlabeled = zhihuAct({ op: "probe" });
+  assert.equal(unlabeled.imageInput, false);
+  assert.equal(unlabeled.imageAmbiguous, false);
+  assert.match(zhihuAct({ op: "mark-image-input" }).error, /not found/);
+});
+
+test("a detached toolbar image input is unique and unlabeled file inputs are not candidates", () => {
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const article = h("div", { className: "public-DraftEditor-content", editable: true, text: "请输入正文" });
+  const bodyImage = h("input", {
+    type: "file",
+    accept: "image/webp,image/png,image/jpeg",
+    attrs: { multiple: "true" },
+    zero: true,
+  });
+  const attachment = h("input", { type: "file", accept: "", zero: true });
+  const imported = h("input", { type: "file", accept: ".docx,.md", zero: true });
+  const video = h("input", { type: "file", accept: "video/mp4", zero: true });
+  const assistantImage = h("input", { type: "file", accept: "image/png", zero: true });
+  const cover = h("input", { type: "file", accept: "image/jpeg", className: "UploadPicture-input", zero: true });
+  const avatar = h("img", { className: "Avatar AppHeader-profileAvatar", attrs: { alt: "点击打开BMAD实验室的主页" } });
+  createDocument(h("body", {}, [
+    avatar,
+    title,
+    article,
+    h("div", {}, [
+      h("button", { attrs: { "aria-label": "图片" } }),
+      h("button", { attrs: { "aria-label": "视频" } }),
+      h("button", { attrs: { "aria-label": "附件" } }),
+      h("button", { attrs: { "aria-label": "导入" } }),
+    ]),
+    bodyImage,
+    attachment,
+    imported,
+    video,
+    h("div", {}, [
+      h("div", {}, ["创作助手"]),
+      h("div", {}, ["AI 配图", assistantImage]),
+    ]),
+    h("button", {}, ["添加文章封面", cover]),
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.imageInput, true);
+  assert.equal(probe.imageAmbiguous, false);
+  assert.equal(probe.coverInput, true);
+  const marked = zhihuAct({ op: "mark-image-input" });
+  assert.equal(marked.ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(attachment.getAttribute("data-zhihu-image"), null);
+  assert.equal(assistantImage.getAttribute("data-zhihu-image"), null);
+  assert.equal(cover.getAttribute("data-zhihu-image"), null);
+
+  const second = h("input", { type: "file", accept: "image/webp,image/jpeg", attrs: { multiple: "true" }, zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    second,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const ambiguous = zhihuAct({ op: "probe" });
+  assert.equal(ambiguous.imageInput, false);
+  assert.equal(ambiguous.imageAmbiguous, true);
+  assert.match(zhihuAct({ op: "mark-image-input" }).error, /ambiguous/);
+
+  const plain = h("input", { type: "file", accept: "image/png", zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    plain,
+    h("button", {}, ["发布"]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  assert.equal(zhihuAct({ op: "probe" }).imageInput, true);
+  assert.equal(zhihuAct({ op: "mark-image-input" }).ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(plain.getAttribute("data-zhihu-image"), null);
+
+  const aiImage = h("input", { type: "file", accept: "image/webp,image/png", attrs: { multiple: "true" }, zero: true });
+  createDocument(h("body", {}, [
+    title,
+    article,
+    h("button", { attrs: { "aria-label": "图片" } }),
+    bodyImage,
+    h("button", {}, ["AI 配图", aiImage]),
+  ]), { href: "https://zhuanlan.zhihu.com/write", title: "写文章 - 知乎" });
+  const ai = zhihuAct({ op: "probe" });
+  assert.equal(ai.imageInput, true);
+  assert.equal(ai.imageAmbiguous, false);
+  assert.equal(zhihuAct({ op: "mark-image-input" }).ok, true);
+  assert.equal(bodyImage.getAttribute("data-zhihu-image"), "1");
+  assert.equal(aiImage.getAttribute("data-zhihu-image"), null);
+});
+
+test("a stuck 图片上传中 placeholder is not deleted and a finished image stays", () => {
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const pendingImage = h("img", { attrs: { src: "blob:pending" } });
+  const pending = h("div", {}, ["图片上传中", pendingImage]);
+  const done = h("img", { attrs: { src: "https://pic1.zhimg.com/body.png" } });
+  const publish = h("button", {}, ["发布"]);
+  const dismiss = h("button", {}, ["删除"]);
+  const withButton = h("div", {}, ["图片上传中", dismiss, publish]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [
+    h("span", {}, ["正文"]),
+    done,
+    pending,
+  ]);
+  createDocument(h("body", {}, [title, body, withButton]), { href: "https://zhuanlan.zhihu.com/p/55/edit", title: "写文章 - 知乎" });
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.uploadPending, true);
+  assert.equal(probe.imageCount, 1);
+  const cleared = zhihuAct({ op: "clear-pending-upload" });
+  assert.equal(cleared.mutated, false);
+  assert.equal(cleared.error, "editor-mutation-unverified");
+  assert.equal(dismiss.clicked, 0);
+  assert.equal(publish.clicked, 0);
+  const after = zhihuAct({ op: "probe" });
+  assert.equal(after.uploadPending, true);
+  assert.equal(after.imageCount, 1);
+  assert.match(after.url, /\/p\/55\/edit/);
+  assert.equal(after.pageTitle, "写文章 - 知乎");
+});
+
+test("resume can drop a second copy of the lead and open 添加封面 without 发布设置", () => {
+  const lead = "这是一段重复的导语";
+  const first = h("p", {}, [lead]);
+  const second = h("p", {}, [lead]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [first, second]);
+  const title = h("textarea", { placeholder: "请输入标题（最多 100 个字）" });
+  const addCover = h("button", {}, ["添加封面"]);
+  const settings = h("button", {}, ["发布设置"]);
+  createDocument(h("body", {}, [title, body, addCover, settings]), { href: "https://zhuanlan.zhihu.com/p/55/edit", title: "写文章 - 知乎" });
+  const removed = zhihuAct({ op: "remove-duplicate-lead", lead });
+  assert.equal(removed.mutated, false);
+  assert.equal(removed.error, "editor-mutation-unverified");
+  assert.equal(body.childNodes.includes(first), true);
+  assert.equal(body.childNodes.includes(second), true);
+  const pending = h("div", {}, ["图片上传中"]);
+  const kept = h("img", { attrs: { src: "https://pic1.zhimg.com/done.png" } });
+  body.childNodes.push(pending, kept);
+  pending.parentElement = body;
+  kept.parentElement = body;
+  const cleared = zhihuAct({ op: "clear-pending-upload" });
+  assert.equal(cleared.mutated, false);
+  assert.equal(body.childNodes.includes(pending), true);
+  assert.equal(body.childNodes.includes(kept), true);
+  const revealed = zhihuAct({ op: "reveal-cover" });
+  assert.equal(revealed.clicked, true);
+  assert.equal(revealed.label, "添加封面");
+  assert.equal(addCover.clicked, 1);
+  assert.equal(settings.clicked, 0);
+  assert.equal(zhihuAct({ op: "scroll-evidence", where: "end" }).where, "end");
+  assert.equal(zhihuAct({ op: "scroll-evidence", where: "cover" }).where, "cover");
+});
+
+test("cover crop confirms 确定 and does not click 发布", () => {
+  const confirm = h("button", {}, ["确定"]);
+  const publish = h("button", {}, ["发布"]);
+  const settings = h("button", {}, ["发布设置"]);
+  const dialog = h("section", {}, ["裁剪封面", confirm, publish]);
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "正文" });
+  createDocument(h("body", {}, [title, body, dialog, settings]), { href: "https://zhuanlan.zhihu.com/write" });
+  const result = zhihuAct({ op: "confirm-cover-crop" });
+  assert.equal(result.clicked, true);
+  assert.equal(result.label, "确定");
+  assert.equal(confirm.clicked, 1);
+  assert.equal(publish.clicked, 0);
+  assert.equal(settings.clicked, 0);
+  const marked = zhihuAct({ op: "mark-body" });
+  assert.equal(marked.ok, true);
+  globalThis.getSelection = () => ({
+    removeAllRanges() {},
+    addRange() {},
+  });
+  globalThis.document.createRange = () => ({ selectNodeContents() {} });
+  const selected = zhihuAct({ op: "select-body" });
+  assert.equal(selected.selected, true);
+  delete globalThis.getSelection;
+});
+
+test("article editor exposes draft controls and never clicks 发布 or 邀请预览", () => {
+  const parts = mount(editorParts());
+  const probe = zhihuAct({ op: "probe" });
+  assert.equal(probe.surface, "article");
+  assert.equal(probe.editorReady, true);
+  assert.equal(probe.blank, true);
+  assert.equal(probe.explicitDraftLabel, "保存草稿");
+  assert.deepEqual(probe.publishLabels, ["发布"]);
+  assert.deepEqual(probe.previewLabels, ["邀请预览"]);
+  assert.equal(probe.imageInput, true);
+  assert.equal(probe.coverInput, true);
+  assert.equal(probe.autosaveLabel, "已保存");
+  assert.equal(probe.draftId, "");
+
+  assert.equal(zhihuAct({ op: "mark-title" }).ok, true);
+  assert.equal(zhihuAct({ op: "set-title", value: "示例标题" }).ok, true);
+  assert.equal(zhihuAct({ op: "focus-title" }).ok, true);
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.title, "示例标题");
+  assert.equal(read.blank, false);
+
+  assert.equal(zhihuAct({ op: "mark-body" }).ok, true);
+  assert.equal(zhihuAct({ op: "focus-body" }).ok, true);
+  assert.equal(zhihuAct({ op: "mark-image-input" }).ok, true);
+  assert.equal(zhihuAct({ op: "mark-cover-input" }).ok, true);
+  const marked = zhihuAct({ op: "mark-draft-save" });
+  assert.equal(marked.label, "保存草稿");
+  const clicked = zhihuAct({ op: "click-draft-save" });
+  assert.equal(clicked.clicked, true);
+  assert.equal(parts.draft.clicked, 1);
+  assert.equal(parts.publish.clicked, 0);
+  assert.equal(parts.invite.clicked, 0);
+
+  parts.draft.setAttribute("data-zhihu-draft", "");
+  parts.publish.setAttribute("data-zhihu-draft", "1");
+  parts.publish.childNodes = [{ nodeType: 3, textContent: "发布", childNodes: [] }];
+  parts.publish.text = "发布";
+  const refused = zhihuAct({ op: "click-draft-save" });
+  assert.equal(refused.forbidden, true);
+  assert.equal(parts.publish.clicked, 0);
+});
+
+test("readback counts structure inside the editor and ignores a badge inside the body", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const heading = h("h2", {}, ["小节"]);
+  const item = h("li", {}, ["第一点"]);
+  const link = h("a", { attrs: { href: "https://example.com/docs" } }, ["链接"]);
+  const image = h("img", { attrs: { src: "https://pic1.zhimg.com/body.png" } });
+  const coverThumb = h("img", { attrs: { src: "https://pic2.zhimg.com/panel.png" } });
+  const coverWidget = h("div", { className: "UploadPicture" }, ["添加封面", coverThumb]);
+  const inside = h("span", {}, ["已保存"]);
+  const body = h("div", { className: "public-DraftEditor-content", editable: true, text: "一段说明 小节 第一点 链接" }, [heading, item, link, image, coverWidget, inside]);
+  const cover = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic1.zhimg.com/cover.png" } });
+  cover.naturalWidth = 1200;
+  cover.naturalHeight = 400;
+  cover.getBoundingClientRect = () => ({ width: 600, height: 200 });
+  const profile = h("a", { attrs: { href: "/people/example" } }, ["示例作者"]);
+  const editLink = h("a", { attrs: { href: "/p/77/edit?token=secret" } }, ["继续编辑"]);
+  createDocument(h("body", {}, [profile, title, body, cover, editLink]), {
+    href: "https://zhuanlan.zhihu.com/p/77/edit",
+  });
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.draftId, "77");
+  assert.equal(read.imageCount, 1);
+  assert.equal(read.imageInventory.filter((item) => item.role === "body").length, 1);
+  assert.equal(read.imageInventory.some((item) => item.role === "cover-widget"), true);
+  assert.equal(read.coverApplied, true);
+  assert.equal(read.coverProbe.inputs.some((item) => item.cover), false);
+  const small = h("img", { className: "UploadPicture-preview", attrs: { src: "https://pic3.zhimg.com/icon.png" } });
+  small.naturalWidth = 24;
+  small.naturalHeight = 24;
+  small.getBoundingClientRect = () => ({ width: 24, height: 24 });
+  createDocument(h("body", {}, [
+    profile,
+    title,
+    body,
+    h("div", { className: "UploadPicture" }, [
+      h("button", {}, ["添加封面"]),
+      "图片上传格式支持 JPEG、JPG、PNG",
+      small,
+    ]),
+  ]), { href: "https://zhuanlan.zhihu.com/p/77/edit" });
+  const placeholder = zhihuAct({ op: "read" });
+  assert.equal(placeholder.coverApplied, false);
+  assert.equal(placeholder.coverProbe.emptyHint, true);
+  assert.equal(placeholder.coverProbe.labels.includes("添加封面"), true);
+  assert.equal(placeholder.coverProbe.images[0].natural.width, 24);
+  assert.equal(read.autosaveLabel, "");
+  const fresh = h("span", {}, ["刚刚 · 草稿"]);
+  const blobCover = h("img", { className: "UploadPicture-preview", attrs: { src: "blob:cover" } });
+  createDocument(h("body", {}, [profile, title, body, blobCover, fresh]), {
+    href: "https://zhuanlan.zhihu.com/p/77/edit",
+  });
+  const stamped = zhihuAct({ op: "read" });
+  assert.equal(stamped.autosaveLabel, "刚刚 · 草稿");
+  assert.equal(stamped.coverApplied, false);
+  assert.equal(stamped.blank, false);
+  assert.deepEqual(read.headings, [{ level: 2, text: "小节" }]);
+  assert.deepEqual(read.listItems, ["第一点"]);
+  assert.deepEqual(read.hrefs, ["https://example.com/docs"]);
+  assert.equal(read.published, false);
+
+  createDocument(h("body", {}, [
+    profile,
+    title,
+    h("div", { editable: true, text: "正文" }),
+  ]), { href: "https://zhuanlan.zhihu.com/p/88" });
+  const published = zhihuAct({ op: "read" });
+  assert.equal(published.published, true);
+  assert.equal(published.draftId, "");
+
+  const first = h("a", { attrs: { href: "/p/1/edit" } }, ["一"]);
+  const second = h("a", { attrs: { href: "/p/2/edit" } }, ["二"]);
+  createDocument(h("body", {}, [profile, title, h("div", { editable: true }), first, second]), {
+    href: "https://zhuanlan.zhihu.com/write",
+  });
+  assert.equal(zhihuAct({ op: "probe" }).draftAmbiguous, true);
+});
+
+test("ambiguous or missing editor controls fail closed", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const body = h("div", { editable: true });
+  const other = h("div", { editable: true });
+  createDocument(h("body", {}, [title, body, other]), { href: "https://zhuanlan.zhihu.com/write" });
+  const ambiguousBody = zhihuAct({ op: "probe" });
+  assert.equal(ambiguousBody.bodyAmbiguous, true);
+  assert.equal(ambiguousBody.editorReady, false);
+  assert.match(zhihuAct({ op: "mark-body" }).error, /ambiguous/);
+
+  const one = h("div", { className: "public-DraftEditor-content", editable: true });
+  const imageA = h("input", { type: "file", accept: "image/png" });
+  const imageB = h("input", { type: "file", accept: "image/jpeg" });
+  createDocument(h("body", {}, [
+    title,
+    one,
+    h("button", { attrs: { "aria-label": "图片" } }, [imageA]),
+    h("button", { attrs: { "aria-label": "图片" } }, [imageB]),
+  ]), { href: "https://zhuanlan.zhihu.com/write" });
+  assert.equal(zhihuAct({ op: "probe" }).imageAmbiguous, true);
+  assert.match(zhihuAct({ op: "mark-image-input" }).error, /ambiguous/);
+
+  const disabled = h("input", { type: "file", accept: "image/png", disabled: true });
+  createDocument(h("body", {}, [title, one, disabled]), { href: "https://zhuanlan.zhihu.com/write" });
+  assert.equal(zhihuAct({ op: "probe" }).imageInput, false);
+  assert.match(zhihuAct({ op: "mark-cover-input" }).error, /not found/);
+
+  const cleanTitle = h("textarea", { placeholder: "请输入标题" });
+  const answerBody = h("div", { className: "public-DraftEditor-content", editable: true, attrs: { "aria-label": "写回答" } });
+  createDocument(h("body", {}, [cleanTitle, answerBody]), { href: "https://zhuanlan.zhihu.com/write" });
+  assert.equal(zhihuAct({ op: "probe" }).surface, "mixed");
+
+  createDocument(h("body", {}, [h("div", {}, ["没有标题"])]), { href: "https://zhuanlan.zhihu.com/write" });
+  assert.match(zhihuAct({ op: "mark-title" }).error, /not found/);
+  assert.match(zhihuAct({ op: "focus-title" }).error, /not found/);
+  assert.match(zhihuAct({ op: "set-title", value: "标题" }).error, /not found/);
+  assert.match(zhihuAct({ op: "mark-draft-save" }).error, /not found/);
+  assert.match(zhihuAct({ op: "click-draft-save" }).error, /not found/);
+
+  const hiddenDraft = h("button", { hidden: true }, ["保存草稿"]);
+  const visible = h("button", {}, ["存草稿"]);
+  createDocument(h("body", {}, [title, one, hiddenDraft, visible]), { href: "https://zhuanlan.zhihu.com/write" });
+  assert.equal(zhihuAct({ op: "mark-draft-save" }).label, "存草稿");
+});
+
+test("the cover file is the image beside UploadPicture-input, not the format hint", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const preview = h("img", { attrs: { src: "https://pic-private.zhihu.com/v2-0b3cdf5d86168a573f61589036729da0~resize:1440:q75.png?auth=secret" } });
+  preview.naturalWidth = 1200;
+  preview.naturalHeight = 400;
+  preview.getBoundingClientRect = () => ({ width: 150, height: 100 });
+  const input = h("input", { type: "file", accept: ".jpeg, .jpg, .png", className: "UploadPicture-input", zero: true });
+  const label = h("label", { className: "UploadPicture-wrapper css-1la3xpt" }, [
+    "添加文章封面",
+    input,
+    "图片上传格式支持 JPEG、JPG、PNG",
+  ]);
+  const avatar = h("img", { attrs: { src: "https://pic1.zhimg.com/avatar.png" } });
+  avatar.naturalWidth = 34;
+  avatar.naturalHeight = 34;
+  avatar.getBoundingClientRect = () => ({ width: 34, height: 34 });
+  const editor = h("div", { className: "public-DraftEditor-content", editable: true, text: "正文" });
+  createDocument(h("body", {}, [
+    title,
+    h("div", { className: "css-1pysja1" }, [
+      h("div", {}, [h("div", { className: "css-6e7dvl" }, [preview])]),
+      h("div", {}, [label]),
+    ]),
+    h("input", { type: "file", accept: "image/webp,image/jpeg,image/png" }),
+    h("input", { type: "file", accept: ".pdf,.md,.png,.jpg" }),
+    avatar,
+    editor,
+  ]), { href: "https://zhuanlan.zhihu.com/p/55/edit" });
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.coverApplied, false);
+  assert.equal(read.coverProbe.emptyHint, true);
+  assert.equal(read.coverProbe.widget.inputCount, 1);
+  assert.equal(read.coverProbe.widget.className.includes("UploadPicture-input"), true);
+  assert.equal(read.coverProbe.widget.images.length, 1);
+  assert.equal(read.coverProbe.widget.images[0].natural.width, 1200);
+  assert.equal(read.coverProbe.widget.images[0].natural.height, 400);
+  assert.equal(read.coverProbe.widget.images[0].rect.width, 150);
+  assert.equal(read.coverProbe.widget.images[0].path.includes("auth"), false);
+  assert.equal(read.coverProbe.widget.images[0].path.includes("v2-0b3cdf5d86168a573f61589036729da0"), true);
+});
+
+test("readback walks Draft blocks under a wrapper and fingerprints images without query secrets", () => {
+  const title = h("textarea", { placeholder: "请输入标题" });
+  const wide = h("img", { attrs: { src: "https://pic-private.zhihu.com/a.png?token=secret" } });
+  wide.naturalWidth = 800;
+  wide.naturalHeight = 500;
+  const narrow = h("img", { attrs: { src: "https://pic-private.zhihu.com/b.png?token=other" } });
+  narrow.naturalWidth = 40;
+  narrow.naturalHeight = 40;
+  function block(offset, tag, text, extra) {
+    const kids = [h(tag, {}, [text])];
+    if (extra) kids.push(extra);
+    return h("div", { attrs: { "data-block": "true", "data-offset-key": offset } }, kids);
+  }
+  const body = h("div", { className: "public-DraftEditor-content", editable: true }, [
+    h("div", { className: "data-contents" }, [
+      block("k1", "p", "这是导语"),
+      block("k2", "h2", "排版检查", wide),
+      block("k3", "p", "别的段落", narrow),
+    ]),
+  ]);
+  createDocument(h("body", {}, [title, body]), { href: "https://zhuanlan.zhihu.com/p/55/edit" });
+  const read = zhihuAct({ op: "read" });
+  assert.equal(read.blocks.length, 3);
+  assert.deepEqual(read.blocks.map((item) => item.tag), ["P", "H2", "P"]);
+  assert.deepEqual(read.blocks.map((item) => item.offsetKey), ["k1", "k2", "k3"]);
+  assert.equal(read.blocks[0].text.includes("这是导语"), true);
+  assert.equal(read.imageCount, 2);
+  assert.equal(read.imageInventory.some((item) => String(item.path || item.fingerprint || "").includes("token")), false);
+  assert.notEqual(read.imageInventory[0].fingerprint, read.imageInventory[1].fingerprint);
+  assert.equal(read.imageInventory[0].blockIndex, 1);
+  assert.equal(read.imageInventory[1].blockIndex, 2);
+  assert.equal(read.imageInventory[0].natural.width, 800);
+  assert.equal(read.imageInventory[1].natural.width, 40);
+  assert.equal(read.imageInventory[0].visible, true);
+});

@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`wechat-article-ego`](./skills/wechat-article-ego/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`bilibili-video`](./skills/bilibili-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/) 和 [`xiaohongshu-ego`](./skills/xiaohongshu-ego/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
+> **状态：** [`pinterest-download`](./skills/pinterest-download/)、[`instagram-saved-download`](./skills/instagram-saved-download/)、[`wechat-channels-video`](./skills/wechat-channels-video/)、[`wechat-article-ego`](./skills/wechat-article-ego/)、[`kuaishou-video`](./skills/kuaishou-video/)、[`bilibili-video`](./skills/bilibili-video/)、[`youtube-video`](./skills/youtube-video/)、[`douyin-video`](./skills/douyin-video/)、[`teambition-ego`](./skills/teambition-ego/)、[`x-post`](./skills/x-post/)、[`xiaohongshu-ego`](./skills/xiaohongshu-ego/) 和 [`zhihu-article`](./skills/zhihu-article/)。需要已安装 [ego lite](https://lite.ego.app/)，并且 `ego-browser` 在 `PATH` 上。计划见 [PLAN.md](./PLAN.md)。只为 Star 的开源项目，[MIT](./LICENSE)。不发布到 npm。
 
 ## 安装
 
@@ -69,6 +69,7 @@ cd ego-skills
 | [`teambition-ego`](./skills/teambition-ego/) | 用 Ego 会话读取 Teambition 测试计划和测试用例。先检查登录。Phase 2a 还能新建、改标题/前置/步骤、改状态，以及把一条用例移到回收站（`delete --yes`）。只走浏览器会话，不用 Open API token。 |
 | [`x-post`](./skills/x-post/) | 用已登录的 Ego 会话，通过 `page.fetch` CreateTweet 往 X 发帖。先检查登录。没有 `--yes` 不发送。可选 `--image`（最多 4 张 png/jpeg/webp，每张 ≤ 5 MiB）只在 `--yes` 之后上传。成功标准是 `https://x.com/<screen_name>/status/<id>`。响应丢失或无法确认时结果是 `unknown`：先核对时间线，脚本不会自动重发。 |
 | [`xiaohongshu-ego`](./skills/xiaohongshu-ego/) | 在小红书创作者平台发一条视频笔记。先检查登录。没有 `--yes` 不上传。笔记不能带链接，先从文案里删掉，或加 `--strip-links`。传 `--cover`（例如 `cover-3x4.png`）走「选择图片上传」，换成主封面。只传 PK 槽时缩略图会在大约 72 小时内一直是首帧。不传则平台用首帧。成功标准是 `https://www.xiaohongshu.com/explore/<noteId>`。 |
+| [`zhihu-article`](./skills/zhihu-article/) | 在知乎专栏编辑器准备一篇文章草稿。先检查登录。`preview` 和不带 `--save-draft` 的 `save-draft` 都是离线计划。`--save-draft` 只保存一篇草稿，不会发布。`--publish` 和 `--yes` 会被拒绝。这一版没有实现公开发布。成功标准是重新打开草稿后能对上草稿 id、「已保存」、标题、正文和图片张数。 |
 
 ```bash
 node skills/pinterest-download/scripts/download.mjs \
@@ -129,7 +130,18 @@ node skills/xiaohongshu-ego/scripts/post-video.mjs \
   --cover /absolute/path/to/cover-3x4.png
 ```
 
-如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布；公众号图文要在 Ego 里登录 mp.weixin.qq.com，计划确认后才加 `--yes`，看到多个公众号就先停下让人选择）。说明见各技能的 `references/login.md`。
+```bash
+node skills/zhihu-article/scripts/check-login.mjs
+node skills/zhihu-article/scripts/preview.mjs \
+  --markdown /absolute/path/to/article.md
+node skills/zhihu-article/scripts/save-draft.mjs \
+  --markdown /absolute/path/to/article.md \
+  --cover /absolute/path/to/cover.png \
+  --expect-account "示例作者" \
+  --save-draft
+```
+
+如果对应网站还没登录，命令以退出码 `2` 结束，并打印一次性登录步骤，不会替你输入密码。请告诉用户：在 Ego Lite 里登录之后结果才成立（Pinterest 登录后更好；Instagram 收藏在匿名时看不到；视频号登录态过期很快；快手创作者平台没扫码就会停在登录墙；YouTube 在 Ego 里已经登录时上传最稳；抖音在 Ego 里已经登录时发布更稳；Teambition 测试计划要在 Ego 里登录 teambition.com 之后才能读或改；X 发帖要在 Ego 里登录 x.com，并且草稿确认后才加 `--yes`；小红书要在 Ego 里登录创作者平台，计划确认后才加 `--yes`，传了 `--cover` 必须先确认换掉首帧再点发布；公众号图文要在 Ego 里登录 mp.weixin.qq.com，计划确认后才加 `--yes`，看到多个公众号就先停下让人选择；知乎文章在 Ego 里登录 www.zhihu.com 之后才能检查登录，没有 `--save-draft` 不会打开编辑器，`--save-draft` 也不会发布）。说明见各技能的 `references/login.md`。
 
 ## 为什么用 ego
 
